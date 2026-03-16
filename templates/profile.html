@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto px-4 pt-6">
+
+  <!-- Profile Header -->
+  <div class="relative mb-6">
+    <div class="h-32 rounded-2xl bg-gradient-to-r from-primary/30 to-secondary/30 border border-white/5"></div>
+    <div class="absolute -bottom-8 left-4">
+      <div class="relative">
+        {% if user.photo %}
+        <img src="{{ user.photo | photo_url }}" class="w-20 h-20 rounded-2xl object-cover border-4 border-dark"/>
+        {% else %}
+        <div class="w-20 h-20 rounded-2xl bg-surface flex items-center justify-center border-4 border-dark">
+          <i class="fas fa-user text-3xl text-gray-500"></i>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% if user.is_premium %}
+    <div class="absolute top-3 right-3">
+      <span class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full border border-yellow-500/30">
+        <i class="fas fa-crown mr-1"></i>Premium
+      </span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="mt-10 mb-6">
+    <h1 class="text-xl font-bold text-white">{{ user.name }}</h1>
+    <p class="text-gray-400 text-sm flex items-center gap-2 mt-1">
+      <i class="fas fa-map-marker-alt text-primary text-xs"></i> {{ user.city or "India" }}
+      <span class="text-gray-600">•</span>
+      <i class="fas fa-birthday-cake text-primary text-xs"></i> {{ user.age }} years
+    </p>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-3 gap-3 mb-6">
+    <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
+      <div class="text-2xl font-bold gradient-text">{{ user.super_likes_left if not user.is_premium else '∞' }}</div>
+      <div class="text-gray-500 text-xs mt-1">Super Likes</div>
+    </div>
+    <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
+      <div class="text-2xl font-bold gradient-text">{{ user.gender|capitalize }}</div>
+      <div class="text-gray-500 text-xs mt-1">Gender</div>
+    </div>
+    <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
+      <div class="text-2xl font-bold gradient-text">{{ '✓' if user.is_premium else 'Free' }}</div>
+      <div class="text-gray-500 text-xs mt-1">Plan</div>
+    </div>
+  </div>
+
+  <!-- Edit Form -->
+  <div class="bg-card rounded-2xl p-5 border border-white/5 mb-4">
+    <h2 class="font-semibold text-white mb-4 flex items-center gap-2">
+      <i class="fas fa-edit text-primary text-sm"></i> Edit Profile
+    </h2>
+    <form method="POST" action="/profile/update" enctype="multipart/form-data" class="space-y-4">
+      <div>
+        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Bio</label>
+        <textarea name="bio" rows="3" placeholder="Tell something about yourself..."
+          class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1 resize-none">{{ user.bio or '' }}</textarea>
+      </div>
+      <div>
+        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">City</label>
+        <div class="relative mt-1">
+          <i class="fas fa-map-marker-alt absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+          <input type="text" name="city" value="{{ user.city or '' }}" placeholder="Your city"
+            class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+        </div>
+      </div>
+      <div>
+        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Update Photo</label>
+        <label class="flex items-center gap-3 bg-surface border border-dashed border-white/20 rounded-xl px-4 py-3 mt-1 cursor-pointer hover:border-primary transition">
+          <i class="fas fa-camera text-primary"></i>
+          <span class="text-gray-400 text-sm" id="photo-label2">Choose new photo</span>
+          <input type="file" name="photo" accept="image/*" class="hidden" onchange="document.getElementById('photo-label2').textContent = this.files[0]?.name || 'Choose new photo'"/>
+        </label>
+      </div>
+      <button type="submit" class="w-full gradient-btn text-white font-semibold py-3 rounded-xl transition text-sm">
+        Save Changes <i class="fas fa-check ml-2"></i>
+      </button>
+    </form>
+  </div>
+
+  <!-- Premium Banner -->
+  {% if not user.is_premium %}
+  <div class="bg-gradient-to-r from-primary/20 to-secondary/20 rounded-2xl p-5 border border-primary/20 mb-4">
+    <div class="flex items-center gap-3 mb-3">
+      <i class="fas fa-crown text-yellow-400 text-xl"></i>
+      <h3 class="font-semibold text-white">Go Premium</h3>
+    </div>
+    <ul class="space-y-2 text-sm text-gray-300 mb-4">
+      <li class="flex items-center gap-2"><i class="fas fa-check text-green-400 text-xs"></i> Unlimited likes & super likes</li>
+      <li class="flex items-center gap-2"><i class="fas fa-check text-green-400 text-xs"></i> See who liked you</li>
+      <li class="flex items-center gap-2"><i class="fas fa-check text-green-400 text-xs"></i> Profile boost</li>
+    </ul>
+    <button onclick="window.location.href='/premium'" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-xl text-sm transition">
+      Upgrade for ₹299/month
+    </button>
+  </div>
+  {% endif %}
+
+  <a href="/logout" class="flex items-center justify-center gap-2 text-gray-500 hover:text-red-400 transition text-sm py-3">
+    <i class="fas fa-sign-out-alt"></i> Logout
+  </a>
+
+</div>
+{% endblock %}

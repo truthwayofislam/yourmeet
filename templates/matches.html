@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Matches{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto px-4 pt-6">
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold gradient-text">Your Matches</h1>
+    <p class="text-gray-400 text-sm">{{ matches|length }} people liked you back</p>
+  </div>
+
+  {% if matches %}
+  <div class="space-y-3">
+    {% for match in matches %}
+    <a href="/chat/{{ match.id }}" class="flex items-center gap-4 bg-card rounded-2xl p-4 border border-white/5 hover:border-primary/30 transition card-glow group">
+      <div class="relative">
+        {% if match.photo %}
+        <img src="{{ match.photo | photo_url }}" class="w-14 h-14 rounded-full object-cover border-2 border-primary/30"/>
+        {% else %}
+        <div class="w-14 h-14 rounded-full bg-surface flex items-center justify-center border-2 border-primary/30">
+          <i class="fas fa-user text-gray-500 text-xl"></i>
+        </div>
+        {% endif %}
+        <div class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-card"></div>
+      </div>
+      <div class="flex-1 min-w-0">
+        <h3 class="font-semibold text-white group-hover:text-primary transition">{{ match.name }}, {{ match.age }}</h3>
+        <p class="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
+          <i class="fas fa-map-marker-alt text-primary"></i> {{ match.city or "India" }}
+        </p>
+        <p class="text-gray-600 text-xs mt-1 truncate">{{ match.bio or "Say hello! 👋" }}</p>
+      </div>
+      <div class="text-primary opacity-0 group-hover:opacity-100 transition">
+        <i class="fas fa-comment-dots text-xl"></i>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div class="flex flex-col items-center justify-center py-20">
+    <div class="w-24 h-24 rounded-full bg-card flex items-center justify-center mb-4 border border-white/5">
+      <i class="fas fa-heart text-4xl text-gray-700"></i>
+    </div>
+    <p class="text-gray-400 font-medium">No matches yet</p>
+    <p class="text-gray-600 text-sm mt-1">Keep swiping to find your match!</p>
+    <a href="/" class="gradient-btn text-white px-6 py-3 rounded-xl text-sm font-medium mt-6">
+      <i class="fas fa-fire mr-2"></i>Start Discovering
+    </a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

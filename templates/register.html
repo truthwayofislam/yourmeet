@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<div class="min-h-screen flex items-center justify-center px-4 py-8">
+  <div class="w-full max-w-sm">
+
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-full gradient-btn mb-4">
+        <i class="fas fa-heart text-white text-2xl"></i>
+      </div>
+      <h1 class="text-3xl font-bold gradient-text">YourMeet</h1>
+      <p class="text-gray-400 text-sm mt-1">Start your journey today</p>
+    </div>
+
+    {% if error %}
+    <div class="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-xl mb-4 text-sm">
+      <i class="fas fa-exclamation-circle mr-2"></i>{{ error }}
+    </div>
+    {% endif %}
+
+    <div class="bg-card rounded-2xl p-6 card-glow border border-white/5">
+      <form method="POST" action="/register" enctype="multipart/form-data" class="space-y-4">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="col-span-2">
+            <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Full Name</label>
+            <div class="relative mt-1">
+              <i class="fas fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+              <input type="text" name="name" required placeholder="Your name"
+                class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Age</label>
+            <input type="number" name="age" required min="18" max="60" placeholder="18+"
+              class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1"/>
+          </div>
+
+          <div>
+            <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Gender</label>
+            <select name="gender" required
+              class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1">
+              <option value="">Select</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Email</label>
+          <div class="relative mt-1">
+            <i class="fas fa-envelope absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+            <input type="email" name="email" required placeholder="your@email.com"
+              class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Phone</label>
+          <div class="relative mt-1">
+            <i class="fas fa-phone absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+            <input type="tel" name="phone" required placeholder="+91 XXXXX XXXXX"
+              class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">City</label>
+          <div class="relative mt-1">
+            <i class="fas fa-map-marker-alt absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+            <input type="text" name="city" required placeholder="Mumbai, Delhi..."
+              class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Password</label>
+          <div class="relative mt-1">
+            <i class="fas fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+            <input type="password" name="password" required placeholder="••••••••"
+              class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Bio (optional)</label>
+          <textarea name="bio" rows="2" placeholder="Tell something about yourself..."
+            class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1 resize-none"></textarea>
+        </div>
+
+        <div>
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Profile Photo</label>
+          <label class="flex items-center gap-3 bg-surface border border-dashed border-white/20 rounded-xl px-4 py-3 mt-1 cursor-pointer hover:border-primary transition">
+            <i class="fas fa-camera text-primary"></i>
+            <span class="text-gray-400 text-sm" id="photo-label">Upload your photo</span>
+            <input type="file" name="photo" accept="image/*" class="hidden" onchange="document.getElementById('photo-label').textContent = this.files[0]?.name || 'Upload your photo'"/>
+          </label>
+        </div>
+
+        <button type="submit" class="w-full gradient-btn text-white font-semibold py-3 rounded-xl transition text-sm">
+          Create Account <i class="fas fa-heart ml-2"></i>
+        </button>
+      </form>
+    </div>
+
+    <p class="text-center text-gray-400 text-sm mt-6">
+      Already have account? <a href="/login" class="text-primary font-semibold hover:underline">Sign In</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

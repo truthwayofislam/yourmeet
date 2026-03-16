@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+sqlalchemy
+python-jose[cryptography]
+aiofiles
+python-telegram-bot
+razorpay
+Pillow
+httpx
+bcrypt
+libsql-experimental
+python-dotenv

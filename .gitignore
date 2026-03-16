@@ -1,0 +1,9 @@
+.env
+*.db
+__pycache__/
+*.pyc
+static/img/*.jpg
+static/img/*.png
+static/img/*.jpeg
+static/img/*.webp
+.DS_Store

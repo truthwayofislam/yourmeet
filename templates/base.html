@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>YourMeet - {% block title %}Find Your Match{% endblock %}</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#b76e79',
+            secondary: '#8b5cf6',
+            dark: '#0f0f1a',
+            card: '#1a1a2e',
+            surface: '#16213e',
+          },
+          fontFamily: { poppins: ['Poppins', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Poppins', sans-serif; background: #0f0f1a; }
+    .gradient-text { background: linear-gradient(135deg, #b76e79, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .gradient-btn { background: linear-gradient(135deg, #b76e79, #8b5cf6); }
+    .gradient-btn:hover { background: linear-gradient(135deg, #a05c67, #7c3aed); }
+    .card-glow { box-shadow: 0 0 30px rgba(183,110,121,0.15); }
+    .nav-active { background: linear-gradient(135deg, rgba(183,110,121,0.2), rgba(139,92,246,0.2)); }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #1a1a2e; }
+    ::-webkit-scrollbar-thumb { background: #b76e79; border-radius: 2px; }
+    /* Telegram safe area */
+    .tg-safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  </style>
+</head>
+<body class="min-h-screen text-white">
+
+<script>
+  // Telegram Mini App init
+  if (window.Telegram && window.Telegram.WebApp) {
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    tg.setHeaderColor('#0f0f1a');
+    tg.setBackgroundColor('#0f0f1a');
+
+    // Auto login via Telegram if not logged in
+    const user = tg.initDataUnsafe?.user;
+    if (user && user.id) {
+      const hasCookie = document.cookie.includes('token=');
+      if (!hasCookie) {
+        fetch('/auth/telegram', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(user)
+        }).then(r => r.json()).then(data => {
+          if (data.token) {
+            document.cookie = `token=${data.token};path=/;max-age=2592000`;
+            window.location.href = data.new_user ? '/profile' : '/';
+          }
+        });
+      }
+    }
+  }
+</script>
+
+{% if user is defined and user %}
+<nav class="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-white/10 px-6 py-3 tg-safe-bottom">
+  <div class="flex justify-around items-center max-w-md mx-auto">
+    <a href="/" class="flex flex-col items-center gap-1 text-xs {% if active == 'home' %}text-primary{% else %}text-gray-400{% endif %}">
+      <i class="fas fa-fire text-xl"></i><span>Discover</span>
+    </a>
+    <a href="/matches" class="flex flex-col items-center gap-1 text-xs {% if active == 'matches' %}text-primary{% else %}text-gray-400{% endif %}">
+      <i class="fas fa-heart text-xl"></i><span>Matches</span>
+    </a>
+    <a href="/premium" class="flex flex-col items-center gap-1 text-xs {% if active == 'premium' %}text-yellow-400{% else %}text-gray-400{% endif %}">
+      <i class="fas fa-crown text-xl"></i><span>Premium</span>
+    </a>
+    <a href="/profile" class="flex flex-col items-center gap-1 text-xs {% if active == 'profile' %}text-primary{% else %}text-gray-400{% endif %}">
+      <i class="fas fa-user text-xl"></i><span>Profile</span>
+    </a>
+  </div>
+</nav>
+{% endif %}
+
+<main class="{% if user is defined and user %}pb-24{% endif %}">
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+  // Telegram BackButton — show on non-home pages
+  if (window.Telegram && window.Telegram.WebApp) {
+    const tg = window.Telegram.WebApp;
+    const path = window.location.pathname;
+    if (path !== '/' && path !== '/login' && path !== '/register') {
+      tg.BackButton.show();
+      tg.BackButton.onClick(() => window.history.back());
+    } else {
+      tg.BackButton.hide();
+    }
+  }
+</script>
+
+</body>
+</html>

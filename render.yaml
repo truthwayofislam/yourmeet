@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: yourmeet
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_STORAGE_CHAT_ID
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: APP_URL
+        sync: false
+
+  # Cronjob — free tier pe app ko sleep se bachata hai
+  - type: cron
+    name: yourmeet-keepalive
+    runtime: python
+    schedule: "*/14 * * * *"   # har 14 minute pe ping
+    buildCommand: pip install httpx
+    startCommand: python -c "import httpx, os; httpx.get(os.getenv('APP_URL', '') + '/ping')"
+    envVars:
+      - key: APP_URL
+        sync: false

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Discover{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto px-4 pt-6">
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold gradient-text">YourMeet</h1>
+      <p class="text-gray-400 text-xs">Hey {{ user.name.split()[0] }} 👋</p>
+    </div>
+    <div class="flex items-center gap-2">
+      {% if user.is_premium %}
+      <span class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full border border-yellow-500/30">
+        <i class="fas fa-crown mr-1"></i>Premium
+      </span>
+      {% endif %}
+      <a href="/logout" class="w-9 h-9 bg-surface rounded-full flex items-center justify-center text-gray-400 hover:text-red-400 transition">
+        <i class="fas fa-sign-out-alt text-sm"></i>
+      </a>
+    </div>
+  </div>
+
+  <!-- Cards Stack -->
+  <div id="card-stack" class="relative h-[480px]">
+    {% if profiles %}
+      {% for profile in profiles %}
+      <div class="profile-card absolute inset-0 bg-card rounded-3xl overflow-hidden card-glow border border-white/5 transition-all duration-300"
+           data-id="{{ profile.id }}" style="z-index: {{ loop.length - loop.index0 }}; transform: scale({{ 1 - loop.index0 * 0.03 }}) translateY({{ loop.index0 * 10 }}px);">
+
+        <!-- Photo -->
+        <div class="relative h-full">
+          {% if profile.photo %}
+          <img src="{{ profile.photo | photo_url }}" class="w-full h-full object-cover"/>
+          {% else %}
+          <div class="w-full h-full bg-gradient-to-br from-surface to-card flex items-center justify-center">
+            <i class="fas fa-user text-6xl text-gray-600"></i>
+          </div>
+          {% endif %}
+
+          <!-- Gradient overlay -->
+          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
+
+          <!-- Like/Nope indicators -->
+          <div class="like-indicator absolute top-8 left-8 opacity-0 transition-opacity">
+            <span class="text-green-400 font-bold text-3xl border-4 border-green-400 px-4 py-1 rounded-xl rotate-[-15deg] inline-block">LIKE</span>
+          </div>
+          <div class="nope-indicator absolute top-8 right-8 opacity-0 transition-opacity">
+            <span class="text-red-400 font-bold text-3xl border-4 border-red-400 px-4 py-1 rounded-xl rotate-[15deg] inline-block">NOPE</span>
+          </div>
+
+          <!-- Profile Info -->
+          <div class="absolute bottom-0 left-0 right-0 p-5">
+            <div class="flex items-end justify-between">
+              <div>
+                <h2 class="text-2xl font-bold text-white">{{ profile.name }}, {{ profile.age }}</h2>
+                <p class="text-gray-300 text-sm flex items-center gap-1 mt-1">
+                  <i class="fas fa-map-marker-alt text-primary text-xs"></i> {{ profile.city or "India" }}
+                </p>
+                {% if profile.bio %}
+                <p class="text-gray-400 text-xs mt-2 line-clamp-2">{{ profile.bio }}</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="absolute inset-0 bg-card rounded-3xl flex flex-col items-center justify-center border border-white/5">
+        <div class="w-20 h-20 rounded-full bg-surface flex items-center justify-center mb-4">
+          <i class="fas fa-heart-broken text-3xl text-gray-600"></i>
+        </div>
+        <p class="text-gray-400 font-medium">No more profiles</p>
+        <p class="text-gray-600 text-sm mt-1">Check back later!</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Action Buttons -->
+  {% if profiles %}
+  <div class="flex items-center justify-center gap-5 mt-6">
+    <button onclick="swipeAction('nope')" class="w-14 h-14 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-red-500/50 hover:bg-red-500/10 transition text-red-400 text-xl shadow-lg">
+      <i class="fas fa-times"></i>
+    </button>
+    <button onclick="swipeAction('super')" class="w-12 h-12 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/10 transition text-blue-400 text-lg shadow-lg">
+      <i class="fas fa-star"></i>
+    </button>
+    <button onclick="swipeAction('like')" class="w-14 h-14 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-green-500/50 hover:bg-green-500/10 transition text-green-400 text-xl shadow-lg">
+      <i class="fas fa-heart"></i>
+    </button>
+  </div>
+
+  <!-- Super likes counter -->
+  <p class="text-center text-gray-600 text-xs mt-3">
+    <i class="fas fa-star text-blue-400 mr-1"></i>
+    {% if user.is_premium %}Unlimited super likes{% else %}{{ user.super_likes_left }} super likes left{% endif %}
+  </p>
+  {% endif %}
+
+</div>
+
+<!-- Match Modal -->
+<div id="match-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+  <div class="bg-card rounded-3xl p-8 text-center max-w-xs w-full border border-white/10 card-glow">
+    <div class="text-5xl mb-4">💕</div>
+    <h2 class="text-2xl font-bold gradient-text mb-2">It's a Match!</h2>
+    <p class="text-gray-400 text-sm mb-6">You and <span id="match-name" class="text-white font-semibold"></span> liked each other!</p>
+    <div class="flex gap-3">
+      <button onclick="closeModal()" class="flex-1 bg-surface border border-white/10 text-white py-3 rounded-xl text-sm font-medium hover:bg-white/5 transition">
+        Keep Swiping
+      </button>
+      <a href="/matches" class="flex-1 gradient-btn text-white py-3 rounded-xl text-sm font-medium text-center">
+        Send Message
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+const cards = document.querySelectorAll('.profile-card');
+let currentIndex = 0;
+
+function getCurrentCard() {
+  return cards[currentIndex];
+}
+
+async function swipeAction(action) {
+  const card = getCurrentCard();
+  if (!card) return;
+
+  const id = card.dataset.id;
+
+  if (action === 'like' || action === 'super') {
+    card.querySelector('.like-indicator').style.opacity = '1';
+    card.style.transform = 'translateX(150%) rotate(20deg)';
+  } else {
+    card.querySelector('.nope-indicator').style.opacity = '1';
+    card.style.transform = 'translateX(-150%) rotate(-20deg)';
+  }
+
+  card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
+  card.style.opacity = '0';
+
+  if (action !== 'nope') {
+    try {
+      const res = await fetch(`/like/${id}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({super: action === 'super'})
+      });
+      const data = await res.json();
+      if (data.matched) {
+        const name = card.querySelector('h2').textContent.split(',')[0];
+        document.getElementById('match-name').textContent = name;
+        setTimeout(() => document.getElementById('match-modal').classList.remove('hidden'), 500);
+      }
+    } catch(e) {}
+  }
+
+  setTimeout(() => { card.style.display = 'none'; currentIndex++; }, 400);
+}
+
+function closeModal() {
+  document.getElementById('match-modal').classList.add('hidden');
+}
+
+// Touch/swipe support
+let startX = 0;
+document.addEventListener('touchstart', e => startX = e.touches[0].clientX);
+document.addEventListener('touchend', e => {
+  const diff = e.changedTouches[0].clientX - startX;
+  if (Math.abs(diff) > 80) swipeAction(diff > 0 ? 'like' : 'nope');
+});
+</script>
+{% endblock %}
