@@ -8,8 +8,15 @@ TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
 
 if TURSO_URL and TURSO_TOKEN:
-    DATABASE_URL = f"{TURSO_URL.replace('libsql://', 'sqlite+libsql://')}?authToken={TURSO_TOKEN}&secure=true"
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    import libsql_experimental as libsql
+    conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
+    from sqlalchemy.pool import StaticPool
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        creator=lambda: conn
+    )
 else:
     engine = create_engine("sqlite:///./yourmeet.db", connect_args={"check_same_thread": False})
 
