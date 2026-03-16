@@ -1,12 +1,9 @@
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import asyncio
 
-# ⚠️ Apna Telegram Bot Token yahan daalo
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-
-# ⚠️ Apni website ka URL yahan daalo (ngrok ya domain)
-APP_URL = "https://yourdomain.com"
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_KEY", "")
+APP_URL = os.getenv("APP_URL", "")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user

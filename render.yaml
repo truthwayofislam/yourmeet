@@ -11,7 +11,9 @@ services:
         sync: false
       - key: TURSO_AUTH_TOKEN
         sync: false
-      - key: BOT_TOKEN
+      - key: TELEGRAM_BOT_KEY
+        sync: false
+      - key: TELEGRAM_BOT_NAME
         sync: false
       - key: TELEGRAM_STORAGE_CHAT_ID
         sync: false
