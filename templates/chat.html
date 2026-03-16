@@ -95,14 +95,14 @@ function appendMsg(content, isMine, time) {
 document.getElementById('messages').scrollTop = 99999;
 
 // Poll for new messages every 5s
+let lastMsgCount = document.getElementById('messages').querySelectorAll('[data-msg]').length;
 setInterval(async () => {
   const res = await fetch(`/chat/${otherId}/messages`);
   const msgs = await res.json();
-  const container = document.getElementById('messages');
-  const currentCount = container.querySelectorAll('.flex').length;
-  if (msgs.length > currentCount) {
-    const newMsgs = msgs.slice(currentCount);
+  if (msgs.length > lastMsgCount) {
+    const newMsgs = msgs.slice(lastMsgCount);
     newMsgs.forEach(m => appendMsg(m.content, m.sender_id === myId, m.sent_at));
+    lastMsgCount = msgs.length;
   }
 }, 5000);
 </script>

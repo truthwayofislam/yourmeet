@@ -4,16 +4,13 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
 
-# Turso LibSQL — env vars se lo
-TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")       # libsql://your-db.turso.io
-TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
+TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
+TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
 
 if TURSO_URL and TURSO_TOKEN:
-    # Turso remote
     DATABASE_URL = f"{TURSO_URL.replace('libsql://', 'sqlite+libsql://')}?authToken={TURSO_TOKEN}&secure=true"
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    # Local fallback (development)
     engine = create_engine("sqlite:///./yourmeet.db", connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
