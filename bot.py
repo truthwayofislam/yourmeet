@@ -264,17 +264,43 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /delete
 async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    if not get_user_by_tg(tg_id):
+        await update.message.reply_text("❌ Account nahi mila.")
+        return
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⚠️ Yes, Delete", web_app=WebAppInfo(url=f"{APP_URL}/profile")),
-        InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+        InlineKeyboardButton("⚠️ Haan, Delete Karo", callback_data="confirm_delete"),
+        InlineKeyboardButton("❌ Cancel", callback_data="cancel_delete")
     ]])
     await update.message.reply_text(
-        "⚠️ *Delete Account*\n\n"
-        "Are you sure? This cannot be undone.\n"
-        "All your matches and messages will be lost.",
+        "⚠️ *Account Delete*\n\n"
+        "Pakka karna hai? Ye undo nahi hoga.\n"
+        "Saare matches aur messages delete ho jayenge.",
         parse_mode="Markdown",
         reply_markup=kb
     )
+
+async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tg_id = str(query.from_user.id)
+    if query.data == "cancel_delete":
+        await query.edit_message_text("✅ Cancel ho gaya. Account safe hai!")
+        return
+    conn = get_conn()
+    me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if not me:
+        conn.close()
+        await query.edit_message_text("❌ Account nahi mila.")
+        return
+    user_id = me[0]
+    conn.execute("DELETE FROM messages WHERE sender_id=? OR receiver_id=?", (user_id, user_id))
+    conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id))
+    conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (user_id, user_id))
+    conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+    await query.edit_message_text("🗑️ Account delete ho gaya. Bye bye! 👋")
 
 # /help
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -331,6 +357,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("like", like_cmd))
     app.add_handler(CallbackQueryHandler(swipe_callback, pattern="^(like|nope|super):"))
     app.add_handler(CallbackQueryHandler(next_callback, pattern="^next$"))
+    app.add_handler(CallbackQueryHandler(delete_callback, pattern="^(confirm_delete|cancel_delete)$"))
     app.add_handler(CommandHandler("friends", friends_cmd))
     app.add_handler(CommandHandler("premium", premium_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
