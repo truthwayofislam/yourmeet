@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppI
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Application
 import libsql_experimental as libsql
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_KEY", "")
+BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
 APP_URL = os.getenv("APP_URL", "")
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")

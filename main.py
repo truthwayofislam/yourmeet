@@ -9,7 +9,7 @@ import uvicorn, os
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_KEY", "")
+BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
 APP_URL = os.getenv("APP_URL", "")
 
 bot_app = None
