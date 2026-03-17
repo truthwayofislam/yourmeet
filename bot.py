@@ -24,6 +24,8 @@ def open_app_keyboard(path=""):
         InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=f"{APP_URL}{path}"))
     ]])
 
+MINI_APP_URL = "https://t.me/Yoursmeetbot/YourMeet"
+
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user

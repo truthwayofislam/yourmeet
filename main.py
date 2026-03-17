@@ -23,8 +23,13 @@ async def lifespan(app: FastAPI):
         from bot import build_app
         bot_app = build_app()
         await bot_app.initialize()
-        await bot_app.bot.set_webhook(f"{APP_URL}/webhook/{BOT_TOKEN}")
+        webhook_url = f"{APP_URL}/webhook/{BOT_TOKEN}"
+        await bot_app.bot.set_webhook(webhook_url)
+        info = await bot_app.bot.get_webhook_info()
+        print(f"[BOT] Webhook set: {info.url} | Pending: {info.pending_update_count}")
         await bot_app.start()
+    else:
+        print(f"[BOT] Skipped - BOT_TOKEN={'SET' if BOT_TOKEN else 'MISSING'}, APP_URL={'SET' if APP_URL else 'MISSING'}")
     yield
     if bot_app:
         await bot_app.stop()
