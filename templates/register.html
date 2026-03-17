@@ -99,6 +99,7 @@
           </label>
         </div>
 
+        <input type="hidden" name="telegram_id" id="tg-id-field"/>
         <button type="submit" class="w-full gradient-btn text-white font-semibold py-3 rounded-xl transition text-sm">
           Create Account <i class="fas fa-heart ml-2"></i>
         </button>
@@ -110,4 +111,9 @@
     </p>
   </div>
 </div>
+<script>
+  if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+    document.getElementById('tg-id-field').value = window.Telegram.WebApp.initDataUnsafe.user.id;
+  }
+</script>
 {% endblock %}

@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, Request, Form
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
-from database import get_db, User, Payment
+from database import get_db
 from routers.auth import get_current_user
 import razorpay, hmac, hashlib, os
 
@@ -17,76 +16,43 @@ PLANS = {
     "quarterly": {"amount": 69900, "label": "₹699/3 months", "days": 90},
 }
 
-def get_razorpay_client():
-    return razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-
 @router.get("/premium", response_class=HTMLResponse)
-async def premium_page(request: Request, current_user: User = Depends(get_current_user)):
+async def premium_page(request: Request, current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("premium.html", {
-        "request": request,
-        "user": current_user,
-        "plans": PLANS,
-        "razorpay_key": RAZORPAY_KEY_ID,
-        "active": "premium"
-    })
+    return templates.TemplateResponse("premium.html", {"request": request, "user": current_user, "plans": PLANS, "razorpay_key": RAZORPAY_KEY_ID, "active": "premium"})
 
 @router.post("/payment/create")
-async def create_order(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def create_order(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     body = await request.json()
     plan = body.get("plan", "monthly")
     if plan not in PLANS:
         return JSONResponse({"error": "invalid plan"}, status_code=400)
-
-    client = get_razorpay_client()
-    order = client.order.create({
-        "amount": PLANS[plan]["amount"],
-        "currency": "INR",
-        "payment_capture": 1
-    })
-
-    db.add(Payment(
-        user_id=current_user.id,
-        razorpay_order_id=order["id"],
-        amount=PLANS[plan]["amount"],
-        plan=plan
-    ))
+    client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+    order = client.order.create({"amount": PLANS[plan]["amount"], "currency": "INR", "payment_capture": 1})
+    db.execute(
+        "INSERT INTO payments (user_id,razorpay_order_id,amount,plan,status,created_at) VALUES (?,?,?,?,?,datetime('now'))",
+        (current_user.id, order["id"], PLANS[plan]["amount"], plan, "pending")
+    )
     db.commit()
-
-    return JSONResponse({
-        "order_id": order["id"],
-        "amount": PLANS[plan]["amount"],
-        "key": RAZORPAY_KEY_ID,
-        "name": current_user.name,
-        "email": current_user.email,
-        "phone": current_user.phone
-    })
+    return JSONResponse({"order_id": order["id"], "amount": PLANS[plan]["amount"], "key": RAZORPAY_KEY_ID,
+                         "name": current_user.name, "email": current_user.email, "phone": current_user.phone})
 
 @router.post("/payment/verify")
-async def verify_payment(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def verify_payment(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     body = await request.json()
-
     order_id = body.get("razorpay_order_id")
     payment_id = body.get("razorpay_payment_id")
     signature = body.get("razorpay_signature")
-
-    # Signature verify
     msg = f"{order_id}|{payment_id}"
     expected = hmac.new(RAZORPAY_KEY_SECRET.encode(), msg.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, signature):
         return JSONResponse({"error": "invalid signature"}, status_code=400)
-
-    payment = db.query(Payment).filter(Payment.razorpay_order_id == order_id).first()
-    if payment:
-        payment.razorpay_payment_id = payment_id
-        payment.status = "paid"
-        current_user.is_premium = True
-        current_user.super_likes_left = 999
-        db.commit()
-
+    db.execute("UPDATE payments SET razorpay_payment_id=?, status='paid' WHERE razorpay_order_id=?", (payment_id, order_id))
+    db.execute("UPDATE users SET is_premium=1, super_likes_left=999 WHERE id=?", (current_user.id,))
+    db.commit()
     return JSONResponse({"success": True})

@@ -13,11 +13,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             web_app=WebAppInfo(url=APP_URL)
         )
     ]]
-    await update.message.reply_photo(
-        photo="https://i.imgur.com/placeholder.png",
-        caption=f"*Hey {user.first_name}! 👋*\n\nWelcome to *YourMeet* — Find your perfect match!\n\n"
-                f"✨ Swipe profiles\n💬 Chat with matches\n⭐ Super likes\n👑 Premium features\n\n"
-                f"Tap below to start!",
+    await update.message.reply_text(
+        f"*Hey {user.first_name}! 👋*\n\nWelcome to *YourMeet* — Find your perfect match!\n\n"
+        f"✨ Swipe profiles\n💬 Chat with matches\n⭐ Super likes\n👑 Premium features\n\n"
+        f"Tap below to start!",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )

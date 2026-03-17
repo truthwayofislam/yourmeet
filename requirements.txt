@@ -2,13 +2,12 @@ fastapi
 uvicorn[standard]
 python-multipart
 jinja2
-sqlalchemy
 python-jose[cryptography]
 aiofiles
-libsql-experimental
 python-telegram-bot
 razorpay
 Pillow
 httpx
 bcrypt
 python-dotenv
+libsql-experimental

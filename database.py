@@ -1,88 +1,80 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+import libsql_experimental as libsql
 import os
+from datetime import datetime
 
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
 
-if TURSO_URL and TURSO_TOKEN:
-    import libsql_experimental as libsql
-    conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-    from sqlalchemy.pool import StaticPool
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        creator=lambda: conn
-    )
-else:
-    engine = create_engine("sqlite:///./yourmeet.db", connect_args={"check_same_thread": False})
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(100))
-    email = Column(String(100), unique=True, index=True)
-    phone = Column(String(15), unique=True)
-    password = Column(String(200))
-    age = Column(Integer)
-    gender = Column(String(10))
-    bio = Column(Text, default="")
-    city = Column(String(100), default="")
-    photo = Column(String(500), default="")   # Telegram file_id ya URL store hoga
-    is_premium = Column(Boolean, default=False)
-    super_likes_left = Column(Integer, default=3)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    telegram_id = Column(String(50), nullable=True)
-    is_admin = Column(Boolean, default=False)
-    is_blocked = Column(Boolean, default=False)
-
-class Match(Base):
-    __tablename__ = "matches"
-    id = Column(Integer, primary_key=True)
-    user1_id = Column(Integer, ForeignKey("users.id"))
-    user2_id = Column(Integer, ForeignKey("users.id"))
-    matched_at = Column(DateTime, default=datetime.utcnow)
-
-class Like(Base):
-    __tablename__ = "likes"
-    id = Column(Integer, primary_key=True)
-    from_user = Column(Integer, ForeignKey("users.id"))
-    to_user = Column(Integer, ForeignKey("users.id"))
-    is_super = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-class Message(Base):
-    __tablename__ = "messages"
-    id = Column(Integer, primary_key=True)
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    receiver_id = Column(Integer, ForeignKey("users.id"))
-    content = Column(Text)
-    sent_at = Column(DateTime, default=datetime.utcnow)
-    is_read = Column(Boolean, default=False)
-
-class Payment(Base):
-    __tablename__ = "payments"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    razorpay_order_id = Column(String(100))
-    razorpay_payment_id = Column(String(100), nullable=True)
-    amount = Column(Integer)
-    plan = Column(String(20))
-    status = Column(String(20), default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def get_conn():
+    if TURSO_URL and TURSO_TOKEN:
+        return libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
+    return libsql.connect("yourmeet.db")
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    conn = get_conn()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT, email TEXT UNIQUE, phone TEXT UNIQUE,
+            password TEXT, age INTEGER, gender TEXT,
+            bio TEXT DEFAULT '', city TEXT DEFAULT '',
+            photo TEXT DEFAULT '', is_premium INTEGER DEFAULT 0,
+            super_likes_left INTEGER DEFAULT 3,
+            created_at TEXT, telegram_id TEXT,
+            is_admin INTEGER DEFAULT 0, is_blocked INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user1_id INTEGER, user2_id INTEGER, matched_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS likes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user INTEGER, to_user INTEGER,
+            is_super INTEGER DEFAULT 0, created_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER, receiver_id INTEGER,
+            content TEXT, sent_at TEXT, is_read INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER, razorpay_order_id TEXT,
+            razorpay_payment_id TEXT, amount INTEGER,
+            plan TEXT, status TEXT DEFAULT 'pending', created_at TEXT
+        );
+    """)
+    conn.commit()
+
+def get_db():
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+def row_to_user(row):
+    if not row:
+        return None
+    keys = ["id","name","email","phone","password","age","gender","bio","city",
+            "photo","is_premium","super_likes_left","created_at","telegram_id",
+            "is_admin","is_blocked"]
+    d = dict(zip(keys, row))
+    return UserObj(d)
+
+def row_to_obj(row, keys):
+    if not row:
+        return None
+    return DictObj(dict(zip(keys, row)))
+
+class DictObj:
+    def __init__(self, d):
+        self.__dict__.update(d)
+
+class UserObj(DictObj):
+    @property
+    def is_premium(self): return bool(self.__dict__.get("is_premium", 0))
+    @property
+    def is_admin(self): return bool(self.__dict__.get("is_admin", 0))
+    @property
+    def is_blocked(self): return bool(self.__dict__.get("is_blocked", 0))

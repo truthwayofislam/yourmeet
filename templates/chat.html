@@ -47,7 +47,7 @@
   </div>
 
   <!-- Input -->
-  <div class="px-4 py-3 bg-card border-t border-white/5 pb-20">
+  <div class="px-4 py-3 bg-card border-t border-white/5 pb-safe" style="padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px))">
     <div class="flex items-center gap-3 bg-surface rounded-2xl px-4 py-2 border border-white/10">
       <input id="msg-input" type="text" placeholder="Type a message..."
         class="flex-1 bg-transparent text-white text-sm focus:outline-none placeholder-gray-600"
@@ -92,16 +92,16 @@ function appendMsg(content, isMine, time) {
 }
 
 // Auto scroll to bottom
-document.getElementById('messages').scrollTop = 99999;
+const msgBox = document.getElementById('messages');
+msgBox.scrollTop = 99999;
+let lastMsgCount = {{ messages|length }};
 
 // Poll for new messages every 5s
-let lastMsgCount = document.getElementById('messages').querySelectorAll('[data-msg]').length;
 setInterval(async () => {
   const res = await fetch(`/chat/${otherId}/messages`);
   const msgs = await res.json();
   if (msgs.length > lastMsgCount) {
-    const newMsgs = msgs.slice(lastMsgCount);
-    newMsgs.forEach(m => appendMsg(m.content, m.sender_id === myId, m.sent_at));
+    msgs.slice(lastMsgCount).forEach(m => appendMsg(m.content, m.sender_id === myId, m.sent_at));
     lastMsgCount = msgs.length;
   }
 }, 5000);
