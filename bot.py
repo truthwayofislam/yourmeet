@@ -1,6 +1,7 @@
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, Application
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ConversationHandler, filters, ContextTypes, Application
+import secrets
 import libsql_experimental as libsql
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
@@ -25,6 +26,91 @@ def open_app_keyboard(path=""):
     ]])
 
 MINI_APP_URL = "https://t.me/Yoursmeetbot/YourMeet"
+
+# ConversationHandler states
+SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_CITY, SETUP_BIO, SETUP_PHOTO = range(6)
+
+# /setup - create profile in chat
+async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    if get_user_by_tg(tg_id):
+        await update.message.reply_text("✅ You already have a profile! Use /profile to view it.")
+        return ConversationHandler.END
+    await update.message.reply_text("👋 Let's create your profile!\n\nWhat's your *name*?", parse_mode="Markdown")
+    return SETUP_NAME
+
+async def setup_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["name"] = update.message.text.strip()
+    await update.message.reply_text("🎂 How old are you? (Enter age)")
+    return SETUP_AGE
+
+async def setup_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        age = int(update.message.text.strip())
+        if age < 18 or age > 100:
+            await update.message.reply_text("❌ Age must be between 18 and 100. Try again:")
+            return SETUP_AGE
+    except ValueError:
+        await update.message.reply_text("❌ Please enter a valid number:")
+        return SETUP_AGE
+    context.user_data["age"] = age
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("👨 Male", callback_data="gender:male"),
+        InlineKeyboardButton("👩 Female", callback_data="gender:female"),
+    ]])
+    await update.message.reply_text("⚧ Select your *gender*:", parse_mode="Markdown", reply_markup=kb)
+    return SETUP_GENDER
+
+async def setup_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["gender"] = query.data.split(":")[1]
+    await query.edit_message_text(f"Gender set to *{context.user_data['gender']}* ✅", parse_mode="Markdown")
+    await query.message.reply_text("📍 Which *city* are you from? (or type 'skip')")
+    return SETUP_CITY
+
+async def setup_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    context.user_data["city"] = "" if text.lower() == "skip" else text
+    await update.message.reply_text("💬 Write a short *bio* about yourself (or type 'skip'):")
+    return SETUP_BIO
+
+async def setup_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    context.user_data["bio"] = "" if text.lower() == "skip" else text
+    await update.message.reply_text("📸 Send your *profile photo* (or type 'skip'):")
+    return SETUP_PHOTO
+
+async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    photo_url = ""
+    if update.message.photo:
+        file = await update.message.photo[-1].get_file()
+        photo_url = file.file_path  # Telegram CDN URL
+    conn = get_conn()
+    email = f"tg_{tg_id}@yourmeet.app"
+    password = secrets.token_hex(16)
+    conn.execute(
+        "INSERT INTO users (name,email,password,age,gender,city,bio,photo,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))",
+        (context.user_data["name"], email, password, context.user_data["age"],
+         context.user_data["gender"], context.user_data["city"], context.user_data["bio"],
+         photo_url, tg_id)
+    )
+    conn.commit()
+    conn.close()
+    context.user_data.clear()
+    await update.message.reply_text(
+        f"🎉 *Profile created!*\n\n"
+        f"Use /swipe to start meeting people!",
+        parse_mode="Markdown",
+        reply_markup=open_app_keyboard("/")
+    )
+    return ConversationHandler.END
+
+async def setup_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("❌ Profile setup cancelled.")
+    return ConversationHandler.END
 
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -307,6 +393,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🌹 *YourMeet Commands*\n\n"
         "/start - Open the app\n"
+        "/setup - Create your profile in chat\n"
         "/profile - View your profile\n"
         "/matches - See your matches\n"
                 "/swipe - Swipe in chat (no app needed)\n"
@@ -350,6 +437,22 @@ async def notify_message(bot, tg_id: str, sender_name: str):
 
 def build_app() -> Application:
     app = ApplicationBuilder().token(BOT_TOKEN).updater(None).build()
+    setup_conv = ConversationHandler(
+        entry_points=[CommandHandler("setup", setup_cmd)],
+        states={
+            SETUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
+            SETUP_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_age)],
+            SETUP_GENDER: [CallbackQueryHandler(setup_gender, pattern="^gender:")],
+            SETUP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
+            SETUP_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_bio)],
+            SETUP_PHOTO: [
+                MessageHandler(filters.PHOTO, setup_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", setup_cancel)],
+    )
+    app.add_handler(setup_conv)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("profile", profile_cmd))
     app.add_handler(CommandHandler("matches", matches_cmd))
