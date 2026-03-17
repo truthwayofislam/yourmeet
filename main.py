@@ -28,7 +28,7 @@ app.include_router(admin.router)
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["photo_url"] = get_photo_url
 
-@app.get("/ping")
+@app.api_route("/ping", methods=["GET", "HEAD"])
 def ping():
     return JSONResponse({"status": "ok"})
 
