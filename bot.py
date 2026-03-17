@@ -1,6 +1,6 @@
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Application
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, Application
 import libsql_experimental as libsql
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
@@ -88,6 +88,115 @@ async def matches_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=open_app_keyboard("/matches")
     )
 
+def _swipe_keyboard(target_id: int):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("👎 Nope", callback_data=f"nope:{target_id}"),
+        InlineKeyboardButton("❤️ Like", callback_data=f"like:{target_id}"),
+        InlineKeyboardButton("⭐ Super", callback_data=f"super:{target_id}"),
+    ]])
+
+def _next_profile(tg_id: str):
+    conn = get_conn()
+    me = conn.execute("SELECT id, gender FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if not me:
+        conn.close()
+        return None, None
+    user_id, gender = me
+    opposite = "female" if gender == "male" else "male"
+    liked = [r[0] for r in conn.execute("SELECT to_user FROM likes WHERE from_user=?", (user_id,)).fetchall()]
+    liked.append(user_id)
+    placeholders = ",".join("?" * len(liked))
+    row = conn.execute(
+        f"SELECT id, name, age, city, bio, photo FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 LIMIT 1",
+        (*liked, opposite)
+    ).fetchone()
+    conn.close()
+    return user_id, row
+
+async def _send_profile(send_fn, tg_id: str):
+    me_id, row = _next_profile(tg_id)
+    if not row:
+        await send_fn("😔 Abhi koi nahi mila. Baad mein try karo!")
+        return
+    pid, name, age, city, bio, photo = row
+    caption = f"*{name}*, {age}" + (f" — 📍{city}" if city else "") + (f"\n_{bio}_" if bio else "")
+    kb = _swipe_keyboard(pid)
+    if photo and photo.startswith("https://"):
+        await send_fn(photo, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
+    else:
+        await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
+
+# /swipe
+async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    if not get_user_by_tg(tg_id):
+        await update.message.reply_text("❌ Pehle register karo!", reply_markup=open_app_keyboard("/register"))
+        return
+    async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
+        if is_photo:
+            await update.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(content, parse_mode=parse_mode, reply_markup=reply_markup)
+    await _send_profile(send_fn, tg_id)
+
+# callback: like / nope / super
+async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tg_id = str(query.from_user.id)
+    action, target_id = query.data.split(":")
+    target_id = int(target_id)
+
+    conn = get_conn()
+    me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if not me:
+        conn.close()
+        await query.edit_message_caption(caption="❌ Account nahi mila.")
+        return
+    user_id = me[0]
+
+    if action in ("like", "super"):
+        is_super = action == "super"
+        if not conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (user_id, target_id)).fetchone():
+            conn.execute("INSERT INTO likes (from_user,to_user,is_super,created_at) VALUES (?,?,?,datetime('now'))", (user_id, target_id, int(is_super)))
+            conn.commit()
+        mutual = conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, user_id)).fetchone()
+        if mutual:
+            existing = conn.execute(
+                "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
+                (user_id, target_id, target_id, user_id)
+            ).fetchone()
+            if not existing:
+                conn.execute("INSERT INTO matches (user1_id,user2_id,matched_at) VALUES (?,?,datetime('now'))", (user_id, target_id))
+                conn.commit()
+                target_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (target_id,)).fetchone()
+                me_name = conn.execute("SELECT name FROM users WHERE id=?", (user_id,)).fetchone()[0]
+                conn.close()
+                await query.edit_message_caption(caption="💕 *It's a Match!* Swipe karte raho 🔥", parse_mode="Markdown")
+                if target_row and target_row[0]:
+                    try:
+                        await notify_match(query.get_bot(), target_row[0], me_name)
+                    except: pass
+                return
+        conn.close()
+        emoji = "⭐" if is_super else "❤️"
+        await query.edit_message_caption(caption=f"{emoji} Liked! Next dekho 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+    elif action == "nope":
+        conn.close()
+        await query.edit_message_caption(caption="👎 Skipped! Next dekho 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+
+# callback: next
+async def next_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tg_id = str(query.from_user.id)
+    async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
+        if is_photo:
+            await query.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+        else:
+            await query.message.reply_text(content, parse_mode=parse_mode, reply_markup=reply_markup)
+    await _send_profile(send_fn, tg_id)
+
 # /like - open discover page
 async def like_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -174,6 +283,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Open the app\n"
         "/profile - View your profile\n"
         "/matches - See your matches\n"
+                "/swipe - Swipe in chat (no app needed)\n"
         "/like - Discover people\n"
         "/friends - Meet new friends\n"
         "/stats - Your activity stats\n"
@@ -217,7 +327,10 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("profile", profile_cmd))
     app.add_handler(CommandHandler("matches", matches_cmd))
+    app.add_handler(CommandHandler("swipe", swipe_cmd))
     app.add_handler(CommandHandler("like", like_cmd))
+    app.add_handler(CallbackQueryHandler(swipe_callback, pattern="^(like|nope|super):"))
+    app.add_handler(CallbackQueryHandler(next_callback, pattern="^next$"))
     app.add_handler(CommandHandler("friends", friends_cmd))
     app.add_handler(CommandHandler("premium", premium_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
