@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from templating import templates
 from database import get_db, row_to_user, row_to_obj
 from routers.auth import get_current_user
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 PAY_KEYS = ["id","user_id","razorpay_order_id","razorpay_payment_id","amount","plan","status","created_at"]
 
 @router.get("/admin", response_class=HTMLResponse)

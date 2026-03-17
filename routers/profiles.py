@@ -1,17 +1,14 @@
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from templating import templates
 from database import get_db, row_to_user, row_to_obj
 from routers.auth import get_current_user
 from storage import upload_photo_to_telegram
 import shutil, uuid
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 MATCH_KEYS = ["id","user1_id","user2_id","matched_at"]
-USER_KEYS = ["id","name","email","phone","password","age","gender","bio","city",
-             "photo","is_premium","super_likes_left","created_at","telegram_id","is_admin","is_blocked"]
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
@@ -50,6 +47,15 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
         if not existing:
             db.execute("INSERT INTO matches (user1_id,user2_id,matched_at) VALUES (?,?,datetime('now'))", (current_user.id, target_id))
             db.commit()
+            # Telegram match notification
+            try:
+                from main import bot_app
+                from bot import notify_match
+                import asyncio
+                target_row = db.execute("SELECT telegram_id FROM users WHERE id=?", (target_id,)).fetchone()
+                if bot_app and target_row and target_row[0]:
+                    asyncio.create_task(notify_match(bot_app.bot, target_row[0], current_user.name))
+            except: pass
         return JSONResponse({"matched": True})
     return JSONResponse({"matched": False})
 

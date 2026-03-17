@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from templating import templates
 from database import get_db, row_to_user, UserObj
 from storage import upload_photo_to_telegram
 from jose import jwt
@@ -8,7 +8,6 @@ import bcrypt, os, shutil, uuid
 from datetime import datetime
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 SECRET = os.getenv("SECRET_KEY", "yourmeet_secret_key_2024")
 
 def hash_password(password: str) -> str:

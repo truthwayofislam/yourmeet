@@ -1,19 +1,18 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from templating import templates
 from database import get_db
 from routers.auth import get_current_user
 import razorpay, hmac, hashlib, os
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_YOUR_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "YOUR_KEY_SECRET")
 
 PLANS = {
-    "monthly": {"amount": 29900, "label": "₹299/month", "days": 30},
-    "quarterly": {"amount": 69900, "label": "₹699/3 months", "days": 90},
+    "monthly": {"amount": 5000, "label": "₹50/month", "days": 30},
+    "quarterly": {"amount": 12000, "label": "₹120/3 months", "days": 90},
 }
 
 @router.get("/premium", response_class=HTMLResponse)

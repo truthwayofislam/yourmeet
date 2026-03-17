@@ -1,20 +1,34 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from database import init_db
 from routers import auth, profiles, chat, payment, admin
-from storage import get_photo_url
 from dotenv import load_dotenv
 import uvicorn, os
 
 load_dotenv()
 
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_KEY", "")
+APP_URL = os.getenv("APP_URL", "")
+
+bot_app = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Bot webhook setup
+    global bot_app
+    if BOT_TOKEN and APP_URL:
+        from bot import build_app
+        bot_app = build_app()
+        await bot_app.initialize()
+        await bot_app.bot.set_webhook(f"{APP_URL}/webhook/{BOT_TOKEN}")
+        await bot_app.start()
     yield
+    if bot_app:
+        await bot_app.stop()
+        await bot_app.shutdown()
 
 app = FastAPI(title="YourMeet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -25,8 +39,15 @@ app.include_router(chat.router)
 app.include_router(payment.router)
 app.include_router(admin.router)
 
-templates = Jinja2Templates(directory="templates")
-templates.env.filters["photo_url"] = get_photo_url
+@app.post("/webhook/{token}")
+async def telegram_webhook(token: str, request: Request):
+    if token != BOT_TOKEN or not bot_app:
+        return JSONResponse({"error": "invalid"}, status_code=403)
+    from telegram import Update
+    data = await request.json()
+    update = Update.de_json(data, bot_app.bot)
+    await bot_app.process_update(update)
+    return JSONResponse({"ok": True})
 
 @app.api_route("/ping", methods=["GET", "HEAD"])
 def ping():

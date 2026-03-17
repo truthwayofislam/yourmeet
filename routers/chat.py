@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from templating import templates
 from database import get_db, row_to_user, row_to_obj
 from routers.auth import get_current_user
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
 MSG_KEYS = ["id","sender_id","receiver_id","content","sent_at","is_read"]
 
 @router.get("/chat/{other_id}", response_class=HTMLResponse)
@@ -36,6 +35,15 @@ async def send_message(other_id: int, request: Request, db=Depends(get_db), curr
         return JSONResponse({"error": "empty"}, status_code=400)
     db.execute("INSERT INTO messages (sender_id,receiver_id,content,sent_at) VALUES (?,?,?,datetime('now'))", (current_user.id, other_id, content))
     db.commit()
+    # Telegram message notification
+    try:
+        from main import bot_app
+        from bot import notify_message
+        import asyncio
+        other_row = db.execute("SELECT telegram_id FROM users WHERE id=?", (other_id,)).fetchone()
+        if bot_app and other_row and other_row[0]:
+            asyncio.create_task(notify_message(bot_app.bot, other_row[0], current_user.name))
+    except: pass
     return JSONResponse({"ok": True})
 
 @router.get("/chat/{other_id}/messages")
