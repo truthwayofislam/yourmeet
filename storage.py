@@ -10,7 +10,10 @@ async def upload_photo_to_telegram(file: UploadFile) -> str:
     telegram_api, token = _get_telegram_api()
     storage_chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "")
 
+    print(f"[STORAGE] token={'SET' if token else 'MISSING'}, chat_id={storage_chat_id or 'MISSING'}")
+
     if not token or not storage_chat_id:
+        print("[STORAGE] Missing token or chat_id, skipping upload")
         return ""
 
     contents = await file.read()
@@ -22,6 +25,7 @@ async def upload_photo_to_telegram(file: UploadFile) -> str:
             data={"chat_id": storage_chat_id},
             files={"photo": (file.filename, contents, file.content_type or "image/jpeg")}
         )
+        print(f"[STORAGE] Telegram response: {resp.status_code} - {resp.text[:200]}")
         if not resp.is_success:
             return ""
         result = resp.json()
