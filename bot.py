@@ -51,7 +51,7 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     row = get_user_by_tg(tg_id)
     if not row:
-        await update.message.reply_text("❌ Account nahi mila. Pehle register karo!", reply_markup=open_app_keyboard("/register"))
+        await update.message.reply_text("❌ Account not found. Please register first!", reply_markup=open_app_keyboard("/register"))
         return
     name, age, city, bio, is_premium = row[1], row[5], row[8], row[7], row[10]
     plan = "👑 Premium" if is_premium else "🆓 Free"
@@ -72,7 +72,7 @@ async def matches_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     row = get_user_by_tg(tg_id)
     if not row:
-        await update.message.reply_text("❌ Pehle register karo!", reply_markup=open_app_keyboard("/register"))
+        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
         return
     user_id = row[0]
     conn = get_conn()
@@ -116,7 +116,7 @@ def _next_profile(tg_id: str):
 async def _send_profile(send_fn, tg_id: str):
     me_id, row = _next_profile(tg_id)
     if not row:
-        await send_fn("😔 Abhi koi nahi mila. Baad mein try karo!")
+        await send_fn("😔 No one left to swipe! Check back later.")
         return
     pid, name, age, city, bio, photo = row
     caption = f"*{name}*, {age}" + (f" — 📍{city}" if city else "") + (f"\n_{bio}_" if bio else "")
@@ -130,7 +130,7 @@ async def _send_profile(send_fn, tg_id: str):
 async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     if not get_user_by_tg(tg_id):
-        await update.message.reply_text("❌ Pehle register karo!", reply_markup=open_app_keyboard("/register"))
+        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
         return
     async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
         if is_photo:
@@ -151,7 +151,7 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     if not me:
         conn.close()
-        await query.edit_message_caption(caption="❌ Account nahi mila.")
+        await query.edit_message_caption(caption="❌ Account not found.")
         return
     user_id = me[0]
 
@@ -180,10 +180,10 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
         conn.close()
         emoji = "⭐" if is_super else "❤️"
-        await query.edit_message_caption(caption=f"{emoji} Liked! Next dekho 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        await query.edit_message_caption(caption=f"{emoji} Liked! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
     elif action == "nope":
         conn.close()
-        await query.edit_message_caption(caption="👎 Skipped! Next dekho 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        await query.edit_message_caption(caption="👎 Skipped! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
 
 # callback: next
 async def next_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -266,16 +266,16 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     if not get_user_by_tg(tg_id):
-        await update.message.reply_text("❌ Account nahi mila.")
+        await update.message.reply_text("❌ Account not found.")
         return
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⚠️ Haan, Delete Karo", callback_data="confirm_delete"),
+        InlineKeyboardButton("⚠️ Yes, Delete", callback_data="confirm_delete"),
         InlineKeyboardButton("❌ Cancel", callback_data="cancel_delete")
     ]])
     await update.message.reply_text(
         "⚠️ *Account Delete*\n\n"
-        "Pakka karna hai? Ye undo nahi hoga.\n"
-        "Saare matches aur messages delete ho jayenge.",
+        "Are you sure? This cannot be undone.\n"
+        "All your matches and messages will be lost.",
         parse_mode="Markdown",
         reply_markup=kb
     )
@@ -285,13 +285,13 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     tg_id = str(query.from_user.id)
     if query.data == "cancel_delete":
-        await query.edit_message_text("✅ Cancel ho gaya. Account safe hai!")
+        await query.edit_message_text("✅ Cancelled. Your account is safe!")
         return
     conn = get_conn()
     me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     if not me:
         conn.close()
-        await query.edit_message_text("❌ Account nahi mila.")
+        await query.edit_message_text("❌ Account not found.")
         return
     user_id = me[0]
     conn.execute("DELETE FROM messages WHERE sender_id=? OR receiver_id=?", (user_id, user_id))
@@ -300,7 +300,7 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     conn.commit()
     conn.close()
-    await query.edit_message_text("🗑️ Account delete ho gaya. Bye bye! 👋")
+    await query.edit_message_text("🗑️ Account deleted. Goodbye! 👋")
 
 # /help
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
