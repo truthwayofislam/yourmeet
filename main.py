@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from database import init_db
-from routers import auth, profiles, chat, payment, admin
+from routers import auth, profiles, payment, admin
 from dotenv import load_dotenv
 import uvicorn, os
 
@@ -40,7 +40,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(auth.router)
 app.include_router(profiles.router)
-app.include_router(chat.router)
 app.include_router(payment.router)
 app.include_router(admin.router)
 
