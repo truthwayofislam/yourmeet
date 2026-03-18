@@ -622,6 +622,7 @@ def build_app() -> Application:
             SETUP_SOCIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
         },
         fallbacks=[CommandHandler("cancel", setup_cancel)],
+        per_message=False,
     )
     edit_conv = ConversationHandler(
         entry_points=[CommandHandler("edit", edit_cmd)],
@@ -631,6 +632,7 @@ def build_app() -> Application:
             EDIT_PHOTO: [MessageHandler(filters.PHOTO, edit_photo)],
         },
         fallbacks=[CommandHandler("cancel", setup_cancel)],
+        per_message=False,
     )
     app.add_handler(edit_conv)
     app.add_handler(setup_conv)
