@@ -17,19 +17,67 @@ BOY_BIOS = ["Gym & grind 💪","Cricket lover 🏏","Foodie & traveler 🌍","Mu
 GIRL_PHOTOS = ["https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400","https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400","https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400","https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400","https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=400","https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400","https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400","https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400","https://images.unsplash.com/photo-1521146764736-56c929d59c83?w=400","https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400"]
 BOY_PHOTOS = ["https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400","https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400","https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400","https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400","https://images.unsplash.com/photo-1463453091185-61582044d556?w=400"]
 
+INDIAN_GIRL_PHOTOS = [
+    "https://images.unsplash.com/photo-1610216705422-caa3fcb6d158?w=400",
+    "https://images.unsplash.com/photo-1614644147798-f8c0fc9da7f6?w=400",
+    "https://images.unsplash.com/photo-1596815064285-45ed8a9c0463?w=400",
+    "https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=400",
+    "https://images.unsplash.com/photo-1618641986557-1ecd230959aa?w=400",
+    "https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=400",
+    "https://images.unsplash.com/photo-1583394293214-0d7b8e0a4e8e?w=400",
+    "https://images.unsplash.com/photo-1617791160505-6f00504e3519?w=400",
+]
+INDIAN_BOY_PHOTOS = [
+    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400",
+    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
+    "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400",
+    "https://images.unsplash.com/photo-1463453091185-61582044d556?w=400",
+    "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=400",
+]
+INTL_PROFILES = [
+    {"name":"Siti","city":"Jakarta","photo":"https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400","bio":"Jakarta girl 🌴 Love batik & coffee"},
+    {"name":"Dewi","city":"Bali","photo":"https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400","bio":"Bali vibes 🌊 Yoga & sunsets"},
+    {"name":"Putri","city":"Surabaya","photo":"https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400","bio":"Foodie & traveler ✈️"},
+    {"name":"Ayu","city":"Bandung","photo":"https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400","bio":"Music & art lover 🎨"},
+    {"name":"Rina","city":"Medan","photo":"https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=400","bio":"Simple girl big dreams ✨"},
+    {"name":"Emma","city":"New York","photo":"https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400","bio":"NYC life 🍽️ Coffee & hustle"},
+    {"name":"Sophia","city":"Los Angeles","photo":"https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400","bio":"LA sunshine ☀️ Beach & vibes"},
+    {"name":"Olivia","city":"Chicago","photo":"https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400","bio":"Bookworm & coffee addict ☕"},
+    {"name":"Ava","city":"Houston","photo":"https://images.unsplash.com/photo-1521146764736-56c929d59c83?w=400","bio":"Fitness & fun 💪"},
+    {"name":"Isabella","city":"Miami","photo":"https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400","bio":"Beach lover 🌊 Dance & music"},
+    {"name":"Charlotte","city":"London","photo":"https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400","bio":"London life 🇬🇧 Tea & travel"},
+    {"name":"Amelia","city":"Manchester","photo":"https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400","bio":"Art & music 🎸"},
+    {"name":"Fatima","city":"Dubai","photo":"https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400","bio":"Dubai dreams ✨ Luxury & travel"},
+    {"name":"Mariam","city":"Abu Dhabi","photo":"https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400","bio":"Explorer & foodie 🌍"},
+    {"name":"Chloe","city":"Toronto","photo":"https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=400","bio":"Toronto girl 🍁 Coffee & snow"},
+    {"name":"Zoe","city":"Vancouver","photo":"https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400","bio":"Nature lover 🌲 Hiking & yoga"},
+    {"name":"Mia","city":"Sydney","photo":"https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400","bio":"Sydney beaches 🌊 Surf & sun"},
+    {"name":"Grace","city":"Melbourne","photo":"https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400","bio":"Coffee culture ☕ Art & music"},
+    {"name":"Mei","city":"Singapore","photo":"https://images.unsplash.com/photo-1521146764736-56c929d59c83?w=400","bio":"SG foodie 🍜 Hawker & travel"},
+    {"name":"Lin","city":"Singapore","photo":"https://images.unsplash.com/photo-1488161628813-04466f872be2?w=400","bio":"Tech & travel 🚀"},
+]
+
 @router.get("/admin/seed/{secret}")
 async def seed_profiles(secret: str, db=Depends(get_db)):
     if not SEED_SECRET or secret != SEED_SECRET:
         return JSONResponse({"error": "unauthorized"}, status_code=403)
     count = 0
-    profiles = [(n,"female",GIRL_PHOTOS,GIRL_BIOS) for n in GIRL_NAMES] + [(n,"male",BOY_PHOTOS,BOY_BIOS) for n in BOY_NAMES]
-    for name, gender, photos, bios in profiles:
-        email = f"fake_{name.lower()}_{secrets.token_hex(4)}@yourmeet.app"
+    for name in GIRL_NAMES[:80]:
         try:
-            db.execute(
-                "INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10)",
-                (name, email, secrets.token_hex(16), random.randint(18,28), gender, random.choice(CITIES), random.choice(bios), random.choice(photos))
-            )
+            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10)",
+                (name, f"fake_{name.lower()}_{secrets.token_hex(4)}@yourmeet.app", secrets.token_hex(16), random.randint(18,28), "female", random.choice(CITIES), random.choice(GIRL_BIOS), random.choice(INDIAN_GIRL_PHOTOS)))
+            count += 1
+        except: pass
+    for name in BOY_NAMES:
+        try:
+            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10)",
+                (name, f"fake_{name.lower()}_{secrets.token_hex(4)}@yourmeet.app", secrets.token_hex(16), random.randint(18,28), "male", random.choice(CITIES), random.choice(BOY_BIOS), random.choice(INDIAN_BOY_PHOTOS)))
+            count += 1
+        except: pass
+    for p in INTL_PROFILES:
+        try:
+            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10)",
+                (p["name"], f"fake_{p['name'].lower()}_{secrets.token_hex(4)}@yourmeet.app", secrets.token_hex(16), random.randint(18,28), "female", p["city"], p["bio"], p["photo"]))
             count += 1
         except: pass
     db.commit()
