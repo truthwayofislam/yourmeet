@@ -126,13 +126,10 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     # Notify admin bot for verification
     try:
-        import sys
-        main_module = sys.modules.get('main')
-        admin_app = getattr(main_module, 'admin_bot_app', None) if main_module else None
         from admin_bot import send_for_review
         import asyncio
-        if admin_app and new_user:
-            asyncio.create_task(send_for_review(admin_app.bot, new_user[0], name, age, gender, city, photo))
+        if new_user:
+            asyncio.create_task(send_for_review(new_user[0], name, age, gender, city, photo))
     except Exception as e:
         print(f"[ADMIN NOTIFY] Failed: {e}")
     await update.message.reply_text(

@@ -66,6 +66,13 @@ async def register(
     )
     db.commit()
     user_id = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()[0]
+    # Notify admin bot
+    try:
+        from admin_bot import send_for_review
+        import asyncio
+        asyncio.create_task(send_for_review(user_id, name, age, gender, city, photo_path))
+    except Exception as e:
+        print(f"[ADMIN NOTIFY] {e}")
     response = RedirectResponse("/", status_code=302)
     response.set_cookie("token", create_token(user_id))
     return response
