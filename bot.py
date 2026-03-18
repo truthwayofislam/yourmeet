@@ -29,6 +29,7 @@ MINI_APP_URL = "https://t.me/Yoursmeetbot/YourMeet"
 
 # ConversationHandler states
 SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_CITY, SETUP_BIO, SETUP_PHOTO, SETUP_SOCIAL = range(7)
+EDIT_CHOOSE, EDIT_VALUE, EDIT_PHOTO = range(7, 10)
 
 # /setup - create profile in chat
 async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,6 +123,78 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def setup_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("❌ Profile setup cancelled.")
+    return ConversationHandler.END
+
+# /edit
+async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    if not get_user_by_tg(tg_id):
+        await update.message.reply_text("❌ No profile found! Use /setup first.")
+        return ConversationHandler.END
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📛 Name", callback_data="edit:name"), InlineKeyboardButton("🎂 Age", callback_data="edit:age")],
+        [InlineKeyboardButton("📍 City", callback_data="edit:city"), InlineKeyboardButton("💬 Bio", callback_data="edit:bio")],
+        [InlineKeyboardButton("📸 Photo", callback_data="edit:photo"), InlineKeyboardButton("📱 Social", callback_data="edit:social")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="edit:cancel")],
+    ])
+    await update.message.reply_text("✏️ *What do you want to edit?*", parse_mode="Markdown", reply_markup=kb)
+    return EDIT_CHOOSE
+
+async def edit_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    field = query.data.split(":")[1]
+    if field == "cancel":
+        await query.edit_message_text("❌ Edit cancelled.")
+        return ConversationHandler.END
+    if field == "photo":
+        await query.edit_message_text("📸 Send your new profile photo:")
+        context.user_data["edit_field"] = "photo"
+        return EDIT_PHOTO
+    prompts = {
+        "name": "📛 Enter your new name:",
+        "age": "🎂 Enter your new age:",
+        "city": "📍 Enter your new city:",
+        "bio": "💬 Enter your new bio:",
+        "social": "📱 Enter your Instagram/Telegram username (e.g. @rahul_ig):",
+    }
+    context.user_data["edit_field"] = field
+    await query.edit_message_text(prompts[field])
+    return EDIT_VALUE
+
+async def edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    field = context.user_data.get("edit_field")
+    value = update.message.text.strip()
+    if field == "age":
+        try:
+            value = int(value)
+            if value < 18 or value > 100:
+                await update.message.reply_text("❌ Age must be between 18 and 100. Try again:")
+                return EDIT_VALUE
+        except ValueError:
+            await update.message.reply_text("❌ Please enter a valid number:")
+            return EDIT_VALUE
+    conn = get_conn()
+    conn.execute(f"UPDATE users SET {field}=? WHERE telegram_id=?", (value, tg_id))
+    conn.commit()
+    conn.close()
+    context.user_data.clear()
+    await update.message.reply_text(f"✅ *{field.capitalize()}* updated successfully!", parse_mode="Markdown")
+    return ConversationHandler.END
+
+async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    if not update.message.photo:
+        await update.message.reply_text("❌ Please send a photo:")
+        return EDIT_PHOTO
+    file = await update.message.photo[-1].get_file()
+    conn = get_conn()
+    conn.execute("UPDATE users SET photo=? WHERE telegram_id=?", (file.file_path, tg_id))
+    conn.commit()
+    conn.close()
+    context.user_data.clear()
+    await update.message.reply_text("✅ *Photo* updated successfully!", parse_mode="Markdown")
     return ConversationHandler.END
 
 def _check_swipe_limit(tg_id: str):
@@ -492,6 +565,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🌹 *YourMeet Commands*\n\n"
         "/start - Open the app\n"
         "/setup - Create your profile in chat\n"
+        "/edit - Edit your profile\n"
         "/profile - View your profile\n"
         "/matches - See your matches\n"
                 "/swipe - Swipe in chat (no app needed)\n"
@@ -549,6 +623,16 @@ def build_app() -> Application:
         },
         fallbacks=[CommandHandler("cancel", setup_cancel)],
     )
+    edit_conv = ConversationHandler(
+        entry_points=[CommandHandler("edit", edit_cmd)],
+        states={
+            EDIT_CHOOSE: [CallbackQueryHandler(edit_choose, pattern="^edit:")],
+            EDIT_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_value)],
+            EDIT_PHOTO: [MessageHandler(filters.PHOTO, edit_photo)],
+        },
+        fallbacks=[CommandHandler("cancel", setup_cancel)],
+    )
+    app.add_handler(edit_conv)
     app.add_handler(setup_conv)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("profile", profile_cmd))
