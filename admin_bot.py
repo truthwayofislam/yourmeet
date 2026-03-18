@@ -6,7 +6,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 from telegram.request import HTTPXRequest
 
 ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
-ADMIN_TG_ID = os.getenv("ADMIN_TG_ID", "")  # Your personal Telegram ID
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
 
@@ -23,18 +22,20 @@ def _verify_keyboard(user_id: int):
 
 async def send_for_review(bot, user_id: int, name: str, age: int, gender: str, city: str, photo: str):
     """Called after new user registers — sends profile to admin for review."""
-    if not ADMIN_TG_ID:
+    admin_tg_id = os.getenv("ADMIN_TG_ID", "").strip()
+    if not admin_tg_id:
+        print("[ADMIN BOT] ADMIN_TG_ID not set, skipping review")
         return
     caption = (
         f"🆕 *New Profile*\n\n"
-        f"👤 *{name}*, {age} • {gender.capitalize()}\n"
+        f"👤 *{name}*, {age} • {gender.capitalize() if gender else '?'}\n"
         f"📍 {city or 'No city'}\n"
         f"🆔 DB ID: `{user_id}`"
     )
     try:
         if photo and photo.startswith("https://"):
             await bot.send_photo(
-                chat_id=ADMIN_TG_ID,
+                chat_id=admin_tg_id,
                 photo=photo,
                 caption=caption,
                 parse_mode="Markdown",
@@ -42,7 +43,7 @@ async def send_for_review(bot, user_id: int, name: str, age: int, gender: str, c
             )
         else:
             await bot.send_message(
-                chat_id=ADMIN_TG_ID,
+                chat_id=admin_tg_id,
                 text=caption + "\n\n⚠️ No photo",
                 parse_mode="Markdown",
                 reply_markup=_verify_keyboard(user_id)
@@ -52,7 +53,7 @@ async def send_for_review(bot, user_id: int, name: str, age: int, gender: str, c
 
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != ADMIN_TG_ID:
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID","").strip():
         await update.message.reply_text("❌ Unauthorized.")
         return
     await update.message.reply_text(
@@ -66,7 +67,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /pending — show profiles not yet reviewed
 async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != ADMIN_TG_ID:
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID","").strip():
         return
     conn = get_conn()
     rows = conn.execute(
@@ -90,7 +91,7 @@ async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != ADMIN_TG_ID:
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID","").strip():
         return
     conn = get_conn()
     total = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0").fetchone()[0]
@@ -113,7 +114,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if str(query.from_user.id) != ADMIN_TG_ID:
+    if str(query.from_user.id) != os.getenv("ADMIN_TG_ID","").strip():
         return
     action, uid = query.data.split(":")
     uid = int(uid)
@@ -139,8 +140,9 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(query.message.text + "\n\n🚫 *Blocked*", parse_mode="Markdown")
 
 def build_admin_app() -> Application:
+    token = os.getenv("ADMIN_BOT_TOKEN", "")
     request = HTTPXRequest(connect_timeout=20, read_timeout=20, write_timeout=20)
-    app = ApplicationBuilder().token(ADMIN_BOT_TOKEN).request(request).updater(None).build()
+    app = ApplicationBuilder().token(token).request(request).updater(None).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("pending", pending_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
