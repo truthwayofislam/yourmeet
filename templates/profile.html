@@ -71,6 +71,14 @@
         </div>
       </div>
       <div>
+        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Instagram / Telegram Username</label>
+        <div class="relative mt-1">
+          <i class="fas fa-at absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+          <input type="text" name="social_handle" value="{{ user.social_handle or '' }}" placeholder="@your_username"
+            class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+        </div>
+      </div>
+      <div>
         <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Update Photo</label>
         <label class="flex items-center gap-3 bg-surface border border-dashed border-white/20 rounded-xl px-4 py-3 mt-1 cursor-pointer hover:border-primary transition">
           <i class="fas fa-camera text-primary"></i>

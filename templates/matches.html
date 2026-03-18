@@ -28,6 +28,9 @@
           <i class="fas fa-map-marker-alt text-primary"></i> {{ match.city or "India" }}
         </p>
         <p class="text-gray-600 text-xs mt-1 truncate">{{ match.bio or "Say hello! 👋" }}</p>
+        {% if match.social_handle %}
+        <p class="text-primary text-xs mt-1"><i class="fas fa-at text-xs"></i> {{ match.social_handle }}</p>
+        {% endif %}
       </div>
       <div class="text-primary opacity-0 group-hover:opacity-100 transition">
         <i class="fas fa-comment-dots text-xl"></i>
