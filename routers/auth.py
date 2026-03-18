@@ -47,6 +47,8 @@ async def register(
         return templates.TemplateResponse("register.html", {"request": request, "error": "Age must be 18 or above"})
     if db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
         return templates.TemplateResponse("register.html", {"request": request, "error": "Email already registered"})
+    if phone and db.execute("SELECT id FROM users WHERE phone=?", (phone,)).fetchone():
+        return templates.TemplateResponse("register.html", {"request": request, "error": "Phone number already registered"})
 
     photo_path = ""
     if photo and photo.filename:
@@ -96,7 +98,7 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
     if not user:
         db.execute(
             "INSERT INTO users (name,email,phone,password,age,gender,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (name, f"{tg_id}@telegram.local", tg_id, hash_password(tg_id+SECRET), 18, "male", tg_id, datetime.utcnow().isoformat())
+            (name, f"{tg_id}@telegram.local", tg_id, hash_password(tg_id+SECRET), 0, "", tg_id, datetime.utcnow().isoformat())
         )
         db.commit()
         user_id = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()[0]
@@ -105,7 +107,7 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
         if user.is_blocked:
             return JSONResponse({"error": "blocked"}, status_code=403)
         user_id = user.id
-        new_user = not user.bio
+        new_user = not user.gender or not user.age
     return JSONResponse({"token": create_token(user_id), "new_user": new_user})
 
 @router.get("/logout")

@@ -137,7 +137,7 @@ async def profile_page(request: Request, current_user=Depends(get_current_user))
 @router.post("/profile/update")
 async def update_profile(
     request: Request, bio: str = Form(""), city: str = Form(""),
-    social_handle: str = Form(""),
+    social_handle: str = Form(""), age: int = Form(None), gender: str = Form(None),
     photo: UploadFile = File(None), db=Depends(get_db), current_user=Depends(get_current_user)
 ):
     if not current_user:
@@ -152,6 +152,9 @@ async def update_profile(
             with open(new_path, "wb") as f:
                 shutil.copyfileobj(photo.file, f)
         photo_path = new_path
-    db.execute("UPDATE users SET bio=?, city=?, photo=?, social_handle=? WHERE id=?", (bio, city, photo_path, social_handle, current_user.id))
+    new_age = age if age and age >= 18 else current_user.age
+    new_gender = gender if gender in ("male", "female") else current_user.gender
+    db.execute("UPDATE users SET bio=?, city=?, photo=?, social_handle=?, age=?, gender=? WHERE id=?",
+               (bio, city, photo_path, social_handle, new_age, new_gender, current_user.id))
     db.commit()
     return RedirectResponse("/profile", status_code=302)
