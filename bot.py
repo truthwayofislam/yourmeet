@@ -157,7 +157,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ref_tg = conn.execute("SELECT telegram_id FROM users WHERE id=?", (referrer_id,)).fetchone()
                     if ref_tg and ref_tg[0]:
                         try:
-                            await context.bot.send_message(ref_tg[0], "🎉 *+10 Swipes!* Someone joined using your link. Keep sharing!", parse_mode="Markdown")
+                            await context.bot.send_message(ref_tg[0], "🎉 *+10 Swipes!* 3 friends joined using your link. Keep sharing!", parse_mode="Markdown")
                         except: pass
             conn.close()
         except: pass
