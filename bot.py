@@ -94,7 +94,8 @@ async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["photo"] = file.file_path
     await update.message.reply_text(
         "📱 Share your *Instagram* or *Telegram* username so matches can contact you\n"
-        "_(e.g. @rahul\_ig or @rahul\_tg)_\n\n"
+        "_Telegram: @rahul\_tg_\n"
+        "_Instagram: @rahul\_ig or instagram.com/rahul_\n\n"
         "Type 'skip' to leave blank:",
         parse_mode="Markdown"
     )
@@ -160,7 +161,7 @@ async def edit_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "age": "🎂 Enter your new age:",
         "city": "📍 Enter your new city:",
         "bio": "💬 Enter your new bio:",
-        "social_handle": "📱 Enter your Instagram/Telegram username (e.g. @rahul_ig):",
+        "social_handle": "📱 Enter your Instagram or Telegram username:\n_Telegram: @rahul_tg_\n_Instagram: @rahul_ig or instagram.com/rahul_",
     }
     context.user_data["edit_field"] = field
     await query.edit_message_text(prompts[field])
