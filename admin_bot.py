@@ -38,13 +38,25 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         {"text": "🚫 Block", "callback_data": f"block:{user_id}"}
     ]]}
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        import json
+        async with httpx.AsyncClient(timeout=30) as client:
             if photo and photo.startswith("https://"):
-                resp = await client.post(f"{api}/sendPhoto", json={
-                    "chat_id": admin_tg_id, "photo": photo,
-                    "caption": caption, "parse_mode": "Markdown",
-                    "reply_markup": keyboard
-                })
+                # Download photo bytes first (Telegram can't fetch its own URLs)
+                photo_resp = await client.get(photo)
+                if photo_resp.status_code == 200:
+                    resp = await client.post(f"{api}/sendPhoto", data={
+                        "chat_id": admin_tg_id,
+                        "caption": caption,
+                        "parse_mode": "Markdown",
+                        "reply_markup": json.dumps(keyboard)
+                    }, files={"photo": ("photo.jpg", photo_resp.content, "image/jpeg")})
+                else:
+                    resp = await client.post(f"{api}/sendMessage", json={
+                        "chat_id": admin_tg_id,
+                        "text": caption + "\n\n⚠️ Photo download failed",
+                        "parse_mode": "Markdown",
+                        "reply_markup": keyboard
+                    })
             else:
                 resp = await client.post(f"{api}/sendMessage", json={
                     "chat_id": admin_tg_id,
@@ -88,7 +100,13 @@ async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = f"👤 *{name}*, {age} • {gender or '?'}\n📍 {city or 'No city'}\n🆔 ID: `{uid}`"
         try:
             if photo and photo.startswith("https://"):
-                await update.message.reply_photo(photo, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=20) as cl:
+                    pr = await cl.get(photo)
+                if pr.status_code == 200:
+                    await update.message.reply_photo(pr.content, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+                else:
+                    await update.message.reply_text(caption + "\n⚠️ Photo error", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
             else:
                 await update.message.reply_text(caption + "\n⚠️ No photo", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
         except:
