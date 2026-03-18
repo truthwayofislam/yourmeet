@@ -52,6 +52,20 @@ def init_db():
         );
     """)
     conn.commit()
+    # Add new columns to existing tables if not present
+    for col, definition in [
+        ("daily_swipes", "INTEGER DEFAULT 10"),
+        ("swipes_reset_date", "TEXT DEFAULT ''"),
+        ("referral_count", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+            conn.commit()
+        except: pass
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS referrals (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER, referred_id INTEGER, created_at TEXT)")
+        conn.commit()
+    except: pass
 
 def get_db():
     conn = get_conn()
