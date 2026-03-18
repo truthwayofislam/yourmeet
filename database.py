@@ -57,6 +57,7 @@ def init_db():
         ("daily_swipes", "INTEGER DEFAULT 10"),
         ("swipes_reset_date", "TEXT DEFAULT ''"),
         ("referral_count", "INTEGER DEFAULT 0"),
+        ("social_handle", "TEXT DEFAULT ''"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")

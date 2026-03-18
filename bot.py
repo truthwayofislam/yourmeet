@@ -28,7 +28,7 @@ def open_app_keyboard(path=""):
 MINI_APP_URL = "https://t.me/Yoursmeetbot/YourMeet"
 
 # ConversationHandler states
-SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_CITY, SETUP_BIO, SETUP_PHOTO = range(6)
+SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_CITY, SETUP_BIO, SETUP_PHOTO, SETUP_SOCIAL = range(7)
 
 # /setup - create profile in chat
 async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,23 +78,35 @@ async def setup_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def setup_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     context.user_data["bio"] = "" if text.lower() == "skip" else text
-    await update.message.reply_text("📸 Send your *profile photo* (or type 'skip'):")
+    await update.message.reply_text("📸 Send your *profile photo* (required):", parse_mode="Markdown")
     return SETUP_PHOTO
 
 async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo:
+        await update.message.reply_text("❌ Please send a photo. It's required!")
+        return SETUP_PHOTO
+    file = await update.message.photo[-1].get_file()
+    context.user_data["photo"] = file.file_path
+    await update.message.reply_text(
+        "📱 Share your *Instagram* or *Telegram* username so matches can contact you\n"
+        "_(e.g. @rahul\_ig or @rahul\_tg)_\n\n"
+        "Type 'skip' to leave blank:",
+        parse_mode="Markdown"
+    )
+    return SETUP_SOCIAL
+
+async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    photo_url = ""
-    if update.message.photo:
-        file = await update.message.photo[-1].get_file()
-        photo_url = file.file_path  # Telegram CDN URL
+    text = update.message.text.strip()
+    social = "" if text.lower() == "skip" else text
     conn = get_conn()
     email = f"tg_{tg_id}@yourmeet.app"
     password = secrets.token_hex(16)
     conn.execute(
-        "INSERT INTO users (name,email,password,age,gender,city,bio,photo,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'))",
+        "INSERT INTO users (name,email,password,age,gender,city,bio,photo,social_handle,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))",
         (context.user_data["name"], email, password, context.user_data["age"],
          context.user_data["gender"], context.user_data["city"], context.user_data["bio"],
-         photo_url, tg_id)
+         context.user_data["photo"], social, tg_id)
     )
     conn.commit()
     conn.close()
@@ -321,13 +333,14 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not existing:
                 conn.execute("INSERT INTO matches (user1_id,user2_id,matched_at) VALUES (?,?,datetime('now'))", (user_id, target_id))
                 conn.commit()
-                target_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (target_id,)).fetchone()
-                me_name = conn.execute("SELECT name FROM users WHERE id=?", (user_id,)).fetchone()[0]
+                target_row = conn.execute("SELECT telegram_id, name, social_handle FROM users WHERE id=?", (target_id,)).fetchone()
+                me_row = conn.execute("SELECT name, social_handle FROM users WHERE id=?", (user_id,)).fetchone()
+                me_name, me_social = me_row
                 conn.close()
-                await query.edit_message_caption(caption="💕 *It's a Match!* Swipe karte raho 🔥", parse_mode="Markdown")
+                await query.edit_message_caption(caption="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
                 if target_row and target_row[0]:
                     try:
-                        await notify_match(query.get_bot(), target_row[0], me_name)
+                        await notify_match(query.get_bot(), target_row[0], me_name, me_social)
                     except: pass
                 return
         conn.close()
@@ -493,14 +506,14 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=open_app_keyboard()
     )
 
-async def notify_match(bot, tg_id: str, matched_name: str):
-    """Call this when a match happens"""
+async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = ""):
     if not tg_id:
         return
     try:
+        social_line = f"\n📱 Contact: *{social_handle}*" if social_handle else ""
         await bot.send_message(
             chat_id=tg_id,
-            text=f"💕 *It's a Match!*\n\nYou and *{matched_name}* liked each other!\n\nSay hello now 👇",
+            text=f"💕 *It's a Match!*\n\nYou and *{matched_name}* liked each other!{social_line}\n\nSay hello now 👇",
             parse_mode="Markdown",
             reply_markup=open_app_keyboard("/matches")
         )
@@ -531,10 +544,8 @@ def build_app() -> Application:
             SETUP_GENDER: [CallbackQueryHandler(setup_gender, pattern="^gender:")],
             SETUP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
             SETUP_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_bio)],
-            SETUP_PHOTO: [
-                MessageHandler(filters.PHOTO, setup_photo),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo),
-            ],
+            SETUP_PHOTO: [MessageHandler(filters.PHOTO, setup_photo)],
+            SETUP_SOCIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
         },
         fallbacks=[CommandHandler("cancel", setup_cancel)],
     )
