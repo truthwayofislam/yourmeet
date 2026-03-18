@@ -216,8 +216,8 @@ async def _send_profile(send_fn, tg_id: str):
 async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     if not get_user_by_tg(tg_id):
-        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
-        return
+        await update.message.reply_text("👋 No profile found! Let's create one first.\n\nWhat's your *name*?", parse_mode="Markdown")
+        return SETUP_NAME
     async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
         if is_photo:
             await update.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
@@ -438,7 +438,7 @@ async def notify_message(bot, tg_id: str, sender_name: str):
 def build_app() -> Application:
     app = ApplicationBuilder().token(BOT_TOKEN).updater(None).build()
     setup_conv = ConversationHandler(
-        entry_points=[CommandHandler("setup", setup_cmd)],
+        entry_points=[CommandHandler("setup", setup_cmd), CommandHandler("swipe", swipe_cmd)],
         states={
             SETUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
             SETUP_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_age)],
@@ -456,7 +456,6 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("profile", profile_cmd))
     app.add_handler(CommandHandler("matches", matches_cmd))
-    app.add_handler(CommandHandler("swipe", swipe_cmd))
     app.add_handler(CommandHandler("like", like_cmd))
     app.add_handler(CallbackQueryHandler(swipe_callback, pattern="^(like|nope|super):"))
     app.add_handler(CallbackQueryHandler(next_callback, pattern="^next$"))
