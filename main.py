@@ -13,12 +13,12 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
 APP_URL = os.getenv("APP_URL", "")
 
 bot_app = None
+admin_bot_app = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    # Bot webhook setup
-    global bot_app
+    global bot_app, admin_bot_app
     if BOT_TOKEN and APP_URL:
         from bot import build_app
         bot_app = build_app()
@@ -30,10 +30,22 @@ async def lifespan(app: FastAPI):
         await bot_app.start()
     else:
         print(f"[BOT] Skipped - BOT_TOKEN={'SET' if BOT_TOKEN else 'MISSING'}, APP_URL={'SET' if APP_URL else 'MISSING'}")
+    ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
+    if ADMIN_BOT_TOKEN and APP_URL:
+        from admin_bot import build_admin_app
+        admin_bot_app = build_admin_app()
+        await admin_bot_app.initialize()
+        admin_webhook = f"{APP_URL}/admin-webhook/{ADMIN_BOT_TOKEN}"
+        await admin_bot_app.bot.set_webhook(admin_webhook)
+        await admin_bot_app.start()
+        print(f"[ADMIN BOT] Webhook set")
     yield
     if bot_app:
         await bot_app.stop()
         await bot_app.shutdown()
+    if admin_bot_app:
+        await admin_bot_app.stop()
+        await admin_bot_app.shutdown()
 
 app = FastAPI(title="YourMeet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -51,6 +63,19 @@ async def telegram_webhook(token: str, request: Request):
     data = await request.json()
     update = Update.de_json(data, bot_app.bot)
     await bot_app.process_update(update)
+    return JSONResponse({"ok": True})
+
+@app.post("/admin-webhook/{token}")
+async def admin_telegram_webhook(token: str, request: Request):
+    if not admin_bot_app:
+        return JSONResponse({"error": "admin bot not running"}, status_code=503)
+    ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
+    if token != ADMIN_BOT_TOKEN:
+        return JSONResponse({"error": "invalid"}, status_code=403)
+    from telegram import Update
+    data = await request.json()
+    update = Update.de_json(data, admin_bot_app.bot)
+    await admin_bot_app.process_update(update)
     return JSONResponse({"ok": True})
 
 @app.api_route("/ping", methods=["GET", "HEAD"])

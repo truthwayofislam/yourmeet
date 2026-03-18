@@ -105,18 +105,31 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     text = update.message.text.strip()
     social = "" if text.lower() == "skip" else text
+    name = context.user_data["name"]
+    age = context.user_data["age"]
+    gender = context.user_data["gender"]
+    city = context.user_data["city"]
+    bio = context.user_data["bio"]
+    photo = context.user_data["photo"]
     conn = get_conn()
     email = f"tg_{tg_id}@yourmeet.app"
     password = secrets.token_hex(16)
     conn.execute(
         "INSERT INTO users (name,email,password,age,gender,city,bio,photo,social_handle,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))",
-        (context.user_data["name"], email, password, context.user_data["age"],
-         context.user_data["gender"], context.user_data["city"], context.user_data["bio"],
-         context.user_data["photo"], social, tg_id)
+        (name, email, password, age, gender, city, bio, photo, social, tg_id)
     )
     conn.commit()
+    new_user = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     conn.close()
     context.user_data.clear()
+    # Notify admin bot for verification
+    try:
+        from main import admin_bot_app
+        from admin_bot import send_for_review
+        import asyncio
+        if admin_bot_app and new_user:
+            asyncio.create_task(send_for_review(admin_bot_app.bot, new_user[0], name, age, gender, city, photo))
+    except: pass
     await update.message.reply_text(
         f"🎉 *Profile created!*\n\n"
         f"Use /swipe to start meeting people!",
@@ -229,7 +242,6 @@ def _deduct_swipe(user_id: int):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     tg_id = str(user.id)
-    # Handle referral: /start ref_123
     if context.args and context.args[0].startswith("ref_"):
         try:
             referrer_id = int(context.args[0][4:])
@@ -259,9 +271,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*Hey {user.first_name}! 👋*\n\n"
         f"Welcome to *YourMeet* 💕\n\n"
         f"🔥 Swipe & discover people\n"
-        f"💬 Chat with your matches\n"
         f"⭐ Send super likes\n"
-        f"👫 Meet new friends\n"
+        f"💕 Match & connect via Instagram/Telegram\n"
         f"👑 Go Premium for unlimited access\n\n"
         f"Tap below to open the app!",
         parse_mode="Markdown",
@@ -482,26 +493,24 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=open_app_keyboard("/premium")
     )
 
-# /stats - user ka stats
+# /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     row = get_user_by_tg(tg_id)
     if not row:
-        await update.message.reply_text("❌ Pehle register karo!", reply_markup=open_app_keyboard("/register"))
+        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
         return
     user_id = row[0]
     conn = get_conn()
     likes_given = conn.execute("SELECT COUNT(*) FROM likes WHERE from_user=?", (user_id,)).fetchone()[0]
     likes_received = conn.execute("SELECT COUNT(*) FROM likes WHERE to_user=?", (user_id,)).fetchone()[0]
     matches = conn.execute("SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id)).fetchone()[0]
-    messages = conn.execute("SELECT COUNT(*) FROM messages WHERE sender_id=?", (user_id,)).fetchone()[0]
     conn.close()
     await update.message.reply_text(
         f"📊 *Your Stats*\n\n"
         f"❤️ Likes Given: *{likes_given}*\n"
         f"💌 Likes Received: *{likes_received}*\n"
-        f"💕 Matches: *{matches}*\n"
-        f"💬 Messages Sent: *{messages}*\n",
+        f"💕 Matches: *{matches}*",
         parse_mode="Markdown"
     )
 
@@ -537,7 +546,6 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Account not found.")
         return
     user_id = me[0]
-    conn.execute("DELETE FROM messages WHERE sender_id=? OR receiver_id=?", (user_id, user_id))
     conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id))
     conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (user_id, user_id))
     conn.execute("DELETE FROM users WHERE id=?", (user_id,))
@@ -574,8 +582,6 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/profile - View your profile\n"
         "/matches - See your matches\n"
                 "/swipe - Swipe in chat (no app needed)\n"
-        "/like - Discover people\n"
-        "/friends - Meet new friends\n"
         "/share - Get referral link (+10 swipes per 3 friends)\n"
         "/stats - Your activity stats\n"
         "/premium - Get Premium\n"
@@ -592,21 +598,7 @@ async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = 
         social_line = f"\n📱 Contact: *{social_handle}*" if social_handle else ""
         await bot.send_message(
             chat_id=tg_id,
-            text=f"💕 *It's a Match!*\n\nYou and *{matched_name}* liked each other!{social_line}\n\nSay hello now 👇",
-            parse_mode="Markdown",
-            reply_markup=open_app_keyboard("/matches")
-        )
-    except:
-        pass
-
-async def notify_message(bot, tg_id: str, sender_name: str):
-    """Call this when a new message arrives"""
-    if not tg_id:
-        return
-    try:
-        await bot.send_message(
-            chat_id=tg_id,
-            text=f"💬 *New Message!*\n\n*{sender_name}* sent you a message!\n\nReply now 👇",
+            text=f"💕 *It's a Match!*\n\nYou and *{matched_name}* liked each other!{social_line}\n\nOpen matches 👇",
             parse_mode="Markdown",
             reply_markup=open_app_keyboard("/matches")
         )
