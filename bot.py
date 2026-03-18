@@ -70,7 +70,9 @@ async def setup_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["gender"] = query.data.split(":")[1]
-    await query.edit_message_text(f"Gender set to *{context.user_data['gender']}* ✅", parse_mode="Markdown")
+    try:
+        await query.edit_message_text(f"Gender set to *{context.user_data['gender']}* ✅", parse_mode="Markdown")
+    except: pass
     await query.message.reply_text("📍 Which *city* are you from? (or type 'skip')")
     return SETUP_CITY
 
@@ -165,10 +167,14 @@ async def edit_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     field = query.data.split(":")[1]
     if field == "cancel":
-        await query.edit_message_text("❌ Edit cancelled.")
+        try:
+            await query.edit_message_text("❌ Edit cancelled.")
+        except: pass
         return ConversationHandler.END
     if field == "photo":
-        await query.edit_message_text("📸 Send your new profile photo:")
+        try:
+            await query.edit_message_text("📸 Send your new profile photo:")
+        except: pass
         context.user_data["edit_field"] = "photo"
         return EDIT_PHOTO
     prompts = {
@@ -179,7 +185,9 @@ async def edit_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "social_handle": "📱 Enter your Instagram or Telegram username:\nTelegram: @rahul_tg\nInstagram: @rahul_ig or instagram.com/rahul",
     }
     context.user_data["edit_field"] = field
-    await query.edit_message_text(prompts[field])
+    try:
+        await query.edit_message_text(prompts[field])
+    except: pass
     return EDIT_VALUE
 
 async def edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -358,12 +366,28 @@ def _next_profile(tg_id: str):
     conn.close()
     return user_id, row
 
+PROMO_MSG = (
+    "💡 *Did you know?*\n\n"
+    "All profiles on YourMeet are *real verified users* 🔒\n"
+    "No bots, no fake accounts — just genuine people looking to connect 💕\n\n"
+    "👉 Create your profile on the app for *better matches & more visibility!*"
+)
+
 async def _send_profile(send_fn, tg_id: str):
     me_id, row = _next_profile(tg_id)
     if not row:
         await send_fn("😔 No one left to swipe! Check back later.")
         return
     pid, name, age, city, bio, photo = row
+
+    # Show promo every 3 swipes
+    conn = get_conn()
+    swipe_count = (conn.execute("SELECT COUNT(*) FROM likes WHERE from_user=?", (me_id,)).fetchone()[0] +
+                   conn.execute("SELECT COUNT(*) FROM skips WHERE user_id=?", (me_id,)).fetchone()[0])
+    conn.close()
+    if swipe_count > 0 and swipe_count % 3 == 0:
+        await send_fn(PROMO_MSG, parse_mode="Markdown", reply_markup=open_app_keyboard("/register"))
+
     caption = f"*{name}*, {age}" + (f" — 📍{city}" if city else "") + (f"\n_{bio}_" if bio else "")
     kb = _swipe_keyboard(pid)
     if photo and photo.startswith("https://"):
@@ -558,13 +582,17 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     tg_id = str(query.from_user.id)
     if query.data == "cancel_delete":
-        await query.edit_message_text("✅ Cancelled. Your account is safe!")
+        try:
+            await query.edit_message_text("✅ Cancelled. Your account is safe!")
+        except: pass
         return
     conn = get_conn()
     me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     if not me:
         conn.close()
-        await query.edit_message_text("❌ Account not found.")
+        try:
+            await query.edit_message_text("❌ Account not found.")
+        except: pass
         return
     user_id = me[0]
     conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id))
@@ -572,7 +600,9 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     conn.commit()
     conn.close()
-    await query.edit_message_text("🗑️ Account deleted. Goodbye! 👋")
+    try:
+        await query.edit_message_text("🗑️ Account deleted. Goodbye! 👋")
+    except: pass
 
 # /share
 async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
