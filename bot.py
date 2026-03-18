@@ -1,8 +1,12 @@
 import os
+import warnings
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ConversationHandler, filters, ContextTypes, Application
+from telegram.warnings import PTBUserWarning
 import secrets
 import libsql_experimental as libsql
+
+warnings.filterwarnings("ignore", category=PTBUserWarning)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
 APP_URL = os.getenv("APP_URL", "")
