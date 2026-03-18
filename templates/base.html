@@ -50,11 +50,12 @@
     tg.setHeaderColor('#0f0f1a');
     tg.setBackgroundColor('#0f0f1a');
 
-    // Auto login via Telegram if not logged in
     const user = tg.initDataUnsafe?.user;
     if (user && user.id) {
       const hasCookie = document.cookie.includes('token=');
       if (!hasCookie) {
+        // Block page render until auth done
+        document.body.style.display = 'none';
         fetch('/auth/telegram', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -62,9 +63,11 @@
         }).then(r => r.json()).then(data => {
           if (data.token) {
             document.cookie = `token=${data.token};path=/;max-age=2592000`;
-            window.location.href = data.new_user ? '/profile' : '/';
+            window.location.replace(data.new_user ? '/profile' : '/');
+          } else {
+            document.body.style.display = '';
           }
-        });
+        }).catch(() => { document.body.style.display = ''; });
       }
     }
   }
