@@ -34,26 +34,25 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
         (*liked, opposite, age_min, age_max)
     ).fetchall()
     profiles = [row_to_user(r) for r in rows]
-    age_min = int(request.query_params.get("age_min", 18))
-    age_max = int(request.query_params.get("age_max", 99))
     return templates.TemplateResponse("index.html", {"request": request, "user": current_user, "profiles": profiles, "active": "home", "age_min": age_min, "age_max": age_max})
 
 @router.post("/like/{target_id}")
 async def like_user(target_id: int, request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    if not current_user.is_premium:
-        check_and_reset_swipes(db, current_user)
-        if current_user.daily_swipes <= 0:
-            return JSONResponse({"error": "Daily limit reached! Share with 3 friends to get 10 more swipes.", "limit": True}, status_code=400)
-        db.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (current_user.id,))
     body = await request.json()
     is_super = body.get("super", False)
-    if is_super and not current_user.is_premium:
-        if current_user.super_likes_left <= 0:
-            return JSONResponse({"error": "No super likes left"}, status_code=400)
-        db.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (current_user.id,))
-    if not db.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (current_user.id, target_id)).fetchone():
+    already_liked = db.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (current_user.id, target_id)).fetchone()
+    if not already_liked:
+        if not current_user.is_premium:
+            check_and_reset_swipes(db, current_user)
+            if current_user.daily_swipes <= 0:
+                return JSONResponse({"error": "Daily limit reached!", "limit": True}, status_code=400)
+            db.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (current_user.id,))
+        if is_super and not current_user.is_premium:
+            if current_user.super_likes_left <= 0:
+                return JSONResponse({"error": "No super likes left"}, status_code=400)
+            db.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (current_user.id,))
         db.execute("INSERT INTO likes (from_user,to_user,is_super,created_at) VALUES (?,?,?,datetime('now'))", (current_user.id, target_id, int(is_super)))
         db.commit()
     mutual = db.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, current_user.id)).fetchone()
@@ -72,7 +71,7 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
                 import asyncio
                 target_row = db.execute("SELECT telegram_id FROM users WHERE id=?", (target_id,)).fetchone()
                 if bot_app and target_row and target_row[0]:
-                    asyncio.create_task(notify_match(bot_app.bot, target_row[0], current_user.name))
+                    asyncio.create_task(notify_match(bot_app.bot, target_row[0], current_user.name, current_user.social_handle or ""))
             except: pass
         return JSONResponse({"matched": True})
     return JSONResponse({"matched": False})

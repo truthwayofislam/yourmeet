@@ -145,7 +145,7 @@
         Keep Swiping
       </button>
       <a href="/matches" class="flex-1 gradient-btn text-white py-3 rounded-xl text-sm font-medium text-center">
-        Send Message
+        View Match
       </a>
     </div>
   </div>
@@ -183,6 +183,7 @@ async function swipeAction(action) {
       });
       const data = await res.json();
       if (data.limit) {
+        card.style.transition = 'none';
         card.style.transform = '';
         card.style.opacity = '1';
         document.getElementById('limit-modal').classList.remove('hidden');

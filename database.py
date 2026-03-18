@@ -24,7 +24,8 @@ def init_db():
             is_admin INTEGER DEFAULT 0, is_blocked INTEGER DEFAULT 0,
             daily_swipes INTEGER DEFAULT 10,
             swipes_reset_date TEXT DEFAULT '',
-            referral_count INTEGER DEFAULT 0
+            referral_count INTEGER DEFAULT 0,
+            social_handle TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS referrals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

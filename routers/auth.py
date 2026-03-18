@@ -98,7 +98,7 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
     if not user:
         db.execute(
             "INSERT INTO users (name,email,phone,password,age,gender,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (name, f"{tg_id}@telegram.local", tg_id, hash_password(tg_id+SECRET), 0, "", tg_id, datetime.utcnow().isoformat())
+            (name, f"{tg_id}@telegram.local", tg_id, hash_password(tg_id+SECRET), 18, "", tg_id, datetime.utcnow().isoformat())
         )
         db.commit()
         user_id = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()[0]
