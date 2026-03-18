@@ -406,10 +406,12 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
         if not is_premium and swipes_left <= 0:
             conn.close()
-            await query.edit_message_caption(
-                caption="😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
-                parse_mode="Markdown"
-            )
+            try:
+                await query.edit_message_caption(
+                    caption="😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
+                    parse_mode="Markdown"
+                )
+            except: pass
             return
         if not conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (user_id, target_id)).fetchone():
             conn.execute("INSERT INTO likes (from_user,to_user,is_super,created_at) VALUES (?,?,?,datetime('now'))", (user_id, target_id, int(is_super)))
@@ -429,7 +431,9 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 me_row = conn.execute("SELECT name, social_handle FROM users WHERE id=?", (user_id,)).fetchone()
                 me_name, me_social = me_row
                 conn.close()
-                await query.edit_message_caption(caption="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
+                try:
+                    await query.edit_message_caption(caption="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
+                except: pass
                 if target_row and target_row[0]:
                     try:
                         await notify_match(query.get_bot(), target_row[0], me_name, me_social)
@@ -437,10 +441,14 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
         conn.close()
         emoji = "⭐" if is_super else "❤️"
-        await query.edit_message_caption(caption=f"{emoji} Liked! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        try:
+            await query.edit_message_caption(caption=f"{emoji} Liked! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        except: pass
     elif action == "nope":
         conn.close()
-        await query.edit_message_caption(caption="👎 Skipped! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        try:
+            await query.edit_message_caption(caption="👎 Skipped! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        except: pass
 
 # callback: next
 async def next_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
