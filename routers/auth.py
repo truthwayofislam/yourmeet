@@ -70,7 +70,7 @@ async def register(
     try:
         from admin_bot import send_for_review
         import asyncio
-        asyncio.create_task(send_for_review(user_id, name, age, gender, city, photo_path))
+        asyncio.create_task(send_for_review(user_id, name, age, gender, city, photo_path, email, phone))
     except Exception as e:
         print(f"[ADMIN NOTIFY] {e}")
     response = RedirectResponse("/", status_code=302)

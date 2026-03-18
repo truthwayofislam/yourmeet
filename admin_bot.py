@@ -19,7 +19,7 @@ def _verify_keyboard(user_id: int):
         InlineKeyboardButton("🚫 Block", callback_data=f"block:{user_id}"),
     ]])
 
-async def send_for_review(user_id: int, name: str, age: int, gender: str, city: str, photo: str):
+async def send_for_review(user_id: int, name: str, age: int, gender: str, city: str, photo: str, email: str = "", phone: str = ""):
     """Send new profile to admin via direct HTTP — no bot instance needed."""
     token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
     admin_tg_id = os.getenv("ADMIN_TG_ID", "").strip()
@@ -31,6 +31,8 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         f"🆕 *New Profile*\n\n"
         f"👤 *{name}*, {age} • {gender.capitalize() if gender else '?'}\n"
         f"📍 {city or 'No city'}\n"
+        f"📧 {email or 'N/A'}\n"
+        f"📞 {phone or 'N/A'}\n"
         f"🆔 DB ID: `{user_id}`"
     )
     keyboard = {"inline_keyboard": [[

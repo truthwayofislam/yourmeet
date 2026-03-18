@@ -131,7 +131,7 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from admin_bot import send_for_review
         import asyncio
         if new_user:
-            asyncio.create_task(send_for_review(new_user[0], name, age, gender, city, photo))
+                asyncio.create_task(send_for_review(new_user[0], name, age, gender, city, photo, f"tg_{tg_id}@yourmeet.app", tg_id))
     except Exception as e:
         print(f"[ADMIN NOTIFY] Failed: {e}")
     await update.message.reply_text(
