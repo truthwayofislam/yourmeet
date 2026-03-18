@@ -88,10 +88,13 @@ async def setup_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
-        await update.message.reply_text("❌ Please send a photo. It's required!")
+        await update.message.reply_text("❌ Please send a *photo* (image file), not text!\n\nTap the 📎 attachment icon and select a photo.", parse_mode="Markdown")
         return SETUP_PHOTO
     file = await update.message.photo[-1].get_file()
-    context.user_data["photo"] = file.file_path
+    # Save full URL using bot token so it doesn't expire
+    token = BOT_TOKEN
+    photo_url = f"https://api.telegram.org/file/bot{token}/{file.file_path}"
+    context.user_data["photo"] = photo_url
     await update.message.reply_text(
         "📱 Share your *Instagram* or *Telegram* username so matches can contact you\n"
         "_Telegram: @rahul\_tg_\n"
@@ -207,8 +210,9 @@ async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Please send a photo:")
         return EDIT_PHOTO
     file = await update.message.photo[-1].get_file()
+    photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
     conn = get_conn()
-    conn.execute("UPDATE users SET photo=? WHERE telegram_id=?", (file.file_path, tg_id))
+    conn.execute("UPDATE users SET photo=? WHERE telegram_id=?", (photo_url, tg_id))
     conn.commit()
     conn.close()
     context.user_data.clear()
@@ -618,11 +622,12 @@ def build_app() -> Application:
             SETUP_GENDER: [CallbackQueryHandler(setup_gender, pattern="^gender:")],
             SETUP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
             SETUP_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_bio)],
-            SETUP_PHOTO: [MessageHandler(filters.PHOTO, setup_photo)],
+            SETUP_PHOTO: [MessageHandler(filters.PHOTO, setup_photo), MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo)],
             SETUP_SOCIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
         },
-        fallbacks=[CommandHandler("cancel", setup_cancel)],
+        fallbacks=[CommandHandler("cancel", setup_cancel), CommandHandler("setup", setup_cmd)],
         per_message=False,
+        allow_reentry=True,
     )
     edit_conv = ConversationHandler(
         entry_points=[CommandHandler("edit", edit_cmd)],
