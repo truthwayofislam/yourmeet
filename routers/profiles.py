@@ -27,12 +27,16 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
     liked.append(current_user.id)
     placeholders = ",".join("?" * len(liked))
     opposite = "female" if current_user.gender == "male" else "male"
+    age_min = int(request.query_params.get("age_min", 18))
+    age_max = int(request.query_params.get("age_max", 99))
     rows = db.execute(
-        f"SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 LIMIT 10",
-        (*liked, opposite)
+        f"SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0 LIMIT 10",
+        (*liked, opposite, age_min, age_max)
     ).fetchall()
     profiles = [row_to_user(r) for r in rows]
-    return templates.TemplateResponse("index.html", {"request": request, "user": current_user, "profiles": profiles, "active": "home"})
+    age_min = int(request.query_params.get("age_min", 18))
+    age_max = int(request.query_params.get("age_max", 99))
+    return templates.TemplateResponse("index.html", {"request": request, "user": current_user, "profiles": profiles, "active": "home", "age_min": age_min, "age_max": age_max})
 
 @router.post("/like/{target_id}")
 async def like_user(target_id: int, request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
@@ -72,6 +76,41 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
             except: pass
         return JSONResponse({"matched": True})
     return JSONResponse({"matched": False})
+
+@router.get("/liked-me", response_class=HTMLResponse)
+async def liked_me_page(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user:
+        return RedirectResponse("/login")
+    if not current_user.is_premium:
+        return RedirectResponse("/premium")
+    rows = db.execute(
+        """SELECT u.*, l.is_super FROM users u
+           JOIN likes l ON l.from_user=u.id
+           WHERE l.to_user=? AND u.is_blocked=0
+           ORDER BY l.created_at DESC""",
+        (current_user.id,)
+    ).fetchall()
+    likers = []
+    for r in rows:
+        u = row_to_user(r[:len(r)-1])
+        u.__dict__['is_super'] = bool(r[-1])
+        likers.append(u)
+    return templates.TemplateResponse("liked_me.html", {"request": request, "user": current_user, "likers": likers, "active": "liked"})
+
+@router.post("/report/{target_id}")
+async def report_user(target_id: int, request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    body = await request.json()
+    reason = body.get("reason", "inappropriate")
+    existing = db.execute("SELECT id FROM reports WHERE reporter_id=? AND reported_id=?", (current_user.id, target_id)).fetchone()
+    if not existing:
+        db.execute("INSERT INTO reports (reporter_id,reported_id,reason,created_at) VALUES (?,?,?,datetime('now'))", (current_user.id, target_id, reason))
+        count = db.execute("SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)).fetchone()[0]
+        if count >= 3:
+            db.execute("UPDATE users SET is_blocked=1 WHERE id=?", (target_id,))
+        db.commit()
+    return JSONResponse({"ok": True})
 
 @router.get("/matches", response_class=HTMLResponse)
 async def matches_page(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):

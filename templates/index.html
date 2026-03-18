@@ -21,6 +21,17 @@
     </div>
   </div>
 
+  <!-- Age Filter -->
+  <div class="flex items-center gap-2 mb-4">
+    <span class="text-gray-400 text-xs">Age:</span>
+    <input type="number" id="age-min" value="{{ age_min }}" min="18" max="99"
+      class="w-14 bg-surface border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-center focus:outline-none focus:border-primary"/>
+    <span class="text-gray-600 text-xs">–</span>
+    <input type="number" id="age-max" value="{{ age_max }}" min="18" max="99"
+      class="w-14 bg-surface border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-center focus:outline-none focus:border-primary"/>
+    <button onclick="applyAgeFilter()" class="gradient-btn text-white text-xs px-3 py-1 rounded-lg ml-1">Apply</button>
+  </div>
+
   <!-- Cards Stack -->
   <div id="card-stack" class="relative" style="height: min(480px, calc(100dvh - 220px));">
     {% if profiles %}
@@ -37,6 +48,12 @@
             <i class="fas fa-user text-6xl text-gray-600"></i>
           </div>
           {% endif %}
+
+          <!-- Report Button -->
+          <button onclick="reportUser({{ profile.id }}, event)"
+            class="absolute top-4 right-4 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center text-gray-400 hover:text-red-400 transition z-10">
+            <i class="fas fa-flag text-xs"></i>
+          </button>
 
           <!-- Gradient overlay -->
           <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
@@ -100,6 +117,23 @@
 
 </div>
 
+<!-- Swipe Limit Modal -->
+<div id="limit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+  <div class="bg-card rounded-3xl p-8 text-center max-w-xs w-full border border-white/10 card-glow">
+    <div class="text-5xl mb-4">😔</div>
+    <h2 class="text-xl font-bold text-white mb-2">Daily Limit Reached!</h2>
+    <p class="text-gray-400 text-sm mb-6">You've used all 10 free swipes today.<br/>Share with 3 friends to get <span class="text-primary font-semibold">+10 swipes</span> or go Premium!</p>
+    <div class="flex flex-col gap-3">
+      <a href="/premium" class="gradient-btn text-white py-3 rounded-xl text-sm font-semibold">
+        <i class="fas fa-crown mr-2"></i>Go Premium
+      </a>
+      <button onclick="document.getElementById('limit-modal').classList.add('hidden')" class="bg-surface border border-white/10 text-gray-400 py-3 rounded-xl text-sm">
+        Maybe Later
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Match Modal -->
 <div id="match-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
   <div class="bg-card rounded-3xl p-8 text-center max-w-xs w-full border border-white/10 card-glow">
@@ -128,7 +162,6 @@ function getCurrentCard() {
 async function swipeAction(action) {
   const card = getCurrentCard();
   if (!card) return;
-
   const id = card.dataset.id;
 
   if (action === 'like' || action === 'super') {
@@ -138,7 +171,6 @@ async function swipeAction(action) {
     card.querySelector('.nope-indicator').style.opacity = '1';
     card.style.transform = 'translateX(-150%) rotate(-20deg)';
   }
-
   card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
   card.style.opacity = '0';
 
@@ -150,6 +182,12 @@ async function swipeAction(action) {
         body: JSON.stringify({super: action === 'super'})
       });
       const data = await res.json();
+      if (data.limit) {
+        card.style.transform = '';
+        card.style.opacity = '1';
+        document.getElementById('limit-modal').classList.remove('hidden');
+        return;
+      }
       if (data.matched) {
         const name = card.querySelector('h2').textContent.split(',')[0];
         document.getElementById('match-name').textContent = name;
@@ -157,12 +195,28 @@ async function swipeAction(action) {
       }
     } catch(e) {}
   }
-
   setTimeout(() => { card.style.display = 'none'; currentIndex++; }, 400);
 }
 
 function closeModal() {
   document.getElementById('match-modal').classList.add('hidden');
+}
+
+function applyAgeFilter() {
+  const min = document.getElementById('age-min').value || 18;
+  const max = document.getElementById('age-max').value || 99;
+  window.location.href = `/?age_min=${min}&age_max=${max}`;
+}
+
+async function reportUser(id, e) {
+  e.stopPropagation();
+  if (!confirm('Report this profile as inappropriate?')) return;
+  await fetch(`/report/${id}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason: 'inappropriate'})
+  });
+  swipeAction('nope');
 }
 
 // Touch/swipe support

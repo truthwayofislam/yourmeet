@@ -67,6 +67,10 @@ def init_db():
         conn.execute("CREATE TABLE IF NOT EXISTS referrals (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER, referred_id INTEGER, created_at TEXT)")
         conn.commit()
     except: pass
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_id INTEGER, reported_id INTEGER, reason TEXT, created_at TEXT)")
+        conn.commit()
+    except: pass
 
 def get_db():
     conn = get_conn()

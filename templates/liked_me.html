@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Who Liked You{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto px-4 pt-6">
+
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold gradient-text">Who Liked You</h1>
+    <p class="text-gray-400 text-sm">{{ likers|length }} people liked your profile</p>
+  </div>
+
+  {% if likers %}
+  <div class="space-y-3">
+    {% for liker in likers %}
+    <div class="flex items-center gap-4 bg-card rounded-2xl p-4 border border-white/5 card-glow">
+      <div class="relative">
+        {% if liker.photo %}
+        <img src="{{ liker.photo | photo_url }}" class="w-14 h-14 rounded-full object-cover border-2 border-primary/30"/>
+        {% else %}
+        <div class="w-14 h-14 rounded-full bg-surface flex items-center justify-center border-2 border-primary/30">
+          <i class="fas fa-user text-gray-500 text-xl"></i>
+        </div>
+        {% endif %}
+        {% if liker.is_super %}
+        <div class="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+          <i class="fas fa-star text-white text-xs"></i>
+        </div>
+        {% endif %}
+      </div>
+      <div class="flex-1 min-w-0">
+        <h3 class="font-semibold text-white">{{ liker.name }}, {{ liker.age }}</h3>
+        <p class="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
+          <i class="fas fa-map-marker-alt text-primary"></i> {{ liker.city or "India" }}
+        </p>
+        {% if liker.bio %}
+        <p class="text-gray-600 text-xs mt-1 truncate">{{ liker.bio }}</p>
+        {% endif %}
+      </div>
+      <form method="POST" action="/like/{{ liker.id }}?redirect=liked-me">
+        <button type="submit" class="w-10 h-10 gradient-btn rounded-full flex items-center justify-center text-white shadow-lg">
+          <i class="fas fa-heart text-sm"></i>
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div class="flex flex-col items-center justify-center py-20">
+    <div class="w-24 h-24 rounded-full bg-card flex items-center justify-center mb-4 border border-white/5">
+      <i class="fas fa-heart text-4xl text-gray-700"></i>
+    </div>
+    <p class="text-gray-400 font-medium">No likes yet</p>
+    <p class="text-gray-600 text-sm mt-1">Keep swiping to get more visibility!</p>
+    <a href="/" class="gradient-btn text-white px-6 py-3 rounded-xl text-sm font-medium mt-6">
+      <i class="fas fa-fire mr-2"></i>Start Discovering
+    </a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

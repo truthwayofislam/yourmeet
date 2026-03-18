@@ -79,6 +79,15 @@
     <a href="/matches" class="flex flex-col items-center gap-1 text-xs {% if active == 'matches' %}text-primary{% else %}text-gray-400{% endif %}">
       <i class="fas fa-heart text-xl"></i><span>Matches</span>
     </a>
+    {% if user.is_premium %}
+    <a href="/liked-me" class="flex flex-col items-center gap-1 text-xs {% if active == 'liked' %}text-primary{% else %}text-gray-400{% endif %}">
+      <i class="fas fa-star text-xl"></i><span>Liked You</span>
+    </a>
+    {% else %}
+    <a href="/premium" class="flex flex-col items-center gap-1 text-xs text-gray-400">
+      <i class="fas fa-star text-xl"></i><span>Liked You</span>
+    </a>
+    {% endif %}
     <a href="/premium" class="flex flex-col items-center gap-1 text-xs {% if active == 'premium' %}text-yellow-400{% else %}text-gray-400{% endif %}">
       <i class="fas fa-crown text-xl"></i><span>Premium</span>
     </a>
