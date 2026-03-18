@@ -134,7 +134,7 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📛 Name", callback_data="edit:name"), InlineKeyboardButton("🎂 Age", callback_data="edit:age")],
         [InlineKeyboardButton("📍 City", callback_data="edit:city"), InlineKeyboardButton("💬 Bio", callback_data="edit:bio")],
-        [InlineKeyboardButton("📸 Photo", callback_data="edit:photo"), InlineKeyboardButton("📱 Social", callback_data="edit:social")],
+        [InlineKeyboardButton("📸 Photo", callback_data="edit:photo"), InlineKeyboardButton("📱 Social", callback_data="edit:social_handle")],
         [InlineKeyboardButton("❌ Cancel", callback_data="edit:cancel")],
     ])
     await update.message.reply_text("✏️ *What do you want to edit?*", parse_mode="Markdown", reply_markup=kb)
@@ -156,7 +156,7 @@ async def edit_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "age": "🎂 Enter your new age:",
         "city": "📍 Enter your new city:",
         "bio": "💬 Enter your new bio:",
-        "social": "📱 Enter your Instagram/Telegram username (e.g. @rahul_ig):",
+        "social_handle": "📱 Enter your Instagram/Telegram username (e.g. @rahul_ig):",
     }
     context.user_data["edit_field"] = field
     await query.edit_message_text(prompts[field])
