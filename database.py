@@ -21,7 +21,14 @@ def init_db():
             photo TEXT DEFAULT '', is_premium INTEGER DEFAULT 0,
             super_likes_left INTEGER DEFAULT 3,
             created_at TEXT, telegram_id TEXT,
-            is_admin INTEGER DEFAULT 0, is_blocked INTEGER DEFAULT 0
+            is_admin INTEGER DEFAULT 0, is_blocked INTEGER DEFAULT 0,
+            daily_swipes INTEGER DEFAULT 10,
+            swipes_reset_date TEXT DEFAULT '',
+            referral_count INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS referrals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            referrer_id INTEGER, referred_id INTEGER, created_at TEXT
         );
         CREATE TABLE IF NOT EXISTS matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +65,7 @@ def row_to_user(row):
         return None
     keys = ["id","name","email","phone","password","age","gender","bio","city",
             "photo","is_premium","super_likes_left","created_at","telegram_id",
-            "is_admin","is_blocked"]
+            "is_admin","is_blocked","daily_swipes","swipes_reset_date","referral_count"]
     d = dict(zip(keys, row))
     return UserObj(d)
 

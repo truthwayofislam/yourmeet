@@ -5,10 +5,19 @@ from database import get_db, row_to_user, row_to_obj
 from routers.auth import get_current_user
 from storage import upload_photo_to_telegram
 import shutil, uuid
+from datetime import date
 
 router = APIRouter()
 
 MATCH_KEYS = ["id","user1_id","user2_id","matched_at"]
+
+def check_and_reset_swipes(db, user):
+    today = str(date.today())
+    if getattr(user, 'swipes_reset_date', '') != today:
+        db.execute("UPDATE users SET daily_swipes=10, swipes_reset_date=? WHERE id=?", (today, user.id))
+        db.commit()
+        user.__dict__['daily_swipes'] = 10
+        user.__dict__['swipes_reset_date'] = today
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
@@ -29,6 +38,11 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
 async def like_user(target_id: int, request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not current_user.is_premium:
+        check_and_reset_swipes(db, current_user)
+        if current_user.daily_swipes <= 0:
+            return JSONResponse({"error": "Daily limit reached! Share with 3 friends to get 10 more swipes.", "limit": True}, status_code=400)
+        db.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (current_user.id,))
     body = await request.json()
     is_super = body.get("super", False)
     if is_super and not current_user.is_premium:

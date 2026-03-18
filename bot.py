@@ -112,9 +112,55 @@ async def setup_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Profile setup cancelled.")
     return ConversationHandler.END
 
-# /start
+def _check_swipe_limit(tg_id: str):
+    """Returns (user_id, swipes_left, is_premium). Resets daily if needed."""
+    from datetime import date
+    today = str(date.today())
+    conn = get_conn()
+    row = conn.execute("SELECT id, is_premium, daily_swipes, swipes_reset_date FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None, 0, False
+    user_id, is_premium, daily_swipes, reset_date = row
+    if reset_date != today:
+        daily_swipes = 10
+        conn.execute("UPDATE users SET daily_swipes=10, swipes_reset_date=? WHERE id=?", (today, user_id))
+        conn.commit()
+    conn.close()
+    return user_id, daily_swipes, bool(is_premium)
+
+def _deduct_swipe(user_id: int):
+    conn = get_conn()
+    conn.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+
+# /start - handles referral too
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    tg_id = str(user.id)
+    # Handle referral: /start ref_123
+    if context.args and context.args[0].startswith("ref_"):
+        try:
+            referrer_id = int(context.args[0][4:])
+            conn = get_conn()
+            me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+            already = me and conn.execute("SELECT id FROM referrals WHERE referred_id=?", (me[0],)).fetchone()
+            if me and not already and me[0] != referrer_id:
+                conn.execute("INSERT INTO referrals (referrer_id,referred_id,created_at) VALUES (?,?,datetime('now'))", (referrer_id, me[0]))
+                conn.execute("UPDATE users SET referral_count=referral_count+1 WHERE id=?", (referrer_id,))
+                ref_count = conn.execute("SELECT referral_count FROM users WHERE id=?", (referrer_id,)).fetchone()[0]
+                conn.commit()
+                if ref_count % 3 == 0:
+                    conn.execute("UPDATE users SET daily_swipes=daily_swipes+10 WHERE id=?", (referrer_id,))
+                    conn.commit()
+                    ref_tg = conn.execute("SELECT telegram_id FROM users WHERE id=?", (referrer_id,)).fetchone()
+                    if ref_tg and ref_tg[0]:
+                        try:
+                            await context.bot.send_message(ref_tg[0], "🎉 *+10 Swipes!* Someone joined using your link. Keep sharing!", parse_mode="Markdown")
+                        except: pass
+            conn.close()
+        except: pass
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=APP_URL))],
         [InlineKeyboardButton("👑 Get Premium", web_app=WebAppInfo(url=f"{APP_URL}/premium"))]
@@ -218,6 +264,16 @@ async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not get_user_by_tg(tg_id):
         await update.message.reply_text("👋 No profile found! Let's create one first.\n\nWhat's your *name*?", parse_mode="Markdown")
         return SETUP_NAME
+    user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
+    if not is_premium and swipes_left <= 0:
+        await update.message.reply_text(
+            "😔 *Daily limit reached!*\n\n"
+            "You've used all 10 free swipes today.\n\n"
+            "🔗 Share with 3 friends → get *+10 swipes*\nUse /share to get your link\n\n"
+            "👑 Or go *Premium* for unlimited swipes!",
+            parse_mode="Markdown", reply_markup=open_app_keyboard("/premium")
+        )
+        return ConversationHandler.END
     async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
         if is_photo:
             await update.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
@@ -243,9 +299,19 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action in ("like", "super"):
         is_super = action == "super"
+        user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
+        if not is_premium and swipes_left <= 0:
+            conn.close()
+            await query.edit_message_caption(
+                caption="😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
+                parse_mode="Markdown"
+            )
+            return
         if not conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (user_id, target_id)).fetchone():
             conn.execute("INSERT INTO likes (from_user,to_user,is_super,created_at) VALUES (?,?,?,datetime('now'))", (user_id, target_id, int(is_super)))
             conn.commit()
+            if not is_premium:
+                _deduct_swipe(user_id)
         mutual = conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, user_id)).fetchone()
         if mutual:
             existing = conn.execute(
@@ -388,6 +454,25 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     await query.edit_message_text("🗑️ Account deleted. Goodbye! 👋")
 
+# /share
+async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    row = get_user_by_tg(tg_id)
+    if not row:
+        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
+        return
+    user_id = row[0]
+    referral_count = row[18] if len(row) > 18 else 0
+    link = f"https://t.me/Yoursmeetbot?start=ref_{user_id}"
+    await update.message.reply_text(
+        f"🔗 *Your Referral Link*\n\n"
+        f"`{link}`\n\n"
+        f"Share this with friends!\n"
+        f"Every *3 friends* who join = *+10 swipes* for you 🎉\n\n"
+        f"👥 Friends joined so far: *{referral_count}*",
+        parse_mode="Markdown"
+    )
+
 # /help
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -399,6 +484,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "/swipe - Swipe in chat (no app needed)\n"
         "/like - Discover people\n"
         "/friends - Meet new friends\n"
+        "/share - Get referral link (+10 swipes per 3 friends)\n"
         "/stats - Your activity stats\n"
         "/premium - Get Premium\n"
         "/delete - Delete account\n"
@@ -463,6 +549,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("friends", friends_cmd))
     app.add_handler(CommandHandler("premium", premium_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CommandHandler("share", share_cmd))
     app.add_handler(CommandHandler("delete", delete_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     return app
