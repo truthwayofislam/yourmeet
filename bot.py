@@ -96,11 +96,10 @@ async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_url = f"https://api.telegram.org/file/bot{token}/{file.file_path}"
     context.user_data["photo"] = photo_url
     await update.message.reply_text(
-        "📱 Share your *Instagram* or *Telegram* username so matches can contact you\n"
-        "_Telegram: @rahul\_tg_\n"
-        "_Instagram: @rahul\_ig or instagram.com/rahul_\n\n"
-        "Type 'skip' to leave blank:",
-        parse_mode="Markdown"
+        "📱 Share your Instagram or Telegram username so matches can contact you\n"
+        "Telegram: @rahul_tg\n"
+        "Instagram: @rahul_ig or instagram.com/rahul\n\n"
+        "Type 'skip' to leave blank:"
     )
     return SETUP_SOCIAL
 
@@ -177,7 +176,7 @@ async def edit_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "age": "🎂 Enter your new age:",
         "city": "📍 Enter your new city:",
         "bio": "💬 Enter your new bio:",
-        "social_handle": "📱 Enter your Instagram or Telegram username:\n_Telegram: @rahul_tg_\n_Instagram: @rahul_ig or instagram.com/rahul_",
+        "social_handle": "📱 Enter your Instagram or Telegram username:\nTelegram: @rahul_tg\nInstagram: @rahul_ig or instagram.com/rahul",
     }
     context.user_data["edit_field"] = field
     await query.edit_message_text(prompts[field])
