@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Discover{% endblock %}
 {% block content %}
-<div class="max-w-md mx-auto px-4 pt-6">
+<div class="max-w-md mx-auto px-4 pt-4">
 
   <!-- Header -->
   <div class="flex items-center justify-between mb-6">
@@ -22,7 +22,7 @@
   </div>
 
   <!-- Cards Stack -->
-  <div id="card-stack" class="relative h-[480px]">
+  <div id="card-stack" class="relative" style="height: min(480px, calc(100dvh - 220px));">
     {% if profiles %}
       {% for profile in profiles %}
       <div class="profile-card absolute inset-0 bg-card rounded-3xl overflow-hidden card-glow border border-white/5 transition-all duration-300"
@@ -166,11 +166,15 @@ function closeModal() {
 }
 
 // Touch/swipe support
-let startX = 0;
-document.addEventListener('touchstart', e => startX = e.touches[0].clientX);
-document.addEventListener('touchend', e => {
-  const diff = e.changedTouches[0].clientX - startX;
-  if (Math.abs(diff) > 80) swipeAction(diff > 0 ? 'like' : 'nope');
-});
+let startX = 0, startY = 0;
+const stack = document.getElementById('card-stack');
+if (stack) {
+  stack.addEventListener('touchstart', e => { startX = e.touches[0].clientX; startY = e.touches[0].clientY; }, {passive: true});
+  stack.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) swipeAction(dx > 0 ? 'like' : 'nope');
+  }, {passive: true});
+}
 </script>
 {% endblock %}
