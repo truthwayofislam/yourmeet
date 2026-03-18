@@ -51,6 +51,10 @@ def init_db():
             razorpay_payment_id TEXT, amount INTEGER,
             plan TEXT, status TEXT DEFAULT 'pending', created_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS skips (
+            user_id INTEGER, skipped_id INTEGER,
+            PRIMARY KEY (user_id, skipped_id)
+        );
     """)
     conn.commit()
     # Add new columns to existing tables if not present
@@ -66,6 +70,10 @@ def init_db():
         except: pass
     try:
         conn.execute("CREATE TABLE IF NOT EXISTS referrals (id INTEGER PRIMARY KEY AUTOINCREMENT, referrer_id INTEGER, referred_id INTEGER, created_at TEXT)")
+        conn.commit()
+    except: pass
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS skips (user_id INTEGER, skipped_id INTEGER, PRIMARY KEY (user_id, skipped_id))")
         conn.commit()
     except: pass
     try:

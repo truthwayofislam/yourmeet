@@ -331,6 +331,14 @@ def _swipe_keyboard(target_id: int):
         InlineKeyboardButton("⭐ Super", callback_data=f"super:{target_id}"),
     ]])
 
+def _record_skip(user_id: int, target_id: int):
+    conn = get_conn()
+    try:
+        conn.execute("INSERT OR IGNORE INTO skips (user_id, skipped_id) VALUES (?,?)", (user_id, target_id))
+        conn.commit()
+    except: pass
+    conn.close()
+
 def _next_profile(tg_id: str):
     conn = get_conn()
     me = conn.execute("SELECT id, gender FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
@@ -340,11 +348,12 @@ def _next_profile(tg_id: str):
     user_id, gender = me
     opposite = "female" if gender == "male" else "male"
     liked = [r[0] for r in conn.execute("SELECT to_user FROM likes WHERE from_user=?", (user_id,)).fetchall()]
-    liked.append(user_id)
-    placeholders = ",".join("?" * len(liked))
+    skipped = [r[0] for r in conn.execute("SELECT skipped_id FROM skips WHERE user_id=?", (user_id,)).fetchall()]
+    excluded = list(set(liked + skipped + [user_id]))
+    placeholders = ",".join("?" * len(excluded))
     row = conn.execute(
         f"SELECT id, name, age, city, bio, photo FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 LIMIT 1",
-        (*liked, opposite)
+        (*excluded, opposite)
     ).fetchone()
     conn.close()
     return user_id, row
@@ -445,6 +454,7 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_caption(caption=f"{emoji} Liked! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
         except: pass
     elif action == "nope":
+        _record_skip(user_id, target_id)
         conn.close()
         try:
             await query.edit_message_caption(caption="👎 Skipped! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
