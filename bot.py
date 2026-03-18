@@ -608,8 +608,11 @@ async def notify_message(bot, tg_id: str, sender_name: str):
     except:
         pass
 
+from telegram.request import HTTPXRequest
+
 def build_app() -> Application:
-    app = ApplicationBuilder().token(BOT_TOKEN).updater(None).build()
+    request = HTTPXRequest(connect_timeout=20, read_timeout=20, write_timeout=20)
+    app = ApplicationBuilder().token(BOT_TOKEN).request(request).updater(None).build()
     setup_conv = ConversationHandler(
         entry_points=[CommandHandler("setup", setup_cmd), CommandHandler("swipe", swipe_cmd)],
         states={
