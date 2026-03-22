@@ -21,7 +21,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(auth.router)
 app.include_router(profiles.router)
-app.include_router(chat.router)
 app.include_router(payment.router)
 app.include_router(admin.router)
 
