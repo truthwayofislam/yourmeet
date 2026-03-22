@@ -47,8 +47,7 @@ def init_db():
         );
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER, razorpay_order_id TEXT,
-            razorpay_payment_id TEXT, amount INTEGER,
+            user_id INTEGER, amount INTEGER,
             plan TEXT, status TEXT DEFAULT 'pending', created_at TEXT
         );
         CREATE TABLE IF NOT EXISTS skips (

@@ -6,7 +6,7 @@ from routers.auth import get_current_user
 import random, secrets, os
 
 router = APIRouter()
-PAY_KEYS = ["id","user_id","razorpay_order_id","razorpay_payment_id","amount","plan","status","created_at"]
+PAY_KEYS = ["id","user_id","amount","plan","status","created_at"]
 SEED_SECRET = os.getenv("SEED_SECRET", "")
 
 GIRL_NAMES = ["Priya","Anjali","Neha","Pooja","Sneha","Riya","Kavya","Divya","Shreya","Ananya","Nisha","Meera","Sonal","Tanya","Simran","Komal","Pallavi","Swati","Deepika","Isha","Ritika","Megha","Aisha","Zara","Naina","Sakshi","Mansi","Preeti","Jyoti","Rekha","Surbhi","Ankita","Bhavna","Charu","Disha","Esha","Falak","Garima","Hina","Ishita","Juhi","Kriti","Lavanya","Monika","Natasha","Payal","Roshni","Sanya","Tanvi","Uma","Vandana","Yamini","Zoya","Aditi","Bhumi","Dimple","Ekta","Gunjan","Harshita","Indu","Jasmine","Kiran","Lata","Madhuri","Namrata","Poonam","Radhika","Sunita","Taruna","Urvashi","Varsha","Archana","Bindiya","Chanchal","Deepa","Elina","Farida","Geeta","Heena","Indira","Jayanti","Kamini","Leena","Manju","Nandita","Pinky","Rani","Savita","Trishna","Chhavi","Falguni","Omna","Wasima","Yashika","Zainab","Qurrat","Ojasvi","Warda","Xena"]
@@ -93,7 +93,7 @@ async def admin_dashboard(request: Request, db=Depends(get_db), current_user=Dep
     revenue_row = db.execute("SELECT SUM(amount) FROM payments WHERE status='paid'").fetchone()[0]
     total_revenue = (revenue_row or 0) / 100
     recent_users = [row_to_user(r) for r in db.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT 20").fetchall()]
-    recent_payments = [row_to_obj(r, PAY_KEYS) for r in db.execute("SELECT * FROM payments ORDER BY created_at DESC LIMIT 10").fetchall()]
+    recent_payments = [row_to_obj(r, PAY_KEYS) for r in db.execute("SELECT id,user_id,amount,plan,status,created_at FROM payments ORDER BY created_at DESC LIMIT 10").fetchall()]
     return templates.TemplateResponse("admin.html", {
         "request": request, "user": current_user,
         "total_users": total_users, "premium_users": premium_users,
