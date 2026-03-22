@@ -1,6 +1,6 @@
 import os
 import warnings
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, PreCheckoutQueryHandler, ConversationHandler, filters, ContextTypes, Application
 from telegram.warnings import PTBUserWarning
 import secrets
@@ -661,7 +661,7 @@ async def send_stars_invoice(bot, tg_id: str, plan: str) -> str:
         description=p["description"],
         payload=f"premium:{plan}:{tg_id}",
         currency="XTR",
-        prices=[{"label": p["title"], "amount": p["stars"]}],
+        prices=[LabeledPrice(label=p["title"], amount=p["stars"])],
         provider_token="",
     )
     return msg.invoice.start_parameter if hasattr(msg, 'invoice') else ""
