@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 import fastapi.responses
 from contextlib import asynccontextmanager
 from database import init_db
-from routers import auth, profiles, chat, payment, admin
+from routers import auth, profiles, payment, admin
 from storage import get_photo_url
 from dotenv import load_dotenv
 import uvicorn, os
