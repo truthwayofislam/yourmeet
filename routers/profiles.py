@@ -24,14 +24,15 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
     if not current_user:
         return RedirectResponse("/login")
     liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (current_user.id,)).fetchall()]
-    liked.append(current_user.id)
-    placeholders = ",".join("?" * len(liked))
+    skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (current_user.id,)).fetchall()]
+    excluded = list(set(liked + skipped + [current_user.id]))
+    placeholders = ",".join("?" * len(excluded))
     opposite = "female" if current_user.gender == "male" else "male"
-    age_min = int(request.query_params.get("age_min", 18))
-    age_max = int(request.query_params.get("age_max", 99))
+    age_min = max(18, min(int(request.query_params.get("age_min", 18)), 99))
+    age_max = max(18, min(int(request.query_params.get("age_max", 99)), 99))
     rows = db.execute(
         f"SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0 LIMIT 10",
-        (*liked, opposite, age_min, age_max)
+        (*excluded, opposite, age_min, age_max)
     ).fetchall()
     profiles = [row_to_user(r) for r in rows]
     return templates.TemplateResponse("index.html", {"request": request, "user": current_user, "profiles": profiles, "active": "home", "age_min": age_min, "age_max": age_max})
@@ -83,16 +84,17 @@ async def liked_me_page(request: Request, db=Depends(get_db), current_user=Depen
     if not current_user.is_premium:
         return RedirectResponse("/premium")
     rows = db.execute(
-        """SELECT u.*, l.is_super FROM users u
-           JOIN likes l ON l.from_user=u.id
-           WHERE l.to_user=? AND u.is_blocked=0
-           ORDER BY l.created_at DESC""",
+        """SELECT u.id,u.name,u.email,u.phone,u.password,u.age,u.gender,u.bio,u.city,u.photo,
+              u.is_premium,u.super_likes_left,u.created_at,u.telegram_id,u.is_admin,u.is_blocked,
+              u.daily_swipes,u.swipes_reset_date,u.referral_count,u.social_handle,l.is_super
+           FROM users u JOIN likes l ON l.from_user=u.id
+           WHERE l.to_user=? AND u.is_blocked=0 ORDER BY l.created_at DESC""",
         (current_user.id,)
     ).fetchall()
     likers = []
     for r in rows:
-        u = row_to_user(r[:len(r)-1])
-        u.__dict__['is_super'] = bool(r[-1])
+        u = row_to_user(r[:20])
+        u.__dict__['is_super'] = bool(r[20])
         likers.append(u)
     return templates.TemplateResponse("liked_me.html", {"request": request, "user": current_user, "likers": likers, "active": "liked"})
 

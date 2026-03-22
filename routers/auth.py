@@ -8,7 +8,7 @@ import bcrypt, os, shutil, uuid
 from datetime import datetime
 
 router = APIRouter()
-SECRET = os.getenv("SECRET_KEY", "yourmeet_secret_key_2024")
+SECRET = os.getenv("SECRET_KEY") or "yourmeet_secret_key_2024"
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -54,6 +54,7 @@ async def register(
     if photo and photo.filename:
         photo_path = await upload_photo_to_telegram(photo)
         if not photo_path:
+            os.makedirs("static/img", exist_ok=True)
             ext = photo.filename.split(".")[-1]
             filename = f"{uuid.uuid4()}.{ext}"
             photo_path = f"static/img/{filename}"
@@ -98,6 +99,12 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
     body = await request.json()
     tg_id = str(body.get("id", ""))
     name = body.get("first_name", "User")
+    # Verify Telegram hash
+    import hmac, hashlib
+    data_check = "\n".join(f"{k}={v}" for k, v in sorted(body.items()) if k != "hash")
+    expected = hmac.new(hashlib.sha256(os.getenv("TELEGRAM_BOTS_KEY","").encode()).digest(), data_check.encode(), hashlib.sha256).hexdigest()
+    if body.get("hash") and expected != body.get("hash"):
+        return JSONResponse({"error": "invalid"}, status_code=403)
     if not tg_id:
         return JSONResponse({"error": "invalid"}, status_code=400)
     row = db.execute("SELECT * FROM users WHERE telegram_id=?", (tg_id,)).fetchone()

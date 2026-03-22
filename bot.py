@@ -1,7 +1,7 @@
 import os
 import warnings
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ConversationHandler, filters, ContextTypes, Application
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, PreCheckoutQueryHandler, ConversationHandler, filters, ContextTypes, Application
 from telegram.warnings import PTBUserWarning
 import secrets
 import libsql_experimental as libsql
@@ -204,6 +204,10 @@ async def edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Please enter a valid number:")
             return EDIT_VALUE
     conn = get_conn()
+    allowed = {"name", "age", "city", "bio", "social_handle"}
+    if field not in allowed:
+        await update.message.reply_text("❌ Invalid field.")
+        return ConversationHandler.END
     conn.execute(f"UPDATE users SET {field}=? WHERE telegram_id=?", (value, tg_id))
     conn.commit()
     conn.close()
@@ -642,6 +646,46 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=open_app_keyboard()
     )
 
+STARS_PLANS = {
+    "monthly":   {"stars": 150, "title": "YourMeet Premium — 1 Month",  "description": "Unlimited likes, super likes & more for 30 days"},
+    "quarterly": {"stars": 350, "title": "YourMeet Premium — 3 Months", "description": "Unlimited likes, super likes & more for 90 days"},
+}
+
+async def send_stars_invoice(bot, tg_id: str, plan: str) -> str:
+    """Send a Telegram Stars invoice and return the invoice link."""
+    p = STARS_PLANS.get(plan, STARS_PLANS["monthly"])
+    msg = await bot.send_invoice(
+        chat_id=tg_id,
+        title=p["title"],
+        description=p["description"],
+        payload=f"premium:{plan}:{tg_id}",
+        currency="XTR",
+        prices=[{"label": p["title"], "amount": p["stars"]}],
+        provider_token="",
+    )
+    return msg.invoice.start_parameter if hasattr(msg, 'invoice') else ""
+
+async def handle_pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.pre_checkout_query.answer(ok=True)
+
+async def handle_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    payload = update.message.successful_payment.invoice_payload  # "premium:monthly:tg_id"
+    plan = payload.split(":")[1] if ":" in payload else "monthly"
+    conn = get_conn()
+    conn.execute("UPDATE users SET is_premium=1, super_likes_left=999 WHERE telegram_id=?", (tg_id,))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(
+        "🎉 *Welcome to Premium!* 👑\n\n"
+        "✅ Unlimited likes\n"
+        "✅ Unlimited super likes\n"
+        "✅ See who liked you\n\n"
+        "Enjoy! 💕",
+        parse_mode="Markdown",
+        reply_markup=open_app_keyboard("/")
+    )
+
 async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = ""):
     if not tg_id:
         return
@@ -701,4 +745,6 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("share", share_cmd))
     app.add_handler(CommandHandler("delete", delete_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(PreCheckoutQueryHandler(handle_pre_checkout))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_successful_payment))
     return app

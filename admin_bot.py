@@ -160,6 +160,8 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def build_admin_app() -> Application:
     token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("ADMIN_BOT_TOKEN is not set")
     request = HTTPXRequest(connect_timeout=20, read_timeout=20, write_timeout=20)
     app = ApplicationBuilder().token(token).request(request).updater(None).build()
     app.add_handler(CommandHandler("start", start))
