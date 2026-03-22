@@ -536,7 +536,8 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ See who liked you\n"
         "✅ Profile boost\n"
         "✅ Priority in discover\n\n"
-        "💰 *₹50/month* or *₹120/3 months*\n\n"
+        "💫 *150 Stars/month* or *350 Stars/3 months*\n\n"
+        "Pay with Telegram Stars — instant & secure ⭐\n\n"
         "Upgrade now 👇",
         parse_mode="Markdown",
         reply_markup=open_app_keyboard("/premium")
