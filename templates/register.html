@@ -26,7 +26,7 @@
             <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Full Name</label>
             <div class="relative mt-1">
               <i class="fas fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
-              <input type="text" name="name" required placeholder="Your name"
+              <input type="text" name="name" required placeholder="Your name" id="name-field"
                 class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
             </div>
           </div>
@@ -112,8 +112,13 @@
   </div>
 </div>
 <script>
-  if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
-    document.getElementById('tg-id-field').value = window.Telegram.WebApp.initDataUnsafe.user.id;
+  const _qp = new URLSearchParams(window.location.search);
+  const _nameField = document.getElementById('name-field');
+  const _tgField = document.getElementById('tg-id-field');
+  if (_qp.get('name') && _nameField) _nameField.value = _qp.get('name');
+  if (_qp.get('tg_id') && _tgField) _tgField.value = _qp.get('tg_id');
+  else if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+    _tgField.value = window.Telegram.WebApp.initDataUnsafe.user.id;
   }
 </script>
 {% endblock %}

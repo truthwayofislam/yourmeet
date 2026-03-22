@@ -5,7 +5,7 @@ from database import get_db, row_to_user, row_to_obj
 from routers.auth import get_current_user
 from storage import upload_photo_to_telegram
 import shutil, uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 
 router = APIRouter()
 
@@ -31,7 +31,8 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
     age_min = max(18, min(int(request.query_params.get("age_min", 18)), 99))
     age_max = max(18, min(int(request.query_params.get("age_max", 99)), 99))
     rows = db.execute(
-        f"SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0 LIMIT 10",
+        f"""SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0
+            ORDER BY CASE WHEN boosted_until > datetime('now') THEN 0 ELSE 1 END, RANDOM() LIMIT 10""",
         (*excluded, opposite, age_min, age_max)
     ).fetchall()
     profiles = [row_to_user(r) for r in rows]
@@ -77,6 +78,27 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
         return JSONResponse({"matched": True})
     return JSONResponse({"matched": False})
 
+@router.post("/skip/{target_id}")
+async def skip_user(target_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    try:
+        db.execute("INSERT OR IGNORE INTO skips (user_id, skipped_id) VALUES (?,?)", (current_user.id, target_id))
+        db.commit()
+    except: pass
+    return JSONResponse({"ok": True})
+
+@router.post("/boost")
+async def boost_profile(db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not current_user.is_premium:
+        return JSONResponse({"error": "Premium required"}, status_code=403)
+    until = (datetime.utcnow() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("UPDATE users SET boosted_until=? WHERE id=?", (until, current_user.id))
+    db.commit()
+    return JSONResponse({"ok": True, "until": until})
+
 @router.get("/liked-me", response_class=HTMLResponse)
 async def liked_me_page(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
@@ -86,15 +108,16 @@ async def liked_me_page(request: Request, db=Depends(get_db), current_user=Depen
     rows = db.execute(
         """SELECT u.id,u.name,u.email,u.phone,u.password,u.age,u.gender,u.bio,u.city,u.photo,
               u.is_premium,u.super_likes_left,u.created_at,u.telegram_id,u.is_admin,u.is_blocked,
-              u.daily_swipes,u.swipes_reset_date,u.referral_count,u.social_handle,l.is_super
+              u.daily_swipes,u.swipes_reset_date,u.referral_count,u.social_handle,
+              u.is_verified,u.boosted_until,l.is_super
            FROM users u JOIN likes l ON l.from_user=u.id
            WHERE l.to_user=? AND u.is_blocked=0 ORDER BY l.created_at DESC""",
         (current_user.id,)
     ).fetchall()
     likers = []
     for r in rows:
-        u = row_to_user(r[:20])
-        u.__dict__['is_super'] = bool(r[20])
+        u = row_to_user(r[:22])
+        u.__dict__['is_super'] = bool(r[22])
         likers.append(u)
     return templates.TemplateResponse("liked_me.html", {"request": request, "user": current_user, "likers": likers, "active": "liked"})
 

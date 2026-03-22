@@ -543,6 +543,30 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=open_app_keyboard("/premium")
     )
 
+# /boost
+async def boost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    row = get_user_by_tg(tg_id)
+    if not row:
+        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
+        return
+    if not row[10]:  # is_premium
+        await update.message.reply_text(
+            "👑 *Boost is a Premium feature!*\n\nUpgrade to put your profile at the top of everyone's discover feed for 30 mins 🚀",
+            parse_mode="Markdown", reply_markup=open_app_keyboard("/premium")
+        )
+        return
+    from datetime import datetime, timedelta
+    until = (datetime.utcnow() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_conn()
+    conn.execute("UPDATE users SET boosted_until=? WHERE telegram_id=?", (until, tg_id))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(
+        "🚀 *Profile Boosted!*\n\nYour profile is now at the top of discover for *30 minutes* 🔥\n\nGo get those matches!",
+        parse_mode="Markdown"
+    )
+
 # /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
@@ -639,6 +663,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/matches - See your matches\n"
                 "/swipe - Swipe in chat (no app needed)\n"
         "/share - Get referral link (+10 swipes per 3 friends)\n"
+        "/boost - Boost your profile to top (Premium)\n"
         "/stats - Your activity stats\n"
         "/premium - Get Premium\n"
         "/delete - Delete account\n"
@@ -741,6 +766,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(next_callback, pattern="^next$"))
     app.add_handler(CallbackQueryHandler(delete_callback, pattern="^(confirm_delete|cancel_delete)$"))
     app.add_handler(CommandHandler("friends", friends_cmd))
+    app.add_handler(CommandHandler("boost", boost_cmd))
     app.add_handler(CommandHandler("premium", premium_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("share", share_cmd))

@@ -25,7 +25,9 @@ def init_db():
             daily_swipes INTEGER DEFAULT 10,
             swipes_reset_date TEXT DEFAULT '',
             referral_count INTEGER DEFAULT 0,
-            social_handle TEXT DEFAULT ''
+            social_handle TEXT DEFAULT '',
+            is_verified INTEGER DEFAULT 0,
+            boosted_until TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS referrals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +65,8 @@ def init_db():
         ("referral_count", "INTEGER DEFAULT 0"),
         ("social_handle", "TEXT DEFAULT ''"),
         ("phone", "TEXT"),
+        ("is_verified", "INTEGER DEFAULT 0"),
+        ("boosted_until", "TEXT DEFAULT ''"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -93,7 +97,8 @@ def row_to_user(row):
         return None
     keys = ["id","name","email","phone","password","age","gender","bio","city",
             "photo","is_premium","super_likes_left","created_at","telegram_id",
-            "is_admin","is_blocked","daily_swipes","swipes_reset_date","referral_count","social_handle"]
+            "is_admin","is_blocked","daily_swipes","swipes_reset_date","referral_count","social_handle",
+            "is_verified","boosted_until"]
     d = dict(zip(keys, row))
     return UserObj(d)
 
@@ -113,3 +118,5 @@ class UserObj(DictObj):
     def is_admin(self): return bool(self.__dict__.get("is_admin", 0))
     @property
     def is_blocked(self): return bool(self.__dict__.get("is_blocked", 0))
+    @property
+    def is_verified(self): return bool(self.__dict__.get("is_verified", 0))

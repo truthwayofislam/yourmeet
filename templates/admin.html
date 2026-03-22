@@ -112,6 +112,9 @@
                 {% if u.is_premium %}
                 <span class="bg-yellow-500/20 text-yellow-400 text-xs px-2 py-0.5 rounded-full">Premium</span>
                 {% endif %}
+                {% if u.is_verified %}
+                <span class="bg-green-500/20 text-green-400 text-xs px-2 py-0.5 rounded-full">✅ Verified</span>
+                {% endif %}
                 {% if u.is_admin %}
                 <span class="bg-purple-500/20 text-purple-400 text-xs px-2 py-0.5 rounded-full">Admin</span>
                 {% endif %}
@@ -126,6 +129,12 @@
             <td class="px-5 py-3">
               <div class="flex items-center gap-2">
                 {% if u.id != user.id %}
+                <form method="POST" action="/admin/toggle-verify/{{ u.id }}" class="inline">
+                  <button type="submit" title="{{ 'Unverify' if u.is_verified else 'Verify' }}"
+                    class="w-7 h-7 rounded-lg {{ 'bg-green-500/20 text-green-400' if u.is_verified else 'bg-white/5 text-gray-500' }} hover:bg-green-500/30 transition flex items-center justify-center">
+                    <i class="fas fa-check-circle text-xs"></i>
+                  </button>
+                </form>
                 <form method="POST" action="/admin/toggle-premium/{{ u.id }}" class="inline">
                   <button type="submit" title="{{ 'Remove Premium' if u.is_premium else 'Give Premium' }}"
                     class="w-7 h-7 rounded-lg {{ 'bg-yellow-500/20 text-yellow-400' if u.is_premium else 'bg-white/5 text-gray-500' }} hover:bg-yellow-500/30 transition flex items-center justify-center">

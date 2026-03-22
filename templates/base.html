@@ -63,7 +63,12 @@
         }).then(r => r.json()).then(data => {
           if (data.token) {
             document.cookie = `token=${data.token};path=/;max-age=2592000`;
-            window.location.replace(data.new_user ? '/profile' : '/');
+            if (data.new_user) {
+              const params = new URLSearchParams({name: user.first_name || '', tg_id: user.id});
+              window.location.replace('/register?' + params.toString());
+            } else {
+              window.location.replace('/');
+            }
           } else {
             document.body.style.display = '';
           }

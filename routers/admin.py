@@ -101,6 +101,16 @@ async def admin_dashboard(request: Request, db=Depends(get_db), current_user=Dep
         "recent_users": recent_users, "recent_payments": recent_payments,
     })
 
+@router.post("/admin/toggle-verify/{user_id}")
+async def toggle_verify(user_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user or not current_user.is_admin:
+        return RedirectResponse("/login")
+    row = db.execute("SELECT is_verified FROM users WHERE id=?", (user_id,)).fetchone()
+    if row:
+        db.execute("UPDATE users SET is_verified=? WHERE id=?", (0 if row[0] else 1, user_id))
+        db.commit()
+    return RedirectResponse("/admin", status_code=302)
+
 @router.post("/admin/toggle-premium/{user_id}")
 async def toggle_premium(user_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user or not current_user.is_admin:
