@@ -130,18 +130,14 @@ async function startPayment() {
     });
     const data = await res.json();
     if (data.error) { alert(data.error); btn.disabled = false; selectPlan(selectedPlan); return; }
-    // Open invoice link in Telegram
+    // Invoice sent to Telegram — tell user to check their Telegram
     if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.openInvoice(data.invoice_link, (status) => {
-        if (status === 'paid') {
-          window.Telegram.WebApp.showAlert('🎉 Welcome to Premium! 👑', () => window.location.href = '/');
-        } else {
-          btn.disabled = false;
-          selectPlan(selectedPlan);
-        }
+      window.Telegram.WebApp.showAlert('⭐ Invoice sent to your Telegram!\nOpen the payment message to complete.', () => {
+        btn.disabled = false;
+        selectPlan(selectedPlan);
       });
     } else {
-      window.open(data.invoice_link, '_blank');
+      alert('⭐ Invoice sent to your Telegram! Open the bot to complete payment.');
       btn.disabled = false;
       selectPlan(selectedPlan);
     }

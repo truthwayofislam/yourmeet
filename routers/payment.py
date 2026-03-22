@@ -33,9 +33,10 @@ async def create_stars_invoice(request: Request, db=Depends(get_db), current_use
         from main import bot_app
         from bot import send_stars_invoice
         await send_stars_invoice(bot_app.bot, current_user.telegram_id, plan)
-        return JSONResponse({"ok": True, "invoice_link": f"https://t.me/Yoursmeetbot?start=premium_{plan}"})
+        return JSONResponse({"ok": True})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        print(f"[STARS] Invoice error: {e}")
+        return JSONResponse({"error": "Failed to send invoice"}, status_code=500)
 
 @router.post("/payment/stars/activate")
 async def activate_stars(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
