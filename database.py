@@ -22,7 +22,7 @@ def init_db():
             super_likes_left INTEGER DEFAULT 3,
             created_at TEXT, telegram_id TEXT,
             is_admin INTEGER DEFAULT 0, is_blocked INTEGER DEFAULT 0,
-            daily_swipes INTEGER DEFAULT 10,
+            daily_swipes INTEGER DEFAULT 3,
             swipes_reset_date TEXT DEFAULT '',
             referral_count INTEGER DEFAULT 0,
             social_handle TEXT DEFAULT '',
@@ -60,7 +60,7 @@ def init_db():
     conn.commit()
     # Add new columns to existing tables if not present
     for col, definition in [
-        ("daily_swipes", "INTEGER DEFAULT 10"),
+        ("daily_swipes", "INTEGER DEFAULT 3"),
         ("swipes_reset_date", "TEXT DEFAULT ''"),
         ("referral_count", "INTEGER DEFAULT 0"),
         ("social_handle", "TEXT DEFAULT ''"),

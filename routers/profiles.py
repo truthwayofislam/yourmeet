@@ -14,9 +14,9 @@ MATCH_KEYS = ["id","user1_id","user2_id","matched_at"]
 def check_and_reset_swipes(db, user):
     today = str(date.today())
     if getattr(user, 'swipes_reset_date', '') != today:
-        db.execute("UPDATE users SET daily_swipes=10, swipes_reset_date=? WHERE id=?", (today, user.id))
+        db.execute("UPDATE users SET daily_swipes=3, swipes_reset_date=? WHERE id=?", (today, user.id))
         db.commit()
-        user.__dict__['daily_swipes'] = 10
+        user.__dict__['daily_swipes'] = 3
         user.__dict__['swipes_reset_date'] = today
 
 @router.get("/", response_class=HTMLResponse)

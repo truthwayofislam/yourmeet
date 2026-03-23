@@ -129,9 +129,8 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Notify admin bot for verification
     try:
         from admin_bot import send_for_review
-        import asyncio
         if new_user:
-                asyncio.create_task(send_for_review(new_user[0], name, age, gender, city, photo, f"tg_{tg_id}@yourmeet.app", tg_id))
+            await send_for_review(new_user[0], name, age, gender, city, photo, f"tg_{tg_id}@yourmeet.app", tg_id)
     except Exception as e:
         print(f"[ADMIN NOTIFY] Failed: {e}")
     await update.message.reply_text(
@@ -241,8 +240,8 @@ def _check_swipe_limit(tg_id: str):
         return None, 0, False
     user_id, is_premium, daily_swipes, reset_date = row
     if reset_date != today:
-        daily_swipes = 10
-        conn.execute("UPDATE users SET daily_swipes=10, swipes_reset_date=? WHERE id=?", (today, user_id))
+        daily_swipes = 3
+        conn.execute("UPDATE users SET daily_swipes=3, swipes_reset_date=? WHERE id=?", (today, user_id))
         conn.commit()
     conn.close()
     return user_id, daily_swipes, bool(is_premium)
@@ -409,7 +408,7 @@ async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_premium and swipes_left <= 0:
         await update.message.reply_text(
             "😔 *Daily limit reached!*\n\n"
-            "You've used all 10 free swipes today.\n\n"
+            "You've used all 3 free swipes today.\n\n"
             "🔗 Share with 3 friends → get *+10 swipes*\nUse /share to get your link\n\n"
             "👑 Or go *Premium* for unlimited swipes!",
             parse_mode="Markdown", reply_markup=open_app_keyboard("/premium")
