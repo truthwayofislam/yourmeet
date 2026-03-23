@@ -36,7 +36,7 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
         (*excluded, opposite, age_min, age_max)
     ).fetchall()
     profiles = [row_to_user(r) for r in rows]
-    return templates.TemplateResponse("index.html", {"request": request, "user": current_user, "profiles": profiles, "active": "home", "age_min": age_min, "age_max": age_max})
+    return templates.TemplateResponse("index.html", context={"request": request, "user": current_user, "profiles": profiles, "active": "home", "age_min": age_min, "age_max": age_max})
 
 @router.post("/like/{target_id}")
 async def like_user(target_id: int, request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
@@ -119,7 +119,7 @@ async def liked_me_page(request: Request, db=Depends(get_db), current_user=Depen
         u = row_to_user(r[:22])
         u.__dict__['is_super'] = bool(r[22])
         likers.append(u)
-    return templates.TemplateResponse("liked_me.html", {"request": request, "user": current_user, "likers": likers, "active": "liked"})
+    return templates.TemplateResponse("liked_me.html", context={"request": request, "user": current_user, "likers": likers, "active": "liked"})
 
 @router.post("/report/{target_id}")
 async def report_user(target_id: int, request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
@@ -150,13 +150,13 @@ async def matches_page(request: Request, db=Depends(get_db), current_user=Depend
         urow = db.execute("SELECT * FROM users WHERE id=?", (other_id,)).fetchone()
         if urow:
             matched_users.append(row_to_user(urow))
-    return templates.TemplateResponse("matches.html", {"request": request, "user": current_user, "matches": matched_users, "active": "matches"})
+    return templates.TemplateResponse("matches.html", context={"request": request, "user": current_user, "matches": matched_users, "active": "matches"})
 
 @router.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request, current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("profile.html", {"request": request, "user": current_user, "active": "profile"})
+    return templates.TemplateResponse("profile.html", context={"request": request, "user": current_user, "active": "profile"})
 
 @router.post("/profile/update")
 async def update_profile(

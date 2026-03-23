@@ -15,7 +15,7 @@ PLANS = {
 async def premium_page(request: Request, current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("premium.html", {
+    return templates.TemplateResponse("premium.html", context={
         "request": request, "user": current_user, "active": "premium"
     })
 

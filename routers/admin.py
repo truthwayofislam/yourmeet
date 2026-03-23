@@ -94,7 +94,7 @@ async def admin_dashboard(request: Request, db=Depends(get_db), current_user=Dep
     total_revenue = (revenue_row or 0) / 100
     recent_users = [row_to_user(r) for r in db.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT 20").fetchall()]
     recent_payments = [row_to_obj(r, PAY_KEYS) for r in db.execute("SELECT id,user_id,amount,plan,status,created_at FROM payments ORDER BY created_at DESC LIMIT 10").fetchall()]
-    return templates.TemplateResponse("admin.html", {
+    return templates.TemplateResponse("admin.html", context={
         "request": request, "user": current_user,
         "total_users": total_users, "premium_users": premium_users,
         "total_matches": total_matches, "total_revenue": total_revenue,

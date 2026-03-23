@@ -1,11 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 from database import init_db
 from routers import auth, profiles, payment, admin
-from storage import get_photo_url
 from dotenv import load_dotenv
 import uvicorn, os
 
@@ -53,9 +51,6 @@ app.include_router(auth.router)
 app.include_router(profiles.router)
 app.include_router(payment.router)
 app.include_router(admin.router)
-
-templates = Jinja2Templates(directory="templates")
-templates.env.filters["photo_url"] = get_photo_url
 
 @app.post("/webhook/{token}")
 async def telegram_webhook(token: str, request: Request):
