@@ -32,7 +32,7 @@ def get_current_user(request: Request, db=Depends(get_db)):
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", context={"request": request})
+    return templates.TemplateResponse(request, "register.html")
 
 @router.post("/register")
 async def register(
@@ -44,11 +44,11 @@ async def register(
     db=Depends(get_db)
 ):
     if age < 18:
-        return templates.TemplateResponse("register.html", context={"request": request, "error": "Age must be 18 or above"})
+        return templates.TemplateResponse(request, "register.html", context={"error": "Age must be 18 or above"})
     if db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
-        return templates.TemplateResponse("register.html", context={"request": request, "error": "Email already registered"})
+        return templates.TemplateResponse(request, "register.html", context={"error": "Email already registered"})
     if phone and db.execute("SELECT id FROM users WHERE phone=?", (phone,)).fetchone():
-        return templates.TemplateResponse("register.html", context={"request": request, "error": "Phone number already registered"})
+        return templates.TemplateResponse(request, "register.html", context={"error": "Phone number already registered"})
 
     photo_path = ""
     if photo and photo.filename:
@@ -79,16 +79,16 @@ async def register(
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", context={"request": request})
+    return templates.TemplateResponse(request, "login.html")
 
 @router.post("/login")
 async def login(request: Request, email: str = Form(...), password: str = Form(...), db=Depends(get_db)):
     row = db.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
     user = row_to_user(row)
     if not user or not verify_password(password, user.password):
-        return templates.TemplateResponse("login.html", context={"request": request, "error": "Invalid credentials"})
+        return templates.TemplateResponse(request, "login.html", context={"error": "Invalid credentials"})
     if user.is_blocked:
-        return templates.TemplateResponse("login.html", context={"request": request, "error": "Your account has been blocked"})
+        return templates.TemplateResponse(request, "login.html", context={"error": "Your account has been blocked"})
     response = RedirectResponse("/", status_code=302)
     response.set_cookie("token", create_token(user.id))
     return response

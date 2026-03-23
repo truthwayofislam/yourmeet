@@ -15,9 +15,7 @@ PLANS = {
 async def premium_page(request: Request, current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("premium.html", context={
-        "request": request, "user": current_user, "active": "premium"
-    })
+    return templates.TemplateResponse(request, "premium.html", context={"user": current_user, "active": "premium"})
 
 @router.post("/payment/stars/invoice")
 async def create_stars_invoice(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
