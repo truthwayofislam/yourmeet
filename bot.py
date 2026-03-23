@@ -130,7 +130,7 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from admin_bot import send_for_review
         if new_user:
-            await send_for_review(new_user[0], name, age, gender, city, photo, f"tg_{tg_id}@yourmeet.app", tg_id)
+            await send_for_review(new_user[0], name, age, gender, city, photo, f"tg_{tg_id}@yourmeet.app", "")  # phone N/A for bot setup
     except Exception as e:
         print(f"[ADMIN NOTIFY] Failed: {e}")
     await update.message.reply_text(

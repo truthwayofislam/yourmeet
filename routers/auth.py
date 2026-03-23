@@ -116,6 +116,12 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
         db.commit()
         user_id = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()[0]
         new_user = True
+        # Notify admin bot
+        try:
+            from admin_bot import send_for_review
+            await send_for_review(user_id, name, 0, "", "", "", f"{tg_id}@telegram.local", tg_id)
+        except Exception as e:
+            print(f"[ADMIN NOTIFY] {e}")
     else:
         if user.is_blocked:
             return JSONResponse({"error": "blocked"}, status_code=403)
