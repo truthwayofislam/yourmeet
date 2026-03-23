@@ -16,6 +16,7 @@ def get_conn():
 def _verify_keyboard(user_id: int):
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Approve", callback_data=f"approve:{user_id}"),
+        InlineKeyboardButton("✅⭐ Approve+Verify", callback_data=f"verify:{user_id}"),
         InlineKeyboardButton("🚫 Block", callback_data=f"block:{user_id}"),
     ]])
 
@@ -37,6 +38,7 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
     )
     keyboard = {"inline_keyboard": [[
         {"text": "✅ Approve", "callback_data": f"approve:{user_id}"},
+        {"text": "✅⭐ Approve+Verify", "callback_data": f"verify:{user_id}"},
         {"text": "🚫 Block", "callback_data": f"block:{user_id}"}
     ]]}
     try:
@@ -144,10 +146,17 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action, uid = query.data.split(":")
     uid = int(uid)
     conn = get_conn()
-    conn.execute("UPDATE users SET is_blocked=? WHERE id=?", (0 if action == "approve" else 1, uid))
+    if action == "approve":
+        conn.execute("UPDATE users SET is_blocked=0 WHERE id=?", (uid,))
+        label = "✅ Approved"
+    elif action == "verify":
+        conn.execute("UPDATE users SET is_blocked=0, is_verified=1 WHERE id=?", (uid,))
+        label = "✅ Approved + Verified ⭐"
+    else:
+        conn.execute("UPDATE users SET is_blocked=1 WHERE id=?", (uid,))
+        label = "🚫 Blocked"
     conn.commit()
     conn.close()
-    label = "✅ Approved" if action == "approve" else "🚫 Blocked"
     try:
         await query.edit_message_caption(
             caption=query.message.caption + f"\n\n{label}",
@@ -167,5 +176,5 @@ def build_admin_app() -> Application:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("pending", pending_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
-    app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|block):"))
+    app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
     return app
