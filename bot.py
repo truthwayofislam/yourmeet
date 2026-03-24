@@ -165,7 +165,8 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"[ADMIN NOTIFY] Failed: {e}")
     await update.message.reply_text(
         f"🎉 *Profile created!*\n\n"
-        f"Use /swipe to start meeting people!",
+        f"⏳ Your profile is under review. You'll get a message once approved!\n\n"
+        f"Meanwhile, complete your profile on the app 👇",
         parse_mode="Markdown",
         reply_markup=open_app_keyboard("/")
     )
@@ -404,7 +405,7 @@ def _next_profile(tg_id: str):
     excluded = list(set(liked + skipped + [user_id]))
     placeholders = ",".join("?" * len(excluded))
     row = conn.execute(
-        f"SELECT id, name, age, city, bio, photo FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 LIMIT 1",
+        f"SELECT id, name, age, city, bio, photo FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 AND is_approved=1 LIMIT 1",
         (*excluded, opposite)
     ).fetchone()
     conn.close()
@@ -443,9 +444,16 @@ async def _send_profile(send_fn, tg_id: str):
 async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     if await _check_blocked(update, tg_id): return ConversationHandler.END
-    if not get_user_by_tg(tg_id):
+    row = get_user_by_tg(tg_id)
+    if not row:
         await update.message.reply_text("👋 No profile found! Let's create one first.\n\nWhat's your *name*?", parse_mode="Markdown")
         return SETUP_NAME
+    if not row[22]:  # is_approved
+        await update.message.reply_text(
+            "⏳ *Profile under review!*\n\nAdmin will approve your profile soon. You'll get a notification once approved!",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
     user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
     if not is_premium and swipes_left <= 0:
         await update.message.reply_text(

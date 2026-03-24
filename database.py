@@ -100,7 +100,7 @@ def row_to_user(row):
     keys = ["id","name","email","phone","password","age","gender","bio","city",
             "photo","is_premium","super_likes_left","created_at","telegram_id",
             "is_admin","is_blocked","daily_swipes","swipes_reset_date","referral_count","social_handle",
-            "is_verified","boosted_until"]
+            "is_verified","boosted_until","is_approved","premium_until"]
     d = dict(zip(keys, row))
     return UserObj(d)
 
