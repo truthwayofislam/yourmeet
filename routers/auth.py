@@ -80,10 +80,11 @@ async def register(
 
     db.execute(
         "INSERT INTO users (name,email,phone,password,age,gender,city,bio,photo,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (name, email, phone, hash_password(password), age, gender, city, bio, photo_path, telegram_id, datetime.utcnow().isoformat())
+        (name, email, phone, hash_password(password), age, gender, city, bio, photo_path, telegram_id or None, datetime.utcnow().isoformat())
     )
     db.commit()
     user_id = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()[0]
+    print(f"[REGISTER] user_id={user_id} telegram_id={telegram_id!r}")
     # Notify admin bot
     try:
         from admin_bot import send_for_review

@@ -224,8 +224,8 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Approve / Block callback
 async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     if str(query.from_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        await query.answer()
         return
     action, uid = query.data.split(":")
     uid = int(uid)
@@ -241,11 +241,13 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.execute("UPDATE users SET is_blocked=1 WHERE id=?", (uid,))
         label = "🚫 Blocked"
     conn.commit()
-    # Notify user via main bot
     tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
     conn.close()
     print(f"[ADMIN] tg_row for uid={uid}: {tg_row}")
-    if tg_row and tg_row[0]:
+    if not tg_row or not tg_row[0]:
+        await query.answer(f"⚠️ {tg_row[1] if tg_row else 'User'} has no Telegram — message not sent", show_alert=True)
+    else:
+        await query.answer()
         tg_id, name = tg_row
         app_url = os.getenv("APP_URL", "")
         if action in ("approve", "verify"):
@@ -260,7 +262,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await _notify_user(tg_id,
                 f"🚫 *{name}*, your profile was rejected.\n\n"
-                f"Your profile was rejected. Please re-register with a clear photo and genuine bio.",
+                f"Please re-register with a clear photo and genuine bio.",
                 {"inline_keyboard": [[{"text": "🔄 Re-register", "url": f"{app_url}/register"}]]}
             )
     status_line = f"\n\n{label}"

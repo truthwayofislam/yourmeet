@@ -117,9 +117,16 @@
   const _nameField = document.getElementById('name-field');
   const _tgField = document.getElementById('tg-id-field');
   if (_qp.get('name') && _nameField) _nameField.value = _qp.get('name');
-  if (_qp.get('tg_id') && _tgField) _tgField.value = _qp.get('tg_id');
-  else if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
-    _tgField.value = window.Telegram.WebApp.initDataUnsafe.user.id;
+  // Try all possible sources for telegram_id
+  const _tgId = _qp.get('tg_id')
+    || window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+    || null;
+  if (_tgId && _tgField) _tgField.value = _tgId;
+  // Also try after WebApp is ready
+  if (window.Telegram?.WebApp) {
+    window.Telegram.WebApp.ready();
+    const u = window.Telegram.WebApp.initDataUnsafe?.user;
+    if (u?.id && _tgField && !_tgField.value) _tgField.value = u.id;
   }
 
   document.querySelector('form').addEventListener('submit', function(e) {
