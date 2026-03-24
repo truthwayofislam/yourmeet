@@ -85,17 +85,18 @@
         </div>
 
         <div>
-          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Bio (optional)</label>
-          <textarea name="bio" rows="2" placeholder="Tell something about yourself..."
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Bio <span class="text-red-400">*</span></label>
+          <textarea name="bio" rows="2" required placeholder="Tell something about yourself (min 10 chars)..."
             class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1 resize-none"></textarea>
         </div>
 
         <div>
-          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Profile Photo</label>
-          <label class="flex items-center gap-3 bg-surface border border-dashed border-white/20 rounded-xl px-4 py-3 mt-1 cursor-pointer hover:border-primary transition">
+          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Profile Photo <span class="text-red-400">*</span></label>
+          <label class="flex items-center gap-3 bg-surface border border-dashed border-white/20 rounded-xl px-4 py-3 mt-1 cursor-pointer hover:border-primary transition" id="photo-label-wrap">
             <i class="fas fa-camera text-primary"></i>
-            <span class="text-gray-400 text-sm" id="photo-label">Upload your photo</span>
-            <input type="file" name="photo" accept="image/*" class="hidden" onchange="document.getElementById('photo-label').textContent = this.files[0]?.name || 'Upload your photo'"/>
+            <span class="text-gray-400 text-sm" id="photo-label">Upload your photo (required)</span>
+            <input type="file" name="photo" accept="image/*" id="photo-input" class="hidden"
+              onchange="document.getElementById('photo-label').textContent = this.files[0]?.name || 'Upload your photo (required)'"/>
           </label>
         </div>
 
@@ -120,5 +121,36 @@
   else if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
     _tgField.value = window.Telegram.WebApp.initDataUnsafe.user.id;
   }
+
+  document.querySelector('form').addEventListener('submit', function(e) {
+    const name = document.getElementById('name-field').value.trim();
+    const email = document.querySelector('[name=email]').value.trim();
+    const phone = document.querySelector('[name=phone]').value.trim();
+    const city = document.querySelector('[name=city]').value.trim();
+    const bio = document.querySelector('[name=bio]').value.trim();
+    const photo = document.getElementById('photo-input').files[0];
+    const errors = [];
+
+    if (name.length < 2) errors.push('Name must be at least 2 characters');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('Enter a valid email address');
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) errors.push('Phone must be at least 10 digits');
+    if (city.length < 2) errors.push('Please enter your city');
+    if (bio.length < 10) errors.push('Bio must be at least 10 characters');
+    if (!photo) errors.push('Profile photo is required');
+
+    if (errors.length > 0) {
+      e.preventDefault();
+      let box = document.getElementById('client-error');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'client-error';
+        box.className = 'bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-xl mb-4 text-sm';
+        document.querySelector('form').prepend(box);
+      }
+      box.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i>' + errors[0];
+      box.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }
+  });
 </script>
 {% endblock %}

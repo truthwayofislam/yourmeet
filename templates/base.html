@@ -67,6 +67,7 @@
               const params = new URLSearchParams({name: user.first_name || '', tg_id: user.id});
               window.location.replace('/register?' + params.toString());
             } else {
+              // Let server decide — if profile incomplete it will redirect to /register
               window.location.replace('/');
             }
           } else {

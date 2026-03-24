@@ -27,6 +27,7 @@
           <i class="fas fa-map-marker-alt text-primary"></i> {{ match.city or "India" }}
         </p>
         {% if match.social_handle %}
+        {% if user.is_premium %}
         {% set handle = match.social_handle | replace('@','') %}
         {% if 'instagram' in match.social_handle.lower() or 'insta' in match.social_handle.lower() %}
           {% set contact_url = 'https://instagram.com/' + handle %}
@@ -42,6 +43,12 @@
            class="inline-flex items-center gap-1 mt-2 bg-primary/20 text-primary text-xs px-3 py-1 rounded-full border border-primary/30 hover:bg-primary/30 transition">
           <i class="{{ contact_icon }} text-xs"></i> @{{ handle }}
         </a>
+        {% else %}
+        <a href="/premium"
+           class="inline-flex items-center gap-1 mt-2 bg-white/5 text-gray-500 text-xs px-3 py-1 rounded-full border border-white/10 hover:bg-primary/10 hover:text-primary transition">
+          <i class="fas fa-lock text-xs"></i> Unlock Contact — Premium
+        </a>
+        {% endif %}
         {% else %}
         <p class="text-gray-600 text-xs mt-2">No contact added yet</p>
         {% endif %}

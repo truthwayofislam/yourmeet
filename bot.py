@@ -302,16 +302,20 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     name, age, city, bio, is_premium = row[1], row[5], row[8], row[7], row[10]
     plan = "👑 Premium" if is_premium else "🆓 Free"
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✏️ Edit Profile", web_app=WebAppInfo(url=f"{APP_URL}/profile")),
+         InlineKeyboardButton("💕 Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches"))],
+        [InlineKeyboardButton("🔥 Start Swiping", callback_data="swipe_now")],
+    ])
     await update.message.reply_text(
         f"👤 *Your Profile*\n\n"
         f"📛 Name: *{name}*\n"
         f"🎂 Age: *{age}*\n"
         f"📍 City: *{city or 'Not set'}*\n"
         f"💬 Bio: _{bio or 'Not set'}_\n"
-        f"💎 Plan: *{plan}*\n\n"
-        f"Edit your profile in the app 👇",
+        f"💎 Plan: *{plan}*",
         parse_mode="Markdown",
-        reply_markup=open_app_keyboard("/profile")
+        reply_markup=kb
     )
 
 # /matches
@@ -327,12 +331,16 @@ async def matches_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id)
     ).fetchone()[0]
     conn.close()
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💕 View Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches")),
+         InlineKeyboardButton("🔥 Swipe More", callback_data="swipe_now")],
+    ])
     await update.message.reply_text(
         f"💕 *Your Matches*\n\n"
         f"You have *{count}* match{'es' if count != 1 else ''}!\n\n"
         f"{'Start chatting now 👇' if count > 0 else 'Keep swiping to get matches! 🔥'}",
         parse_mode="Markdown",
-        reply_markup=open_app_keyboard("/matches")
+        reply_markup=kb
     )
 
 def _swipe_keyboard(target_id: int):
@@ -464,16 +472,26 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.execute("INSERT INTO matches (user1_id,user2_id,matched_at) VALUES (?,?,datetime('now'))", (user_id, target_id))
                 conn.commit()
                 target_row = conn.execute("SELECT telegram_id, name, social_handle FROM users WHERE id=?", (target_id,)).fetchone()
-                me_row = conn.execute("SELECT name, social_handle FROM users WHERE id=?", (user_id,)).fetchone()
-                me_name, me_social = me_row
+                me_row = conn.execute("SELECT name, social_handle, is_premium FROM users WHERE id=?", (user_id,)).fetchone()
+                me_name, me_social, me_premium = me_row
+                # fetch target's premium status too
+                target_premium_row = conn.execute("SELECT is_premium FROM users WHERE id=?", (target_id,)).fetchone()
+                target_is_premium = bool(target_premium_row[0]) if target_premium_row else False
                 conn.close()
                 try:
                     await query.edit_message_caption(caption="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
                 except: pass
                 if target_row and target_row[0]:
                     try:
-                        await notify_match(query.get_bot(), target_row[0], me_name, me_social)
+                        await notify_match(query.get_bot(), target_row[0], me_name, me_social, target_is_premium)
                     except: pass
+                # also notify me about the target
+                me_tg = conn if False else None  # already closed
+                try:
+                    me_tg_row = get_user_by_tg(tg_id)
+                    if me_tg_row:
+                        await notify_match(query.get_bot(), tg_id, target_row[1], target_row[2], bool(me_premium))
+                except: pass
                 return
         conn.close()
         emoji = "⭐" if is_super else "❤️"
@@ -528,6 +546,10 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if row and row[10]:
         await update.message.reply_text("👑 *You are already Premium!*\n\nEnjoy unlimited access 🎉", parse_mode="Markdown")
         return
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💫 1 Month — 150 ⭐", callback_data="buy:monthly")],
+        [InlineKeyboardButton("🌟 3 Months — 350 ⭐", callback_data="buy:quarterly")],
+    ])
     await update.message.reply_text(
         "👑 *YourMeet Premium*\n\n"
         "✅ Unlimited likes\n"
@@ -536,11 +558,54 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ Profile boost\n"
         "✅ Priority in discover\n\n"
         "💫 *150 Stars/month* or *350 Stars/3 months*\n\n"
-        "Pay with Telegram Stars — instant & secure ⭐\n\n"
-        "Upgrade now 👇",
+        "Choose a plan 👇",
         parse_mode="Markdown",
-        reply_markup=open_app_keyboard("/premium")
+        reply_markup=kb
     )
+
+async def buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    tg_id = str(query.from_user.id)
+    plan = query.data.split(":")[1]
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except: pass
+    await send_stars_invoice(context.bot, tg_id, plan)
+
+async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    action = query.data
+    if action == "swipe_now":
+        tg_id = str(query.from_user.id)
+        user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
+        if not is_premium and swipes_left <= 0:
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("👑 Go Premium", callback_data="buy:monthly")]])
+            try:
+                await query.edit_message_reply_markup(reply_markup=None)
+            except: pass
+            await query.message.reply_text(
+                "😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
+                parse_mode="Markdown", reply_markup=kb
+            )
+            return
+        async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
+            if is_photo:
+                await query.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+            else:
+                await query.message.reply_text(content, parse_mode=parse_mode, reply_markup=reply_markup)
+        await _send_profile(send_fn, tg_id)
+    elif action == "share_link":
+        await share_cmd(update, context)
+    elif action == "matches_now":
+        await matches_cmd(update, context)
+    elif action == "profile_now":
+        await profile_cmd(update, context)
+    elif action == "stats_now":
+        await stats_cmd(update, context)
+    elif action == "boost_now":
+        await boost_cmd(update, context)
 
 # /boost
 async def boost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -579,12 +644,18 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     likes_received = conn.execute("SELECT COUNT(*) FROM likes WHERE to_user=?", (user_id,)).fetchone()[0]
     matches = conn.execute("SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id)).fetchone()[0]
     conn.close()
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔥 Keep Swiping", callback_data="swipe_now"),
+         InlineKeyboardButton("👑 Go Premium", callback_data="buy:monthly")],
+        [InlineKeyboardButton("🔗 Share & Get Swipes", callback_data="share_link")],
+    ])
     await update.message.reply_text(
         f"📊 *Your Stats*\n\n"
         f"❤️ Likes Given: *{likes_given}*\n"
         f"💌 Likes Received: *{likes_received}*\n"
         f"💕 Matches: *{matches}*",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=kb
     )
 
 # /delete
@@ -642,17 +713,32 @@ async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = row[0]
     referral_count = row[18] if len(row) > 18 else 0
     link = f"https://t.me/Yoursmeetbot?start=ref_{user_id}"
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔗 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20me%20on%20YourMeet%20💕")],
+        [InlineKeyboardButton("🔥 Start Swiping", callback_data="swipe_now")],
+    ])
     await update.message.reply_text(
         f"🔗 *Your Referral Link*\n\n"
         f"`{link}`\n\n"
         f"Share this with friends!\n"
         f"Every *3 friends* who join = *+10 swipes* for you 🎉\n\n"
         f"👥 Friends joined so far: *{referral_count}*",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=kb
     )
 
 # /help
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔥 Swipe", callback_data="swipe_now"),
+         InlineKeyboardButton("💕 Matches", callback_data="matches_now")],
+        [InlineKeyboardButton("👤 Profile", callback_data="profile_now"),
+         InlineKeyboardButton("🔗 Share", callback_data="share_link")],
+        [InlineKeyboardButton("👑 Premium", callback_data="buy:monthly"),
+         InlineKeyboardButton("🚀 Boost", callback_data="boost_now")],
+        [InlineKeyboardButton("📊 Stats", callback_data="stats_now"),
+         InlineKeyboardButton("📱 Open App", web_app=WebAppInfo(url=APP_URL))],
+    ])
     await update.message.reply_text(
         "🌹 *YourMeet Commands*\n\n"
         "/start - Open the app\n"
@@ -660,7 +746,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/edit - Edit your profile\n"
         "/profile - View your profile\n"
         "/matches - See your matches\n"
-                "/swipe - Swipe in chat (no app needed)\n"
+        "/swipe - Swipe in chat (no app needed)\n"
         "/share - Get referral link (+10 swipes per 3 friends)\n"
         "/boost - Boost your profile to top (Premium)\n"
         "/stats - Your activity stats\n"
@@ -668,7 +754,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/delete - Delete account\n"
         "/help - Show this message",
         parse_mode="Markdown",
-        reply_markup=open_app_keyboard()
+        reply_markup=kb
     )
 
 STARS_PLANS = {
@@ -711,16 +797,25 @@ async def handle_successful_payment(update: Update, context: ContextTypes.DEFAUL
         reply_markup=open_app_keyboard("/")
     )
 
-async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = ""):
+async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = "", is_premium: bool = False):
     if not tg_id:
         return
     try:
-        social_line = f"\n📱 Contact: *{social_handle}*" if social_handle else ""
+        if is_premium and social_handle:
+            contact_line = f"\n\n📱 Contact: *{social_handle}*"
+        else:
+            contact_line = "\n\n🔒 *Upgrade to Premium* to see contact details!"
+        kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💕 View Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches"))],
+        ]) if is_premium else InlineKeyboardMarkup([
+            [InlineKeyboardButton("💕 View Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches"))],
+            [InlineKeyboardButton("👑 Unlock Contact — Premium", callback_data="buy:monthly")],
+        ])
         await bot.send_message(
             chat_id=tg_id,
-            text=f"💕 *It's a Match!*\n\nYou and *{matched_name}* liked each other!{social_line}\n\nOpen matches 👇",
+            text=f"💕 *It's a Match!*\n\nYou and *{matched_name}* liked each other!{contact_line}",
             parse_mode="Markdown",
-            reply_markup=open_app_keyboard("/matches")
+            reply_markup=kb
         )
     except:
         pass
@@ -764,6 +859,8 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(swipe_callback, pattern="^(like|nope|super):"))
     app.add_handler(CallbackQueryHandler(next_callback, pattern="^next$"))
     app.add_handler(CallbackQueryHandler(delete_callback, pattern="^(confirm_delete|cancel_delete)$"))
+    app.add_handler(CallbackQueryHandler(buy_callback, pattern="^buy:"))
+    app.add_handler(CallbackQueryHandler(quick_action_callback, pattern="^(swipe_now|share_link|matches_now|profile_now|stats_now|boost_now)$"))
     app.add_handler(CommandHandler("friends", friends_cmd))
     app.add_handler(CommandHandler("boost", boost_cmd))
     app.add_handler(CommandHandler("premium", premium_cmd))

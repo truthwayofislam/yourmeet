@@ -23,6 +23,9 @@ def check_and_reset_swipes(db, user):
 async def home(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
+    # Incomplete profile — force complete registration
+    if not current_user.gender or not current_user.photo or not getattr(current_user, 'age', 0):
+        return RedirectResponse("/register")
     liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (current_user.id,)).fetchall()]
     skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (current_user.id,)).fetchall()]
     excluded = list(set(liked + skipped + [current_user.id]))
@@ -71,9 +74,14 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
                 from main import bot_app
                 from bot import notify_match
                 import asyncio
-                target_row = db.execute("SELECT telegram_id FROM users WHERE id=?", (target_id,)).fetchone()
+                target_row = db.execute("SELECT telegram_id, social_handle, is_premium FROM users WHERE id=?", (target_id,)).fetchone()
                 if bot_app and target_row and target_row[0]:
-                    asyncio.create_task(notify_match(bot_app.bot, target_row[0], current_user.name, current_user.social_handle or ""))
+                    asyncio.create_task(notify_match(bot_app.bot, target_row[0], current_user.name, current_user.social_handle or "", bool(target_row[2])))
+                # notify current user about target
+                if bot_app and current_user.telegram_id:
+                    target_name_row = db.execute("SELECT name, social_handle FROM users WHERE id=?", (target_id,)).fetchone()
+                    if target_name_row:
+                        asyncio.create_task(notify_match(bot_app.bot, current_user.telegram_id, target_name_row[0], target_name_row[1] or "", bool(current_user.is_premium)))
             except: pass
         return JSONResponse({"matched": True})
     return JSONResponse({"matched": False})
@@ -103,6 +111,8 @@ async def boost_profile(db=Depends(get_db), current_user=Depends(get_current_use
 async def liked_me_page(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
+    if not current_user.gender or not current_user.photo:
+        return RedirectResponse("/register")
     if not current_user.is_premium:
         return RedirectResponse("/premium")
     rows = db.execute(
@@ -140,6 +150,8 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
 async def matches_page(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
+    if not current_user.gender or not current_user.photo:
+        return RedirectResponse("/register")
     rows = db.execute(
         "SELECT * FROM matches WHERE user1_id=? OR user2_id=?", (current_user.id, current_user.id)
     ).fetchall()

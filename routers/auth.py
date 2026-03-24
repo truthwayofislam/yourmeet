@@ -45,6 +45,23 @@ async def register(
 ):
     if age < 18:
         return templates.TemplateResponse(request, "register.html", context={"error": "Age must be 18 or above"})
+    # Email format
+    import re
+    if not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
+        return templates.TemplateResponse(request, "register.html", context={"error": "Enter a valid email address"})
+    # Phone — min 10 digits
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) < 10:
+        return templates.TemplateResponse(request, "register.html", context={"error": "Phone must be at least 10 digits"})
+    # City required
+    if not city or len(city.strip()) < 2:
+        return templates.TemplateResponse(request, "register.html", context={"error": "Please enter your city"})
+    # Bio required
+    if not bio or len(bio.strip()) < 10:
+        return templates.TemplateResponse(request, "register.html", context={"error": "Bio must be at least 10 characters"})
+    # Photo required
+    if not photo or not photo.filename:
+        return templates.TemplateResponse(request, "register.html", context={"error": "Profile photo is required"})
     if db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone():
         return templates.TemplateResponse(request, "register.html", context={"error": "Email already registered"})
     if phone and db.execute("SELECT id FROM users WHERE phone=?", (phone,)).fetchone():
@@ -126,7 +143,7 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
         if user.is_blocked:
             return JSONResponse({"error": "blocked"}, status_code=403)
         user_id = user.id
-        new_user = not user.gender or not user.age
+        new_user = not user.gender or not user.photo or not user.age
     return JSONResponse({"token": create_token(user_id), "new_user": new_user})
 
 @router.get("/logout")
