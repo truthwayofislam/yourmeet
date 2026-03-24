@@ -280,7 +280,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.execute("UPDATE users SET is_blocked=0, is_verified=1, is_approved=1 WHERE id=?", (uid,))
         label = "✅ Approved + Verified ⭐"
     else:
-        conn.execute("UPDATE users SET is_blocked=1, is_approved=1 WHERE id=?", (uid,))
+        conn.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (uid,))
         label = "🚫 Blocked"
     conn.commit()
     tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
@@ -305,7 +305,10 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _notify_user(tg_id,
                 f"🚫 *{name}*, your profile was rejected.\n\n"
                 f"Please re-register with a clear photo and genuine bio.",
-                {"inline_keyboard": [[{"text": "🔄 Re-register", "url": f"{app_url}/register"}]]}
+                {"inline_keyboard": [
+                    [{"text": "🔄 Re-register via Bot", "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}?start=setup"}],
+                    [{"text": "🌐 Re-register via App", "url": f"{app_url}/register"}]
+                ]}
             )
     status_line = f"\n\n{label}"
     try:
