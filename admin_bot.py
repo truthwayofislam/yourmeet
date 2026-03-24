@@ -267,6 +267,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     conn = get_conn()
     total = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0").fetchone()[0]
+    real = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND email NOT LIKE 'fake_%@yourmeet.app'").fetchone()[0]
     blocked = conn.execute("SELECT COUNT(*) FROM users WHERE is_blocked=1").fetchone()[0]
     premium = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
     matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
@@ -275,6 +276,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📊 *App Stats*\n\n"
         f"👥 Total Users: *{total}*\n"
+        f"👤 Real Users: *{real}*\n"
         f"🆕 Joined Today: *{today_users}*\n"
         f"👑 Premium: *{premium}*\n"
         f"🚫 Blocked: *{blocked}*\n"
