@@ -82,6 +82,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "New user registrations will appear here.\n"
         "Tap ✅ Approve or 🚫 Block on each profile.\n\n"
         "/pending — Show recent profiles\n"
+        "/remind — Message users with incomplete profiles\n"
         "/stats — App stats",
         parse_mode="Markdown"
     )
@@ -115,6 +116,52 @@ async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(caption + "\n⚠️ No photo", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
         except:
             await update.message.reply_text(caption + "\n⚠️ Photo error", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+
+# /remind — message incomplete profile users
+async def remind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        return
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT telegram_id, name, photo, bio, city, social_handle FROM users "
+        "WHERE is_admin=0 AND is_blocked=0 AND telegram_id IS NOT NULL AND telegram_id != '' "
+        "AND (photo='' OR bio='' OR city='' OR social_handle='')"
+    ).fetchall()
+    conn.close()
+    if not rows:
+        await update.message.reply_text("\u2705 All users have complete profiles!")
+        return
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
+    app_url = os.getenv("APP_URL", "")
+    api = f"https://api.telegram.org/bot{bot_token}"
+    sent = 0
+    import json
+    async with httpx.AsyncClient(timeout=20) as client:
+        for tg_id, name, photo, bio, city, social in rows:
+            missing = []
+            if not photo: missing.append("\U0001f4f8 Profile photo")
+            if not bio: missing.append("\U0001f4ac Bio")
+            if not city: missing.append("\U0001f4cd City")
+            if not social: missing.append("\U0001f4f1 Instagram/Telegram handle")
+            if not missing:
+                continue
+            text = (
+                f"\U0001f44b Hey *{name or 'there'}*!\n\n"
+                f"Your YourMeet profile is incomplete. Add these to get *real matches*:\n\n"
+                + "\n".join(f"\u2022 {m}" for m in missing)
+                + "\n\nComplete your profile now \U0001f447"
+            )
+            keyboard = {"inline_keyboard": [[{"text": "\u270f\ufe0f Complete Profile", "url": f"{app_url}/profile"}]]}
+            try:
+                await client.post(f"{api}/sendMessage", json={
+                    "chat_id": tg_id,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                    "reply_markup": keyboard
+                })
+                sent += 1
+            except: pass
+    await update.message.reply_text(f"\u2705 Reminders sent to *{sent}* users.", parse_mode="Markdown")
 
 # /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,6 +222,7 @@ def build_admin_app() -> Application:
     app = ApplicationBuilder().token(token).request(request).updater(None).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("pending", pending_cmd))
+    app.add_handler(CommandHandler("remind", remind_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
     return app

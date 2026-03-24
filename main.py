@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 from database import init_db
 from routers import auth, profiles, payment, admin
 from dotenv import load_dotenv
-import uvicorn, os
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import uvicorn, os, httpx
 
 load_dotenv()
 
@@ -14,6 +15,46 @@ APP_URL = os.getenv("APP_URL", "")
 
 bot_app = None
 admin_bot_app = None
+
+async def send_incomplete_reminders():
+    from database import get_conn
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT telegram_id, name, photo, bio, city, social_handle FROM users "
+        "WHERE is_admin=0 AND is_blocked=0 AND telegram_id IS NOT NULL AND telegram_id != '' "
+        "AND (photo='' OR bio='' OR city='' OR social_handle='')"
+    ).fetchall()
+    conn.close()
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "")
+    app_url = os.getenv("APP_URL", "")
+    if not bot_token or not rows:
+        return
+    api = f"https://api.telegram.org/bot{bot_token}"
+    import json
+    async with httpx.AsyncClient(timeout=20) as client:
+        for tg_id, name, photo, bio, city, social in rows:
+            missing = []
+            if not photo: missing.append("📸 Profile photo")
+            if not bio: missing.append("💬 Bio")
+            if not city: missing.append("📍 City")
+            if not social: missing.append("📱 Instagram/Telegram handle")
+            if not missing:
+                continue
+            text = (
+                f"👋 Hey *{name or 'there'}*!\n\n"
+                f"Your YourMeet profile is incomplete. Add these to get *real matches*:\n\n"
+                + "\n".join(f"• {m}" for m in missing)
+                + "\n\nComplete your profile now 👇"
+            )
+            keyboard = {"inline_keyboard": [[{"text": "✏️ Complete Profile", "url": f"{app_url}/profile"}]]}
+            try:
+                await client.post(f"{api}/sendMessage", json={
+                    "chat_id": tg_id,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                    "reply_markup": keyboard
+                })
+            except: pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,6 +77,10 @@ async def lifespan(app: FastAPI):
         await admin_bot_app.bot.set_webhook(f"{APP_URL}/admin-webhook/{ADMIN_BOT_TOKEN}")
         await admin_bot_app.start()
         print(f"[ADMIN BOT] Webhook set")
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(send_incomplete_reminders, "cron", hour=14, minute=30)  # 8 PM IST
+    scheduler.start()
+    print("[SCHEDULER] Incomplete profile reminder scheduled at 8 PM IST daily")
     yield
     if bot_app:
         await bot_app.stop()
@@ -43,6 +88,7 @@ async def lifespan(app: FastAPI):
     if admin_bot_app:
         await admin_bot_app.stop()
         await admin_bot_app.shutdown()
+    scheduler.shutdown()
 
 app = FastAPI(title="YourMeet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")

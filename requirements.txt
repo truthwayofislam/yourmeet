@@ -10,3 +10,4 @@ httpx
 bcrypt
 python-dotenv
 libsql-experimental
+apscheduler
