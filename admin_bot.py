@@ -94,7 +94,7 @@ async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, name, age, gender, city, photo FROM users WHERE is_admin=0 ORDER BY id DESC LIMIT 20"
+        "SELECT id, name, age, gender, city, photo FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0 ORDER BY id DESC LIMIT 20"
     ).fetchall()
     conn.close()
     if not rows:
@@ -232,13 +232,13 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"[ADMIN] verify_callback: action={action}, uid={uid}")
     conn = get_conn()
     if action == "approve":
-        conn.execute("UPDATE users SET is_blocked=0 WHERE id=?", (uid,))
+        conn.execute("UPDATE users SET is_blocked=0, is_approved=1 WHERE id=?", (uid,))
         label = "✅ Approved"
     elif action == "verify":
-        conn.execute("UPDATE users SET is_blocked=0, is_verified=1 WHERE id=?", (uid,))
+        conn.execute("UPDATE users SET is_blocked=0, is_verified=1, is_approved=1 WHERE id=?", (uid,))
         label = "✅ Approved + Verified ⭐"
     else:
-        conn.execute("UPDATE users SET is_blocked=1 WHERE id=?", (uid,))
+        conn.execute("UPDATE users SET is_blocked=1, is_approved=1 WHERE id=?", (uid,))
         label = "🚫 Blocked"
     conn.commit()
     tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
