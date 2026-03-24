@@ -54,10 +54,16 @@ EDIT_CHOOSE, EDIT_VALUE, EDIT_PHOTO = range(7, 10)
 async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     row = get_user_by_tg(tg_id)
-    if row and row[15]:
-        await _check_blocked(update, tg_id)
-        return ConversationHandler.END
-    if row:
+    if row and row[15]:  # blocked — delete old account so they can re-register
+        conn = get_conn()
+        old_id = row[0]
+        conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (old_id, old_id))
+        conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (old_id, old_id))
+        conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (old_id, old_id))
+        conn.execute("DELETE FROM users WHERE id=?", (old_id,))
+        conn.commit()
+        conn.close()
+    elif row:
         await update.message.reply_text("✅ You already have a profile! Use /profile to view it.")
         return ConversationHandler.END
     await update.message.reply_text("👋 Let's create your profile!\n\nWhat's your *name*?", parse_mode="Markdown")

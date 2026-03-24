@@ -126,6 +126,15 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
         return JSONResponse({"error": "invalid"}, status_code=400)
     row = db.execute("SELECT * FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     user = row_to_user(row)
+    if user and user.is_blocked:
+        # Delete old blocked account so user can re-register fresh
+        old_id = user.id
+        db.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (old_id, old_id))
+        db.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (old_id, old_id))
+        db.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (old_id, old_id))
+        db.execute("DELETE FROM users WHERE id=?", (old_id,))
+        db.commit()
+        user = None
     if not user:
         db.execute(
             "INSERT INTO users (name,email,phone,password,age,gender,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?)",
@@ -134,15 +143,12 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
         db.commit()
         user_id = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()[0]
         new_user = True
-        # Notify admin bot
         try:
             from admin_bot import send_for_review
             await send_for_review(user_id, name, 0, "", "", "", f"{tg_id}@telegram.local", tg_id)
         except Exception as e:
             print(f"[ADMIN NOTIFY] {e}")
     else:
-        if user.is_blocked:
-            return JSONResponse({"error": "blocked"}, status_code=403)
         user_id = user.id
         new_user = not user.gender or not user.photo or not user.age
     return JSONResponse({"token": create_token(user_id), "new_user": new_user})
