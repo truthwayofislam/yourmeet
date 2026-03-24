@@ -83,6 +83,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Tap ✅ Approve or 🚫 Block on each profile.\n\n"
         "/pending — Show recent profiles\n"
         "/remind — Message users with incomplete profiles\n"
+        "/remind_blocked — Send rejection message to all blocked users\n"
         "/stats — App stats",
         parse_mode="Markdown"
     )
@@ -163,6 +164,39 @@ async def remind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
     await update.message.reply_text(f"\u2705 Reminders sent to *{sent}* users.", parse_mode="Markdown")
 
+async def _notify_user(tg_id: str, text: str, keyboard: dict):
+    main_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
+    if not main_token or not tg_id:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10) as cl:
+            await cl.post(f"https://api.telegram.org/bot{main_token}/sendMessage", json={
+                "chat_id": tg_id, "text": text, "parse_mode": "Markdown", "reply_markup": keyboard
+            })
+    except: pass
+
+# /remind_blocked — notify already blocked users
+async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        return
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT telegram_id, name FROM users WHERE is_blocked=1 AND telegram_id IS NOT NULL AND telegram_id != ''"
+    ).fetchall()
+    conn.close()
+    if not rows:
+        await update.message.reply_text("No blocked users with Telegram ID.")
+        return
+    sent = 0
+    for tg_id, name in rows:
+        await _notify_user(tg_id,
+            f"🚫 *{name}*, your profile was rejected.\n\n"
+            f"Your profile was rejected. Please re-register with a clear photo and genuine bio.",
+            {"inline_keyboard": [[{"text": "🔄 Re-register", "url": f"{os.getenv('APP_URL', '')}/register"}]]}
+        )
+        sent += 1
+    await update.message.reply_text(f"✅ Rejection message sent to *{sent}* blocked users.", parse_mode="Markdown")
+
 # /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
@@ -205,33 +239,26 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         label = "🚫 Blocked"
     conn.commit()
     # Notify user via main bot
-    if action in ("approve", "verify"):
-        tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
-        if tg_row and tg_row[0]:
-            tg_id, name = tg_row
-            main_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
-            app_url = os.getenv("APP_URL", "")
-            if main_token:
-                verified_line = "\n⭐ Your profile is also *Verified* — badge shown on your card!" if action == "verify" else ""
-                text = (
-                    f"🎉 *Congratulations {name}!*\n\n"
-                    f"Your YourMeet profile has been *approved* ✅\n"
-                    f"You can now start swiping and matching!{verified_line}\n\n"
-                    f"Tap below to find your match 💕"
-                )
-                keyboard = {"inline_keyboard": [[{"text": "💕 Start Swiping", "url": app_url}]]}
-                import json
-                try:
-                    import httpx as _httpx
-                    async with _httpx.AsyncClient(timeout=10) as cl:
-                        await cl.post(f"https://api.telegram.org/bot{main_token}/sendMessage", json={
-                            "chat_id": tg_id,
-                            "text": text,
-                            "parse_mode": "Markdown",
-                            "reply_markup": keyboard
-                        })
-                except: pass
+    tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
     conn.close()
+    if tg_row and tg_row[0]:
+        tg_id, name = tg_row
+        app_url = os.getenv("APP_URL", "")
+        if action in ("approve", "verify"):
+            verified_line = "\n⭐ Your profile is also *Verified* — badge shown on your card!" if action == "verify" else ""
+            await _notify_user(tg_id,
+                f"🎉 *Congratulations {name}!*\n\n"
+                f"Your YourMeet profile has been *approved* ✅\n"
+                f"You can now start swiping and matching!{verified_line}\n\n"
+                f"Tap below to find your match 💕",
+                {"inline_keyboard": [[{"text": "💕 Start Swiping", "url": app_url}]]}
+            )
+        else:
+            await _notify_user(tg_id,
+                f"🚫 *{name}*, your profile was rejected.\n\n"
+                f"Your profile was rejected. Please re-register with a clear photo and genuine bio.",
+                {"inline_keyboard": [[{"text": "🔄 Re-register", "url": f"{app_url}/register"}]]}
+            )
     status_line = f"\n\n{label}"
     try:
         await query.edit_message_caption(
@@ -254,6 +281,7 @@ def build_admin_app() -> Application:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("pending", pending_cmd))
     app.add_handler(CommandHandler("remind", remind_cmd))
+    app.add_handler(CommandHandler("remind_blocked", remind_blocked_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
     return app
