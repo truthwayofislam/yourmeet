@@ -222,13 +222,20 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     conn = get_conn()
     rows = conn.execute(
-        "SELECT telegram_id FROM users WHERE is_admin=0 AND telegram_id IS NOT NULL AND telegram_id != ''"
+        "SELECT telegram_id FROM users WHERE is_admin=0 AND is_blocked=0 AND telegram_id IS NOT NULL AND telegram_id != ''"
     ).fetchall()
     conn.close()
+    if not rows:
+        await update.message.reply_text("No users to broadcast to.")
+        return
     bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
+    if not bot_token:
+        await update.message.reply_text("❌ TELEGRAM_BOTS_KEY not set.")
+        return
     api = f"https://api.telegram.org/bot{bot_token}"
     sent, failed = 0, 0
-    async with httpx.AsyncClient(timeout=20) as client:
+    import asyncio
+    async with httpx.AsyncClient(timeout=10) as client:
         for (tg_id,) in rows:
             try:
                 resp = await client.post(f"{api}/sendMessage", json={
@@ -236,10 +243,22 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
                 if resp.status_code == 200:
                     sent += 1
+                elif resp.status_code == 429:
+                    retry_after = resp.json().get("parameters", {}).get("retry_after", 3)
+                    await asyncio.sleep(retry_after)
+                    # retry once
+                    resp2 = await client.post(f"{api}/sendMessage", json={
+                        "chat_id": tg_id, "text": text, "parse_mode": "Markdown"
+                    })
+                    if resp2.status_code == 200:
+                        sent += 1
+                    else:
+                        failed += 1
                 else:
                     failed += 1
             except:
                 failed += 1
+            await asyncio.sleep(0.05)  # 20 msg/sec — stay under Telegram rate limit
     await update.message.reply_text(f"✅ Broadcast done!\n\n✔️ Sent: *{sent}*\n❌ Failed: *{failed}*", parse_mode="Markdown")
 
 # /stats
