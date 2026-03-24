@@ -167,13 +167,16 @@ async def remind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _notify_user(tg_id: str, text: str, keyboard: dict):
     main_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
     if not main_token or not tg_id:
+        print(f"[NOTIFY] Skipped — token={'SET' if main_token else 'MISSING'}, tg_id={tg_id!r}")
         return
     try:
         async with httpx.AsyncClient(timeout=10) as cl:
-            await cl.post(f"https://api.telegram.org/bot{main_token}/sendMessage", json={
+            resp = await cl.post(f"https://api.telegram.org/bot{main_token}/sendMessage", json={
                 "chat_id": tg_id, "text": text, "parse_mode": "Markdown", "reply_markup": keyboard
             })
-    except: pass
+            print(f"[NOTIFY] tg_id={tg_id} status={resp.status_code} body={resp.text[:200]}")
+    except Exception as e:
+        print(f"[NOTIFY] Exception: {e}")
 
 # /remind_blocked — notify already blocked users
 async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -241,6 +244,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Notify user via main bot
     tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
     conn.close()
+    print(f"[ADMIN] tg_row for uid={uid}: {tg_row}")
     if tg_row and tg_row[0]:
         tg_id, name = tg_row
         app_url = os.getenv("APP_URL", "")
@@ -262,15 +266,16 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_line = f"\n\n{label}"
     try:
         await query.edit_message_caption(
-            caption=(query.message.caption or "") + status_line
+            caption=(query.message.caption or "") + status_line,
+            reply_markup=None
         )
     except:
         try:
-            await query.edit_message_text((query.message.text or "") + status_line)
+            await query.edit_message_text(
+                (query.message.text or "") + status_line,
+                reply_markup=None
+            )
         except: pass
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except: pass
 
 def build_admin_app() -> Application:
     token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
