@@ -204,6 +204,33 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.execute("UPDATE users SET is_blocked=1 WHERE id=?", (uid,))
         label = "🚫 Blocked"
     conn.commit()
+    # Notify user via main bot
+    if action in ("approve", "verify"):
+        tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
+        if tg_row and tg_row[0]:
+            tg_id, name = tg_row
+            main_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
+            app_url = os.getenv("APP_URL", "")
+            if main_token:
+                verified_line = "\n⭐ Your profile is also *Verified* — badge shown on your card!" if action == "verify" else ""
+                text = (
+                    f"🎉 *Congratulations {name}!*\n\n"
+                    f"Your YourMeet profile has been *approved* ✅\n"
+                    f"You can now start swiping and matching!{verified_line}\n\n"
+                    f"Tap below to find your match 💕"
+                )
+                keyboard = {"inline_keyboard": [[{"text": "💕 Start Swiping", "url": app_url}]]}
+                import json
+                try:
+                    import httpx as _httpx
+                    async with _httpx.AsyncClient(timeout=10) as cl:
+                        await cl.post(f"https://api.telegram.org/bot{main_token}/sendMessage", json={
+                            "chat_id": tg_id,
+                            "text": text,
+                            "parse_mode": "Markdown",
+                            "reply_markup": keyboard
+                        })
+                except: pass
     conn.close()
     status_line = f"\n\n{label}"
     try:
