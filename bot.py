@@ -1,6 +1,6 @@
 import os
 import warnings
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, PreCheckoutQueryHandler, ConversationHandler, filters, ContextTypes, Application
 from telegram.warnings import PTBUserWarning
 import secrets
@@ -44,7 +44,12 @@ def open_app_keyboard(path=""):
         InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=f"{APP_URL}{path}"))
     ]])
 
-MINI_APP_URL = "https://t.me/Yoursmeetbot/YourMeet"
+MAIN_KB = ReplyKeyboardMarkup([
+    [KeyboardButton("🔥 Swipe"), KeyboardButton("💕 Matches")],
+    [KeyboardButton("👤 Profile"), KeyboardButton("📊 Stats")],
+    [KeyboardButton("🔗 Share"), KeyboardButton("👑 Premium")],
+    [KeyboardButton("🚀 Boost"), KeyboardButton("❓ Help")],
+], resize_keyboard=True)
 
 # ConversationHandler states
 SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_CITY, SETUP_BIO, SETUP_PHOTO, SETUP_SOCIAL = range(7)
@@ -317,6 +322,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=kb
     )
+    await update.message.reply_text("👇 Quick actions:", reply_markup=MAIN_KB)
 
 # /profile
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -852,6 +858,25 @@ async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = 
     except:
         pass
 
+async def keyboard_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "🔥 Swipe":
+        await swipe_cmd(update, context)
+    elif text == "💕 Matches":
+        await matches_cmd(update, context)
+    elif text == "👤 Profile":
+        await profile_cmd(update, context)
+    elif text == "📊 Stats":
+        await stats_cmd(update, context)
+    elif text == "🔗 Share":
+        await share_cmd(update, context)
+    elif text == "👑 Premium":
+        await premium_cmd(update, context)
+    elif text == "🚀 Boost":
+        await boost_cmd(update, context)
+    elif text == "❓ Help":
+        await help_cmd(update, context)
+
 from telegram.request import HTTPXRequest
 
 def build_app() -> Application:
@@ -902,4 +927,5 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(PreCheckoutQueryHandler(handle_pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_successful_payment))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyboard_btn_handler))
     return app
