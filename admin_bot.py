@@ -200,6 +200,17 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         sent += 1
     await update.message.reply_text(f"✅ Rejection message sent to *{sent}* blocked users.", parse_mode="Markdown")
 
+# /approve_seed — approve all fake/seed profiles
+async def approve_seed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        return
+    conn = get_conn()
+    cur = conn.execute("UPDATE users SET is_approved=1 WHERE email LIKE 'fake_%@yourmeet.app'")
+    conn.commit()
+    count = conn.execute("SELECT COUNT(*) FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchone()[0]
+    conn.close()
+    await update.message.reply_text(f"✅ *{count}* seed profiles marked as approved.", parse_mode="Markdown")
+
 # /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
@@ -289,6 +300,7 @@ def build_admin_app() -> Application:
     app.add_handler(CommandHandler("pending", pending_cmd))
     app.add_handler(CommandHandler("remind", remind_cmd))
     app.add_handler(CommandHandler("remind_blocked", remind_blocked_cmd))
+    app.add_handler(CommandHandler("approve_seed", approve_seed_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
     return app
