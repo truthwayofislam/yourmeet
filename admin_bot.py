@@ -192,6 +192,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     action, uid = query.data.split(":")
     uid = int(uid)
+    print(f"[ADMIN] verify_callback: action={action}, uid={uid}")
     conn = get_conn()
     if action == "approve":
         conn.execute("UPDATE users SET is_blocked=0 WHERE id=?", (uid,))
@@ -204,15 +205,18 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         label = "🚫 Blocked"
     conn.commit()
     conn.close()
+    status_line = f"\n\n{label}"
     try:
         await query.edit_message_caption(
-            caption=query.message.caption + f"\n\n{label}",
-            parse_mode="Markdown"
+            caption=(query.message.caption or "") + status_line
         )
     except:
         try:
-            await query.edit_message_text(query.message.text + f"\n\n{label}", parse_mode="Markdown")
+            await query.edit_message_text((query.message.text or "") + status_line)
         except: pass
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except: pass
 
 def build_admin_app() -> Application:
     token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
