@@ -24,6 +24,21 @@ def get_user_by_tg(tg_id: str):
     conn.close()
     return row
 
+BLOCKED_MSG = (
+    "🚫 *Your profile was rejected.*\n\n"
+    "Please re-register with a clear photo and genuine bio."
+)
+
+async def _check_blocked(update: Update, tg_id: str) -> bool:
+    row = get_user_by_tg(tg_id)
+    if row and row[15]:  # is_blocked
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Re-register", web_app=WebAppInfo(url=f"{APP_URL}/register"))]])
+        msg = update.message or (update.callback_query.message if update.callback_query else None)
+        if msg:
+            await msg.reply_text(BLOCKED_MSG, parse_mode="Markdown", reply_markup=kb)
+        return True
+    return False
+
 def open_app_keyboard(path=""):
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=f"{APP_URL}{path}"))
@@ -38,7 +53,11 @@ EDIT_CHOOSE, EDIT_VALUE, EDIT_PHOTO = range(7, 10)
 # /setup - create profile in chat
 async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    if get_user_by_tg(tg_id):
+    row = get_user_by_tg(tg_id)
+    if row and row[15]:
+        await _check_blocked(update, tg_id)
+        return ConversationHandler.END
+    if row:
         await update.message.reply_text("✅ You already have a profile! Use /profile to view it.")
         return ConversationHandler.END
     await update.message.reply_text("👋 Let's create your profile!\n\nWhat's your *name*?", parse_mode="Markdown")
@@ -296,6 +315,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /profile
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    if await _check_blocked(update, tg_id): return
     row = get_user_by_tg(tg_id)
     if not row:
         await update.message.reply_text("❌ Account not found. Please register first!", reply_markup=open_app_keyboard("/register"))
@@ -321,6 +341,7 @@ async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /matches
 async def matches_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    if await _check_blocked(update, tg_id): return
     row = get_user_by_tg(tg_id)
     if not row:
         await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
@@ -409,6 +430,7 @@ async def _send_profile(send_fn, tg_id: str):
 # /swipe
 async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    if await _check_blocked(update, tg_id): return ConversationHandler.END
     if not get_user_by_tg(tg_id):
         await update.message.reply_text("👋 No profile found! Let's create one first.\n\nWhat's your *name*?", parse_mode="Markdown")
         return SETUP_NAME
@@ -434,6 +456,7 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     tg_id = str(query.from_user.id)
+    if await _check_blocked(update, tg_id): return
     action, target_id = query.data.split(":")
     target_id = int(target_id)
 
@@ -610,6 +633,7 @@ async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
 # /boost
 async def boost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    if await _check_blocked(update, tg_id): return
     row = get_user_by_tg(tg_id)
     if not row:
         await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
@@ -634,6 +658,7 @@ async def boost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    if await _check_blocked(update, tg_id): return
     row = get_user_by_tg(tg_id)
     if not row:
         await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
@@ -706,6 +731,7 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /share
 async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    if await _check_blocked(update, tg_id): return
     row = get_user_by_tg(tg_id)
     if not row:
         await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
