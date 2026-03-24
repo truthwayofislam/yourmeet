@@ -26,7 +26,16 @@ def get_current_user(request: Request, db=Depends(get_db)):
     try:
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
         row = db.execute("SELECT * FROM users WHERE id=?", (int(payload["sub"]),)).fetchone()
-        return row_to_user(row)
+        user = row_to_user(row)
+        if user and user.is_premium:
+            premium_until = getattr(user, 'premium_until', '')
+            if premium_until:
+                from datetime import datetime
+                if datetime.utcnow() > datetime.strptime(premium_until, "%Y-%m-%d %H:%M:%S"):
+                    db.execute("UPDATE users SET is_premium=0, super_likes_left=3 WHERE id=?", (user.id,))
+                    db.commit()
+                    user.__dict__['is_premium'] = 0
+        return user
     except:
         return None
 

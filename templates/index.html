@@ -148,8 +148,9 @@
   <div class="bg-card rounded-3xl p-8 text-center max-w-xs w-full border border-white/10 card-glow">
     <div class="text-5xl mb-4">💕</div>
     <h2 class="text-2xl font-bold gradient-text mb-2">It's a Match!</h2>
-    <p class="text-gray-400 text-sm mb-6">You and <span id="match-name" class="text-white font-semibold"></span> liked each other!</p>
-    <div class="flex gap-3">
+    <p class="text-gray-400 text-sm mb-2">You and <span id="match-name" class="text-white font-semibold"></span> liked each other!</p>
+    <p class="text-gray-500 text-xs mb-6">Go to Matches to see contact details</p>
+    <div class="flex gap-3 mb-3">
       <button onclick="closeModal()" class="flex-1 bg-surface border border-white/10 text-white py-3 rounded-xl text-sm font-medium hover:bg-white/5 transition">
         Keep Swiping
       </button>
@@ -157,6 +158,24 @@
         View Match
       </a>
     </div>
+    <button onclick="reportMatch()" class="text-gray-600 text-xs hover:text-red-400 transition">
+      <i class="fas fa-flag mr-1"></i>Report this profile
+    </button>
+  </div>
+</div>
+
+<!-- Report Modal -->
+<div id="report-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+  <div class="bg-card rounded-3xl p-6 max-w-xs w-full border border-white/10">
+    <h3 class="text-white font-semibold mb-4">🚩 Report Profile</h3>
+    <div class="space-y-2 mb-4">
+      {% for reason in ['Fake profile', 'Inappropriate photo', 'Spam', 'Underage', 'Other'] %}
+      <button onclick="submitReport('{{ reason }}')" class="w-full text-left bg-surface border border-white/10 text-gray-300 text-sm px-4 py-3 rounded-xl hover:border-red-500/50 hover:text-red-400 transition">
+        {{ reason }}
+      </button>
+      {% endfor %}
+    </div>
+    <button onclick="document.getElementById('report-modal').classList.add('hidden')" class="w-full text-gray-500 text-sm py-2">Cancel</button>
   </div>
 </div>
 
@@ -168,10 +187,13 @@ function getCurrentCard() {
   return cards[currentIndex];
 }
 
+let currentMatchId = null;
+
 async function swipeAction(action) {
   const card = getCurrentCard();
   if (!card) return;
   const id = card.dataset.id;
+  currentMatchId = id;
 
   if (action === 'like' || action === 'super') {
     card.querySelector('.like-indicator').style.opacity = '1';
@@ -212,6 +234,21 @@ async function swipeAction(action) {
 
 function closeModal() {
   document.getElementById('match-modal').classList.add('hidden');
+}
+
+function reportMatch() {
+  document.getElementById('match-modal').classList.add('hidden');
+  document.getElementById('report-modal').classList.remove('hidden');
+}
+
+async function submitReport(reason) {
+  document.getElementById('report-modal').classList.add('hidden');
+  if (!currentMatchId) return;
+  await fetch(`/report/${currentMatchId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason})
+  });
 }
 
 function applyAgeFilter() {

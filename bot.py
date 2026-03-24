@@ -819,10 +819,13 @@ async def handle_pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    payload = update.message.successful_payment.invoice_payload  # "premium:monthly:tg_id"
+    payload = update.message.successful_payment.invoice_payload
     plan = payload.split(":")[1] if ":" in payload else "monthly"
+    from datetime import datetime, timedelta
+    days = 90 if plan == "quarterly" else 30
+    premium_until = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     conn = get_conn()
-    conn.execute("UPDATE users SET is_premium=1, super_likes_left=999 WHERE telegram_id=?", (tg_id,))
+    conn.execute("UPDATE users SET is_premium=1, super_likes_left=999, premium_until=? WHERE telegram_id=?", (premium_until, tg_id))
     conn.commit()
     conn.close()
     await update.message.reply_text(
@@ -859,6 +862,8 @@ async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = 
         pass
 
 async def keyboard_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("edit_field"):  # edit conversation active
+        return
     text = update.message.text
     if text == "🔥 Swipe":
         await swipe_cmd(update, context)

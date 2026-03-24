@@ -68,6 +68,7 @@ def init_db():
         ("is_verified", "INTEGER DEFAULT 0"),
         ("boosted_until", "TEXT DEFAULT ''"),
         ("is_approved", "INTEGER DEFAULT 0"),
+        ("premium_until", "TEXT DEFAULT ''"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")

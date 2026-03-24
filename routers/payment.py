@@ -49,6 +49,9 @@ async def activate_stars(request: Request, db=Depends(get_db), current_user=Depe
         "INSERT INTO payments (user_id, amount, plan, status, created_at) VALUES (?,?,?,'paid',datetime('now'))",
         (current_user.id, PLANS[plan]["stars"], plan)
     )
-    db.execute("UPDATE users SET is_premium=1, super_likes_left=999 WHERE id=?", (current_user.id,))
+    from datetime import datetime, timedelta
+    days = PLANS[plan]["days"]
+    premium_until = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("UPDATE users SET is_premium=1, super_likes_left=999, premium_until=? WHERE id=?", (premium_until, current_user.id))
     db.commit()
     return JSONResponse({"success": True})

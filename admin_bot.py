@@ -84,6 +84,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/pending — Show recent profiles\n"
         "/remind — Message users with incomplete profiles\n"
         "/remind_blocked — Send rejection message to all blocked users\n"
+        "/broadcast <msg> — Send message to all users\n"
         "/stats — App stats",
         parse_mode="Markdown"
     )
@@ -211,6 +212,36 @@ async def approve_seed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     await update.message.reply_text(f"✅ *{count}* seed profiles marked as approved.", parse_mode="Markdown")
 
+# /broadcast — send message to all users
+async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        return
+    text = " ".join(context.args) if context.args else ""
+    if not text:
+        await update.message.reply_text("⚠️ Usage: /broadcast Your message here")
+        return
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT telegram_id FROM users WHERE is_admin=0 AND telegram_id IS NOT NULL AND telegram_id != ''"
+    ).fetchall()
+    conn.close()
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
+    api = f"https://api.telegram.org/bot{bot_token}"
+    sent, failed = 0, 0
+    async with httpx.AsyncClient(timeout=20) as client:
+        for (tg_id,) in rows:
+            try:
+                resp = await client.post(f"{api}/sendMessage", json={
+                    "chat_id": tg_id, "text": text, "parse_mode": "Markdown"
+                })
+                if resp.status_code == 200:
+                    sent += 1
+                else:
+                    failed += 1
+            except:
+                failed += 1
+    await update.message.reply_text(f"✅ Broadcast done!\n\n✔️ Sent: *{sent}*\n❌ Failed: *{failed}*", parse_mode="Markdown")
+
 # /stats
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
@@ -301,6 +332,7 @@ def build_admin_app() -> Application:
     app.add_handler(CommandHandler("remind", remind_cmd))
     app.add_handler(CommandHandler("remind_blocked", remind_blocked_cmd))
     app.add_handler(CommandHandler("approve_seed", approve_seed_cmd))
+    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
     return app

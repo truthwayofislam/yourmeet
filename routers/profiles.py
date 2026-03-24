@@ -14,9 +14,10 @@ MATCH_KEYS = ["id","user1_id","user2_id","matched_at"]
 def check_and_reset_swipes(db, user):
     today = str(date.today())
     if getattr(user, 'swipes_reset_date', '') != today:
-        db.execute("UPDATE users SET daily_swipes=3, swipes_reset_date=? WHERE id=?", (today, user.id))
+        db.execute("UPDATE users SET daily_swipes=3, super_likes_left=1, swipes_reset_date=? WHERE id=?", (today, user.id))
         db.commit()
         user.__dict__['daily_swipes'] = 3
+        user.__dict__['super_likes_left'] = 1
         user.__dict__['swipes_reset_date'] = today
 
 @router.get("/", response_class=HTMLResponse)
@@ -34,7 +35,7 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
     age_min = max(18, min(int(request.query_params.get("age_min", 18)), 99))
     age_max = max(18, min(int(request.query_params.get("age_max", 99)), 99))
     rows = db.execute(
-        f"""SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0
+        f"""SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0 AND is_approved=1
             ORDER BY CASE WHEN boosted_until > datetime('now') THEN 0 ELSE 1 END, RANDOM() LIMIT 10""",
         (*excluded, opposite, age_min, age_max)
     ).fetchall()
@@ -73,15 +74,13 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
             try:
                 from main import bot_app
                 from bot import notify_match
-                import asyncio
                 target_row = db.execute("SELECT telegram_id, social_handle, is_premium FROM users WHERE id=?", (target_id,)).fetchone()
                 if bot_app and target_row and target_row[0]:
-                    asyncio.create_task(notify_match(bot_app.bot, target_row[0], current_user.name, current_user.social_handle or "", bool(target_row[2])))
-                # notify current user about target
+                    await notify_match(bot_app.bot, target_row[0], current_user.name, current_user.social_handle or "", bool(target_row[2]))
                 if bot_app and current_user.telegram_id:
                     target_name_row = db.execute("SELECT name, social_handle FROM users WHERE id=?", (target_id,)).fetchone()
                     if target_name_row:
-                        asyncio.create_task(notify_match(bot_app.bot, current_user.telegram_id, target_name_row[0], target_name_row[1] or "", bool(current_user.is_premium)))
+                        await notify_match(bot_app.bot, current_user.telegram_id, target_name_row[0], target_name_row[1] or "", bool(current_user.is_premium))
             except: pass
         return JSONResponse({"matched": True})
     return JSONResponse({"matched": False})
