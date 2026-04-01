@@ -28,9 +28,17 @@ def get_conn():
 class _NoClose:
     """Wraps connection so .close() is a no-op — connection stays alive for reuse."""
     def __init__(self, conn): self._c = conn
-    def execute(self, *a, **kw): 
-        try: self._c.sync()
-        except: pass
+    def execute(self, *a, **kw):
+        global _conn
+        try:
+            self._c.sync()
+        except Exception:
+            # Connection stale/expired — reconnect
+            if TURSO_URL and TURSO_TOKEN:
+                _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
+            else:
+                _conn = libsql.connect("yourmeet.db")
+            self._c = _conn
         return self._c.execute(*a, **kw)
     def executescript(self, *a, **kw): return self._c.executescript(*a, **kw)
     def commit(self): return self._c.commit()
