@@ -8,10 +8,26 @@ from telegram.request import HTTPXRequest
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
 
+_conn = None
+
+class _NoClose:
+    def __init__(self, conn): self._c = conn
+    def execute(self, *a, **kw): 
+        try: self._c.sync()
+        except: pass
+        return self._c.execute(*a, **kw)
+    def executescript(self, *a, **kw): return self._c.executescript(*a, **kw)
+    def commit(self): return self._c.commit()
+    def close(self): pass
+
 def get_conn():
-    if TURSO_URL and TURSO_TOKEN:
-        return libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-    return libsql.connect("yourmeet.db")
+    global _conn
+    if _conn is None:
+        if TURSO_URL and TURSO_TOKEN:
+            _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
+        else:
+            _conn = libsql.connect("yourmeet.db")
+    return _NoClose(_conn)
 
 def _verify_keyboard(user_id: int):
     return InlineKeyboardMarkup([[
