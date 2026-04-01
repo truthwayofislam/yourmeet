@@ -97,11 +97,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👮 *YourMeet Admin Bot*\n\n"
         "New user registrations will appear here.\n"
         "Tap ✅ Approve or 🚫 Block on each profile.\n\n"
-        "/pending — Show recent profiles\n"
-        "/remind — Message users with incomplete profiles\n"
-        "/remind_blocked — Send rejection message to all blocked users\n"
+        "/pending — Show pending profiles\n"
+        "/stats — App stats\n"
         "/broadcast <msg> — Send message to all users\n"
-        "/stats — App stats",
+        "/remind — Message incomplete profile users\n"
+        "/remind_blocked — Notify all blocked users\n"
+        "/approve_seed — Approve all fake/seed profiles",
         parse_mode="Markdown"
     )
 
@@ -143,7 +144,7 @@ async def remind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = conn.execute(
         "SELECT telegram_id, name, photo, bio, city, social_handle FROM users "
         "WHERE is_admin=0 AND is_blocked=0 AND telegram_id IS NOT NULL AND telegram_id != '' "
-        "AND (photo='' OR bio='' OR city='' OR social_handle='')"
+        "AND (photo IS NULL OR photo='' OR bio IS NULL OR bio='' OR city IS NULL OR city='' OR social_handle IS NULL OR social_handle='')"
     ).fetchall()
     conn.close()
     if not rows:
@@ -211,8 +212,11 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     for tg_id, name in rows:
         await _notify_user(tg_id,
             f"🚫 *{name}*, your profile was rejected.\n\n"
-            f"Your profile was rejected. Please re-register with a clear photo and genuine bio.",
-            {"inline_keyboard": [[{"text": "🔄 Re-register", "url": f"{os.getenv('APP_URL', '')}/register"}]]}
+            f"Please re-register with a clear photo and genuine bio.",
+            {"inline_keyboard": [
+                [{"text": "🔄 Re-register via Bot", "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}?start=setup"}],
+                [{"text": "🌐 Re-register via App", "url": f"{os.getenv('APP_URL', '')}/register"}]
+            ]}
         )
         sent += 1
     await update.message.reply_text(f"✅ Rejection message sent to *{sent}* blocked users.", parse_mode="Markdown")
@@ -222,7 +226,7 @@ async def approve_seed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
         return
     conn = get_conn()
-    cur = conn.execute("UPDATE users SET is_approved=1 WHERE email LIKE 'fake_%@yourmeet.app'")
+    conn.execute("UPDATE users SET is_approved=1 WHERE email LIKE 'fake_%@yourmeet.app'")
     conn.commit()
     count = conn.execute("SELECT COUNT(*) FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchone()[0]
     conn.close()
@@ -284,6 +288,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_conn()
     total = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0").fetchone()[0]
     real = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND email NOT LIKE 'fake_%@yourmeet.app'").fetchone()[0]
+    pending = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0").fetchone()[0]
     blocked = conn.execute("SELECT COUNT(*) FROM users WHERE is_blocked=1").fetchone()[0]
     premium = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
     matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
@@ -294,6 +299,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👥 Total Users: *{total}*\n"
         f"👤 Real Users: *{real}*\n"
         f"🆕 Joined Today: *{today_users}*\n"
+        f"⏳ Pending Approval: *{pending}*\n"
         f"👑 Premium: *{premium}*\n"
         f"🚫 Blocked: *{blocked}*\n"
         f"💕 Total Matches: *{matches}*",
