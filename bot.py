@@ -195,7 +195,7 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from admin_bot import send_for_review
         if new_user:
-            await send_for_review(new_user[0], name, age, gender, city, photo, f"tg_{tg_id}@yourmeet.app", "")  # phone N/A for bot setup
+            await send_for_review(new_user[0], name, age, gender, city, photo, f"via:bot_setup", "")  # phone N/A for bot setup
     except Exception as e:
         print(f"[ADMIN NOTIFY] Failed: {e}")
     await update.message.reply_text(
@@ -808,6 +808,39 @@ async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb
     )
 
+# /about
+async def about_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📸 Instagram", url="https://instagram.com/who_is_the-black_hat"),
+         InlineKeyboardButton("✈️ Telegram", url="https://t.me/who_is_the-black_hat")],
+        [InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=APP_URL))],
+    ])
+    await update.message.reply_text(
+        "*About YourMeet & Its Creator* 🌹\n\n"
+        "*👨‍💻 Developer*\n"
+        "YourMeet is built and maintained by *@who_is_the_black_hat* \u2014 a passionate "
+        "Cybersecurity Expert, Web & Software Developer with a deep interest in building "
+        "real-world applications that connect people.\n\n"
+        "*🔐 Expertise*\n"
+        "• Cybersecurity & Ethical Hacking\n"
+        "• Web & Software Development\n"
+        "• Telegram Bot Development\n"
+        "• Backend Systems & APIs\n\n"
+        "*💕 About YourMeet*\n"
+        "YourMeet is a privacy-first dating & social discovery app built inside Telegram. "
+        "Every profile is manually reviewed and approved by admin to ensure a safe, "
+        "genuine experience. No bots, no fake accounts — just real people.\n\n"
+        "*✨ Features*\n"
+        "• Swipe & match with real verified users\n"
+        "• Super likes to stand out\n"
+        "• Premium for unlimited access\n"
+        "• Profile boost to get more visibility\n"
+        "• Referral system — invite friends, earn swipes\n\n"
+        "📬 *Connect with the developer:*",
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
+
 # /help
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = InlineKeyboardMarkup([
@@ -833,6 +866,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/stats - Your activity stats\n"
         "/premium - Get Premium\n"
         "/delete - Delete account\n"
+        "/about - About YourMeet & developer\n"
         "/help - Show this message",
         parse_mode="Markdown",
         reply_markup=kb
@@ -973,6 +1007,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("share", share_cmd))
     app.add_handler(CommandHandler("delete", delete_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("about", about_cmd))
     app.add_handler(PreCheckoutQueryHandler(handle_pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_successful_payment))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyboard_btn_handler))

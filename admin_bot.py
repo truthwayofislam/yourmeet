@@ -56,8 +56,9 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         f"🆕 *New Profile*\n\n"
         f"👤 *{name}*, {age} • {gender.capitalize() if gender else '?'}\n"
         f"📍 {city or 'No city'}\n"
-        f"📧 {email or 'N/A'}\n"
-        f"📞 {phone or 'N/A'}\n"
+        f"📧 {email if email and not email.startswith('via:') else 'N/A'}\n"
+        f"📞 {phone if phone and phone != '' else 'N/A'}\n"
+        f"📲 Source: {'🌐 Web Form' if email and not email.startswith('via:') else ('🤖 Bot Setup' if email == 'via:bot_setup' else '📱 Telegram Login')}\n"
         f"🆔 DB ID: `{user_id}`"
     )
     keyboard = {"inline_keyboard": [[
@@ -222,10 +223,24 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     sent = 0
     for tg_id, name in rows:
         await _notify_user(tg_id,
-            f"🚫 *{name}*, your profile was rejected.\n\n"
-            f"Please re-register with a clear photo and genuine bio.",
+            f"🚫 *{name}*, your YourMeet profile has been *blocked*."
+            f"\n\n*Why was your profile blocked?*"
+            f"\nProfiles are blocked for one or more of these reasons:"
+            f"\n• Fake or unclear profile photo"
+            f"\n• Inappropriate or offensive bio"
+            f"\n• Fake name or misleading information"
+            f"\n• Reported by other users"
+            f"\n\n*What should you do now?*"
+            f"\n• Create a new profile with a *real, clear photo*"
+            f"\n• Write a *genuine bio* about yourself"
+            f"\n• Use your *real name*"
+            f"\n• Be respectful to other users"
+            f"\n\n*How to re-register?*"
+            f"\n1️⃣ Tap the bot button below and type /setup"
+            f"\n2️⃣ Or open the web app and fill the register form"
+            f"\n3️⃣ Wait for admin approval (usually within 24 hours)",
             {"inline_keyboard": [
-                [{"text": "🔄 Re-register via Bot", "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}?start=setup"}],
+                [{"text": "🤖 Re-register via Bot", "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}?start=setup"}],
                 [{"text": "🌐 Re-register via App", "url": f"{os.getenv('APP_URL', '')}/register"}]
             ]}
         )
@@ -296,15 +311,20 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
         return
-    conn = get_conn()
-    total = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0").fetchone()[0]
-    real = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND email NOT LIKE 'fake_%@yourmeet.app'").fetchone()[0]
-    pending = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0").fetchone()[0]
-    blocked = conn.execute("SELECT COUNT(*) FROM users WHERE is_blocked=1").fetchone()[0]
-    premium = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
-    matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
-    today_users = conn.execute("SELECT COUNT(*) FROM users WHERE date(created_at)=date('now')").fetchone()[0]
-    conn.close()
+    try:
+        conn = get_conn()
+        total = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0").fetchone()[0]
+        real = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND email NOT LIKE 'fake_%@yourmeet.app' AND email NOT LIKE '%@telegram.local' AND email NOT LIKE 'tg_%@yourmeet.app'").fetchone()[0]
+        pending = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0").fetchone()[0]
+        blocked = conn.execute("SELECT COUNT(*) FROM users WHERE is_blocked=1").fetchone()[0]
+        premium = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
+        matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+        today_users = conn.execute("SELECT COUNT(*) FROM users WHERE date(created_at)=date('now')").fetchone()[0]
+        conn.close()
+    except Exception as e:
+        print(f"[STATS] DB error: {e}")
+        await update.message.reply_text(f"❌ Stats fetch failed: {e}")
+        return
     await update.message.reply_text(
         f"📊 *App Stats*\n\n"
         f"👥 Total Users: *{total}*\n"

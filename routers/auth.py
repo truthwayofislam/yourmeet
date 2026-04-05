@@ -154,7 +154,7 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
         new_user = True
         try:
             from admin_bot import send_for_review
-            await send_for_review(user_id, name, 0, "", "", "", f"{tg_id}@telegram.local", tg_id)
+            await send_for_review(user_id, name, 0, "", "", "", f"via:telegram_login", tg_id)
         except Exception as e:
             print(f"[ADMIN NOTIFY] {e}")
     else:
