@@ -64,9 +64,11 @@ async def lifespan(app: FastAPI):
         from bot import build_app
         bot_app = build_app()
         await bot_app.initialize()
-        await bot_app.bot.set_webhook(f"{APP_URL}/webhook/{BOT_TOKEN}")
+        webhook_url = f"{APP_URL}/webhook/{BOT_TOKEN}"
+        await bot_app.bot.set_webhook(webhook_url, drop_pending_updates=True)
+        info = await bot_app.bot.get_webhook_info()
+        print(f"[BOT] Webhook set: {info.url}")
         await bot_app.start()
-        print(f"[BOT] Webhook set")
     else:
         print(f"[BOT] Skipped - BOT_TOKEN={'SET' if BOT_TOKEN else 'MISSING'}, APP_URL={'SET' if APP_URL else 'MISSING'}")
     ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
@@ -74,13 +76,15 @@ async def lifespan(app: FastAPI):
         from admin_bot import build_admin_app
         admin_bot_app = build_admin_app()
         await admin_bot_app.initialize()
-        await admin_bot_app.bot.set_webhook(f"{APP_URL}/admin-webhook/{ADMIN_BOT_TOKEN}")
+        webhook_url = f"{APP_URL}/admin-webhook/{ADMIN_BOT_TOKEN}"
+        await admin_bot_app.bot.set_webhook(webhook_url, drop_pending_updates=True)
+        info = await admin_bot_app.bot.get_webhook_info()
+        print(f"[ADMIN BOT] Webhook set: {info.url}")
         await admin_bot_app.start()
-        print(f"[ADMIN BOT] Webhook set")
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_incomplete_reminders, "cron", hour=14, minute=30)  # 8 PM IST
+    scheduler.add_job(send_incomplete_reminders, "cron", hour=14, minute=30)
     scheduler.start()
-    print("[SCHEDULER] Incomplete profile reminder scheduled at 8 PM IST daily")
+    print("[SCHEDULER] Started")
     yield
     if bot_app:
         await bot_app.stop()
