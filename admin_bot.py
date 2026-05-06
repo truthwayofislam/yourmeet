@@ -17,13 +17,20 @@ class _NoClose:
         try:
             self._c.sync()
         except Exception:
-            # Connection stale/expired — reconnect
             if TURSO_URL and TURSO_TOKEN:
                 _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
             else:
                 _conn = libsql.connect("yourmeet.db")
             self._c = _conn
-        return self._c.execute(*a, **kw)
+        try:
+            return self._c.execute(*a, **kw)
+        except Exception:
+            if TURSO_URL and TURSO_TOKEN:
+                _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
+            else:
+                _conn = libsql.connect("yourmeet.db")
+            self._c = _conn
+            return self._c.execute(*a, **kw)
     def executescript(self, *a, **kw): return self._c.executescript(*a, **kw)
     def commit(self): return self._c.commit()
     def close(self): pass
@@ -251,21 +258,25 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def remove_fake_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
         return
-    conn = get_conn()
-    count = conn.execute("SELECT COUNT(*) FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchone()[0]
-    if count == 0:
-        await update.message.reply_text("✅ No fake profiles found.")
-        conn.close()
-        return
-    fake_ids = [r[0] for r in conn.execute("SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchall()]
-    for fid in fake_ids:
-        conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (fid, fid))
-        conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (fid, fid))
-        conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (fid, fid))
-        conn.execute("DELETE FROM users WHERE id=?", (fid,))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text(f"🗑️ *{count}* fake profiles deleted successfully.", parse_mode="Markdown")
+    global _conn
+    try:
+        conn = get_conn()
+        count = conn.execute("SELECT COUNT(*) FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchone()[0]
+        if count == 0:
+            await update.message.reply_text("✅ No fake profiles found.")
+            return
+        # Single bulk delete — no loop, no multiple syncs
+        conn._c.execute("DELETE FROM likes WHERE from_user IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app') OR to_user IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app')")
+        conn._c.execute("DELETE FROM matches WHERE user1_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app') OR user2_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app')")
+        conn._c.execute("DELETE FROM skips WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app') OR skipped_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app')")
+        conn._c.execute("DELETE FROM users WHERE email LIKE 'fake_%@yourmeet.app'")
+        conn._c.commit()
+        # Reset connection so next commands work fresh
+        _conn = None
+        await update.message.reply_text(f"🗑️ *{count}* fake profiles deleted successfully.", parse_mode="Markdown")
+    except Exception as e:
+        _conn = None  # force reconnect on next command
+        await update.message.reply_text(f"❌ Error: {e}")
 
 # /approve_seed — approve all fake/seed profiles
 async def approve_seed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
