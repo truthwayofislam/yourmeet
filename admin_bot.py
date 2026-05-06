@@ -103,17 +103,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Unauthorized.")
         return
     await update.message.reply_text(
-        "👮 *YourMeet Admin Bot*\n\n"
+        "👮 YourMeet Admin Bot\n\n"
         "New user registrations will appear here.\n"
-        "Tap ✅ Approve or 🚫 Block on each profile.\n\n"
-        "/pending — Show pending profiles\n"
-        "/stats — App stats\n"
-        "/broadcast msg — Send message to all users\n"
-        "/remind — Message incomplete profile users\n"
-        "/remind_blocked — Notify all blocked users\n"
-        "/approve_seed — Approve all fake/seed profiles\n"
-        "/remove_fake — Delete all fake/seed profiles",
-        parse_mode="Markdown"
+        "Tap Approve or Block on each profile.\n\n"
+        "/pending - Show pending profiles\n"
+        "/stats - App stats\n"
+        "/broadcast msg - Send message to all users\n"
+        "/remind - Message incomplete profile users\n"
+        "/remind_blocked - Notify all blocked users\n"
+        "/approve_seed - Approve all fake/seed profiles\n"
+        "/remove_fake - Delete all fake/seed profiles"
     )
 
 # /pending
