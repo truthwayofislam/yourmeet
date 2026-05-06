@@ -111,7 +111,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/broadcast <msg> — Send message to all users\n"
         "/remind — Message incomplete profile users\n"
         "/remind_blocked — Notify all blocked users\n"
-        "/approve_seed — Approve all fake/seed profiles",
+        "/approve_seed — Approve all fake/seed profiles\n"
+        "/remove_fake — Delete all fake/seed profiles",
         parse_mode="Markdown"
     )
 
@@ -246,6 +247,26 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         sent += 1
     await update.message.reply_text(f"✅ Rejection message sent to *{sent}* blocked users.", parse_mode="Markdown")
+
+# /remove_fake — delete all fake/seed profiles
+async def remove_fake_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        return
+    conn = get_conn()
+    count = conn.execute("SELECT COUNT(*) FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchone()[0]
+    if count == 0:
+        await update.message.reply_text("✅ No fake profiles found.")
+        conn.close()
+        return
+    fake_ids = [r[0] for r in conn.execute("SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchall()]
+    for fid in fake_ids:
+        conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (fid, fid))
+        conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (fid, fid))
+        conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (fid, fid))
+        conn.execute("DELETE FROM users WHERE id=?", (fid,))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(f"🗑️ *{count}* fake profiles deleted successfully.", parse_mode="Markdown")
 
 # /approve_seed — approve all fake/seed profiles
 async def approve_seed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -409,6 +430,7 @@ def build_admin_app() -> Application:
     app.add_handler(CommandHandler("remind", remind_cmd))
     app.add_handler(CommandHandler("remind_blocked", remind_blocked_cmd))
     app.add_handler(CommandHandler("approve_seed", approve_seed_cmd))
+    app.add_handler(CommandHandler("remove_fake", remove_fake_cmd))
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
