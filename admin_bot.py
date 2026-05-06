@@ -108,7 +108,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Tap ✅ Approve or 🚫 Block on each profile.\n\n"
         "/pending — Show pending profiles\n"
         "/stats — App stats\n"
-        "/broadcast <msg> — Send message to all users\n"
+        "/broadcast msg — Send message to all users\n"
         "/remind — Message incomplete profile users\n"
         "/remind_blocked — Notify all blocked users\n"
         "/approve_seed — Approve all fake/seed profiles\n"
