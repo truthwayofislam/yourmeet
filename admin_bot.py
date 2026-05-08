@@ -312,7 +312,8 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     api = f"https://api.telegram.org/bot{bot_token}"
     sent, failed = 0, 0
     import asyncio
-    async with httpx.AsyncClient(timeout=10) as client:
+    # timeout=None — no client-level timeout, per-request timeout set separately
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
         for (tg_id,) in rows:
             try:
                 resp = await client.post(f"{api}/sendMessage", json={
@@ -323,7 +324,6 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 elif resp.status_code == 429:
                     retry_after = resp.json().get("parameters", {}).get("retry_after", 3)
                     await asyncio.sleep(retry_after)
-                    # retry once
                     resp2 = await client.post(f"{api}/sendMessage", json={
                         "chat_id": tg_id, "text": text, "parse_mode": "Markdown"
                     })
@@ -335,7 +335,7 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     failed += 1
             except:
                 failed += 1
-            await asyncio.sleep(0.05)  # 20 msg/sec — stay under Telegram rate limit
+            await asyncio.sleep(0.05)
     await update.message.reply_text(f"✅ Broadcast done!\n\n✔️ Sent: *{sent}*\n❌ Failed: *{failed}*", parse_mode="Markdown")
 
 # /stats

@@ -27,6 +27,9 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
     # Incomplete profile — force complete registration
     if not current_user.gender or not current_user.photo or not getattr(current_user, 'age', 0):
         return RedirectResponse("/register")
+    # Not approved yet — show pending page
+    if not getattr(current_user, 'is_approved', 0):
+        return templates.TemplateResponse(request, "pending.html", context={"user": current_user})
     liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (current_user.id,)).fetchall()]
     skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (current_user.id,)).fetchall()]
     excluded = list(set(liked + skipped + [current_user.id]))
