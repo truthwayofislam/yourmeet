@@ -100,9 +100,34 @@ async def register(
         await send_for_review(user_id, name, age, gender, city, photo_path, email, phone)
     except Exception as e:
         print(f"[ADMIN NOTIFY] {e}")
-    response = RedirectResponse("/", status_code=302)
+    response = RedirectResponse("/connect-telegram", status_code=302)
     response.set_cookie("token", create_token(user_id))
     return response
+
+@router.get("/connect-telegram", response_class=HTMLResponse)
+async def connect_telegram_page(request: Request, current_user=Depends(get_current_user)):
+    if not current_user:
+        return RedirectResponse("/login")
+    if getattr(current_user, 'telegram_id', None):
+        return RedirectResponse("/")  # already connected
+    bot_username = os.getenv("BOT_USERNAME", "Yoursmeetbot")
+    return templates.TemplateResponse(request, "connect_telegram.html", context={"user": current_user, "bot_username": bot_username})
+
+@router.post("/connect-telegram")
+async def connect_telegram(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    body = await request.json()
+    tg_id = str(body.get("id", ""))
+    if not tg_id:
+        return JSONResponse({"error": "invalid"}, status_code=400)
+    # Check not taken by another user
+    existing = db.execute("SELECT id FROM users WHERE telegram_id=? AND id!=?", (tg_id, current_user.id)).fetchone()
+    if existing:
+        return JSONResponse({"error": "already linked"}, status_code=400)
+    db.execute("UPDATE users SET telegram_id=? WHERE id=?", (tg_id, current_user.id))
+    db.commit()
+    return JSONResponse({"ok": True})
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):

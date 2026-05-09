@@ -117,19 +117,31 @@
   const _nameField = document.getElementById('name-field');
   const _tgField = document.getElementById('tg-id-field');
   if (_qp.get('name') && _nameField) _nameField.value = _qp.get('name');
-  // Try all possible sources for telegram_id
-  const _tgId = _qp.get('tg_id')
-    || window.Telegram?.WebApp?.initDataUnsafe?.user?.id
-    || null;
-  if (_tgId && _tgField) _tgField.value = _tgId;
-  // Also try after WebApp is ready
-  if (window.Telegram?.WebApp) {
-    window.Telegram.WebApp.ready();
-    const u = window.Telegram.WebApp.initDataUnsafe?.user;
-    if (u?.id && _tgField && !_tgField.value) _tgField.value = u.id;
+
+  function _fillTgId() {
+    if (_tgField && _tgField.value) return; // already filled
+    const id = _qp.get('tg_id')
+      || window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+      || null;
+    if (id) _tgField.value = id;
   }
 
+  // Try immediately
+  _fillTgId();
+
+  // Try after WebApp ready
+  if (window.Telegram?.WebApp) {
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
+    _fillTgId();
+    // Try again after short delay (WebApp sometimes loads data late)
+    setTimeout(_fillTgId, 300);
+    setTimeout(_fillTgId, 800);
+  }
+
+  // Final check on submit
   document.querySelector('form').addEventListener('submit', function(e) {
+    _fillTgId(); // last chance to fill telegram_id before submit
     const name = document.getElementById('name-field').value.trim();
     const email = document.querySelector('[name=email]').value.trim();
     const phone = document.querySelector('[name=phone]').value.trim();

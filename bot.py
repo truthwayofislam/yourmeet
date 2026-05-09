@@ -330,6 +330,19 @@ def _deduct_swipe(user_id: int):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     tg_id = str(user.id)
+
+    # Save telegram_id immediately on /start so broadcast reaches them
+    conn = get_conn()
+    existing = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if not existing:
+        import secrets as _secrets
+        conn.execute(
+            "INSERT OR IGNORE INTO users (name,email,password,telegram_id,created_at) VALUES (?,?,?,?,datetime('now'))",
+            (user.first_name, f"tg_{tg_id}@yourmeet.app", _secrets.token_hex(8), tg_id)
+        )
+        conn.commit()
+    conn.close()
+
     if context.args and context.args[0].startswith("ref_"):
         try:
             referrer_id = int(context.args[0][4:])

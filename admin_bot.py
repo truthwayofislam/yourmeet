@@ -221,34 +221,37 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     conn = get_conn()
     rows = conn.execute(
-        "SELECT telegram_id, name FROM users WHERE is_blocked=1 AND telegram_id IS NOT NULL AND telegram_id != ''"
+        "SELECT telegram_id, name, photo, bio, city, social_handle FROM users WHERE is_blocked=1 AND telegram_id IS NOT NULL AND telegram_id != ''"
     ).fetchall()
     conn.close()
     if not rows:
         await update.message.reply_text("No blocked users with Telegram ID.")
         return
     sent = 0
-    for tg_id, name in rows:
+    app_url = os.getenv('APP_URL', '')
+    bot_username = os.getenv('BOT_USERNAME', 'Yoursmeetbot')
+    for tg_id, name, photo, bio, city, social in rows:
+        missing = []
+        if not photo: missing.append("📸 Profile photo")
+        if not bio: missing.append("💬 Bio")
+        if not city: missing.append("📍 City")
+        if not social: missing.append("📱 Instagram/Telegram handle")
+        missing_text = ("\n\n*Missing in your profile:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
         await _notify_user(tg_id,
             f"🚫 *{name}*, your YourMeet profile has been *blocked*."
             f"\n\n*Why was your profile blocked?*"
-            f"\nProfiles are blocked for one or more of these reasons:"
             f"\n• Fake or unclear profile photo"
             f"\n• Inappropriate or offensive bio"
             f"\n• Fake name or misleading information"
             f"\n• Reported by other users"
-            f"\n\n*What should you do now?*"
-            f"\n• Create a new profile with a *real, clear photo*"
-            f"\n• Write a *genuine bio* about yourself"
-            f"\n• Use your *real name*"
-            f"\n• Be respectful to other users"
+            f"{missing_text}"
             f"\n\n*How to re-register?*"
-            f"\n1️⃣ Tap the bot button below and type /setup"
-            f"\n2️⃣ Or open the web app and fill the register form"
-            f"\n3️⃣ Wait for admin approval (usually within 24 hours)",
+            f"\n1️⃣ Tap below and type /setup"
+            f"\n2️⃣ Use real photo, real name, genuine bio"
+            f"\n3️⃣ Wait for admin approval (within 24 hours)",
             {"inline_keyboard": [
-                [{"text": "🤖 Re-register via Bot", "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}?start=setup"}],
-                [{"text": "🌐 Re-register via App", "url": f"{os.getenv('APP_URL', '')}/register"}]
+                [{"text": "🤖 Re-register via Bot", "url": f"https://t.me/{bot_username}"}],
+                [{"text": "🌐 Re-register via App", "url": f"{app_url}/register"}]
             ]}
         )
         sent += 1
