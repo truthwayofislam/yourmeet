@@ -309,6 +309,8 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not bot_token:
         await update.message.reply_text("❌ TELEGRAM_BOTS_KEY not set.")
         return
+    await update.message.reply_text(f"📤 Sending to *{len(rows)}* users...", parse_mode="Markdown")
+    print(f"[BROADCAST] Starting — {len(rows)} users")
     api = f"https://api.telegram.org/bot{bot_token}"
     sent, failed = 0, 0
     import asyncio
@@ -335,7 +337,9 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     failed += 1
             except:
                 failed += 1
+                print(f"[BROADCAST] Exception for tg_id={tg_id}")
             await asyncio.sleep(0.05)
+    print(f"[BROADCAST] Done — sent={sent} failed={failed}")
     await update.message.reply_text(f"✅ Broadcast done!\n\n✔️ Sent: *{sent}*\n❌ Failed: *{failed}*", parse_mode="Markdown")
 
 # /stats
