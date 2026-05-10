@@ -227,35 +227,59 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not rows:
         await update.message.reply_text("No blocked users with Telegram ID.")
         return
-    sent = 0
+    await update.message.reply_text(f"📤 Sending to *{len(rows)}* blocked users...", parse_mode="Markdown")
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
     app_url = os.getenv('APP_URL', '')
     bot_username = os.getenv('BOT_USERNAME', 'Yoursmeetbot')
-    for tg_id, name, photo, bio, city, social in rows:
-        missing = []
-        if not photo: missing.append("📸 Profile photo")
-        if not bio: missing.append("💬 Bio")
-        if not city: missing.append("📍 City")
-        if not social: missing.append("📱 Instagram/Telegram handle")
-        missing_text = ("\n\n*Missing in your profile:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
-        await _notify_user(tg_id,
-            f"🚫 *{name}*, your YourMeet profile has been *blocked*."
-            f"\n\n*Why was your profile blocked?*"
-            f"\n• Fake or unclear profile photo"
-            f"\n• Inappropriate or offensive bio"
-            f"\n• Fake name or misleading information"
-            f"\n• Reported by other users"
-            f"{missing_text}"
-            f"\n\n*How to re-register?*"
-            f"\n1️⃣ Tap below and type /setup"
-            f"\n2️⃣ Use real photo, real name, genuine bio"
-            f"\n3️⃣ Wait for admin approval (within 24 hours)",
-            {"inline_keyboard": [
+    api = f"https://api.telegram.org/bot{bot_token}"
+    sent, failed = 0, 0
+    import asyncio
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+        for tg_id, name, photo, bio, city, social in rows:
+            missing = []
+            if not photo: missing.append("📸 Profile photo")
+            if not bio: missing.append("💬 Bio")
+            if not city: missing.append("📍 City")
+            if not social: missing.append("📱 Instagram/Telegram handle")
+            missing_text = ("\n\n*Missing in your profile:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
+            text = (
+                f"🚫 *{name}*, your YourMeet profile has been *blocked*."
+                f"\n\n*Why blocked?*"
+                f"\n• Fake or unclear photo"
+                f"\n• Inappropriate bio"
+                f"\n• Fake name or misleading info"
+                f"{missing_text}"
+                f"\n\n*To re-register:*"
+                f"\n1️⃣ Tap below → type /setup"
+                f"\n2️⃣ Use real photo, real name, genuine bio"
+                f"\n3️⃣ Wait for admin approval"
+            )
+            keyboard = {"inline_keyboard": [
                 [{"text": "🤖 Re-register via Bot", "url": f"https://t.me/{bot_username}"}],
                 [{"text": "🌐 Re-register via App", "url": f"{app_url}/register"}]
             ]}
-        )
-        sent += 1
-    await update.message.reply_text(f"✅ Rejection message sent to *{sent}* blocked users.", parse_mode="Markdown")
+            try:
+                resp = await client.post(f"{api}/sendMessage", json={
+                    "chat_id": tg_id, "text": text,
+                    "parse_mode": "Markdown", "reply_markup": keyboard
+                })
+                if resp.status_code == 200:
+                    sent += 1
+                elif resp.status_code == 429:
+                    retry_after = resp.json().get("parameters", {}).get("retry_after", 3)
+                    await asyncio.sleep(retry_after)
+                    resp2 = await client.post(f"{api}/sendMessage", json={
+                        "chat_id": tg_id, "text": text,
+                        "parse_mode": "Markdown", "reply_markup": keyboard
+                    })
+                    if resp2.status_code == 200: sent += 1
+                    else: failed += 1
+                else:
+                    failed += 1
+            except:
+                failed += 1
+            await asyncio.sleep(0.05)
+    await update.message.reply_text(f"✅ Done!\n\n✔️ Sent: *{sent}*\n❌ Failed: *{failed}*", parse_mode="Markdown")
 
 # /remove_fake — delete all fake/seed profiles
 async def remove_fake_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
