@@ -281,11 +281,18 @@ async def edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if field not in allowed:
         await update.message.reply_text("❌ Invalid field.")
         return ConversationHandler.END
-    conn.execute(f"UPDATE users SET {field}=? WHERE telegram_id=?", (value, tg_id))
+    conn.execute(f"UPDATE users SET {field}=?, is_approved=0 WHERE telegram_id=?", (value, tg_id))
     conn.commit()
     conn.close()
     context.user_data.clear()
-    await update.message.reply_text(f"✅ *{field.capitalize()}* updated successfully!", parse_mode="Markdown")
+    # Notify admin for re-approval
+    try:
+        row = get_user_by_tg(tg_id)
+        if row:
+            from admin_bot import send_for_review
+            await send_for_review(row[0], row[1], row[5], row[6], row[8], row[9], '', '')
+    except: pass
+    await update.message.reply_text(f"✅ *{field.capitalize()}* updated! Your profile is under review again.", parse_mode="Markdown")
     return ConversationHandler.END
 
 async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -296,11 +303,18 @@ async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await update.message.photo[-1].get_file()
     photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
     conn = get_conn()
-    conn.execute("UPDATE users SET photo=? WHERE telegram_id=?", (photo_url, tg_id))
+    conn.execute("UPDATE users SET photo=?, is_approved=0 WHERE telegram_id=?", (photo_url, tg_id))
     conn.commit()
     conn.close()
     context.user_data.clear()
-    await update.message.reply_text("✅ *Photo* updated successfully!", parse_mode="Markdown")
+    # Notify admin for re-approval
+    try:
+        row = get_user_by_tg(tg_id)
+        if row:
+            from admin_bot import send_for_review
+            await send_for_review(row[0], row[1], row[5], row[6], row[8], photo_url, '', '')
+    except: pass
+    await update.message.reply_text("✅ *Photo* updated! Your profile is under review again.", parse_mode="Markdown")
     return ConversationHandler.END
 
 def _check_swipe_limit(tg_id: str):

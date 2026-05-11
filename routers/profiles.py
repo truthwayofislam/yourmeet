@@ -192,7 +192,13 @@ async def update_profile(
         photo_path = new_path
     new_age = age if age and age >= 18 else current_user.age
     new_gender = gender if gender in ("male", "female") else current_user.gender
-    db.execute("UPDATE users SET bio=?, city=?, photo=?, social_handle=?, age=?, gender=? WHERE id=?",
+    db.execute("UPDATE users SET bio=?, city=?, photo=?, social_handle=?, age=?, gender=?, is_approved=0 WHERE id=?",
                (bio, city, photo_path, social_handle, new_age, new_gender, current_user.id))
     db.commit()
+    # Notify admin for re-approval
+    try:
+        from admin_bot import send_for_review
+        await send_for_review(current_user.id, current_user.name, new_age, new_gender, city, photo_path,
+                              getattr(current_user, 'email', ''), getattr(current_user, 'phone', ''))
+    except: pass
     return RedirectResponse("/profile", status_code=302)
