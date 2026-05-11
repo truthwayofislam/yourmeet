@@ -407,11 +407,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Save telegram_id immediately on /start so broadcast reaches them
     conn = get_conn()
-    existing = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    existing = conn.execute("SELECT id, gender, photo FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     if not existing:
         import secrets as _secrets
         conn.execute(
-            "INSERT OR IGNORE INTO users (name,email,password,telegram_id,created_at) VALUES (?,?,?,?,datetime('now'))",
+            "INSERT OR IGNORE INTO users (name,email,password,telegram_id,is_approved,created_at) VALUES (?,?,?,?,1,datetime('now'))",
             (user.first_name, f"tg_{tg_id}@yourmeet.app", _secrets.token_hex(8), tg_id)
         )
         conn.commit()

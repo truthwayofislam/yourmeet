@@ -77,7 +77,6 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         import json
         async with httpx.AsyncClient(timeout=30) as client:
             if photo and photo.startswith("https://"):
-                # Download photo bytes first (Telegram can't fetch its own URLs)
                 photo_resp = await client.get(photo)
                 if photo_resp.status_code == 200:
                     resp = await client.post(f"{api}/sendPhoto", data={
@@ -86,12 +85,16 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
                         "parse_mode": "Markdown",
                         "reply_markup": json.dumps(keyboard)
                     }, files={"photo": ("photo.jpg", photo_resp.content, "image/jpeg")})
+                    print(f"[ADMIN BOT] sendPhoto: {resp.status_code}")
                 else:
+                    # Download failed — send photo URL as clickable link instead
+                    caption_with_link = caption + f"\n\n🖼 [View Photo]({photo})"
                     resp = await client.post(f"{api}/sendMessage", json={
                         "chat_id": admin_tg_id,
-                        "text": caption + "\n\n⚠️ Photo download failed",
+                        "text": caption_with_link,
                         "parse_mode": "Markdown",
-                        "reply_markup": keyboard
+                        "reply_markup": keyboard,
+                        "disable_web_page_preview": False
                     })
             else:
                 resp = await client.post(f"{api}/sendMessage", json={
