@@ -48,7 +48,7 @@ async def register(
     request: Request,
     name: str = Form(...), email: str = Form(...), phone: str = Form(...),
     password: str = Form(...), age: int = Form(...), gender: str = Form(...),
-    city: str = Form(...), bio: str = Form(""),
+    city: str = Form(""), bio: str = Form(""), social_handle: str = Form(""),
     photo: UploadFile = File(None), telegram_id: str = Form(None),
     db=Depends(get_db)
 ):
@@ -65,6 +65,8 @@ async def register(
     # Bio required
     if not bio or len(bio.strip()) < 10:
         return templates.TemplateResponse(request, "register.html", context={"error": "Bio must be at least 10 characters"})
+    if not social_handle or len(social_handle.strip()) < 2:
+        return templates.TemplateResponse(request, "register.html", context={"error": "Instagram or Telegram username is required"})
     # Photo required
     if not photo or not photo.filename:
         return templates.TemplateResponse(request, "register.html", context={"error": "Profile photo is required"})
@@ -85,8 +87,8 @@ async def register(
                 shutil.copyfileobj(photo.file, f)
 
     db.execute(
-        "INSERT INTO users (name,email,phone,password,age,gender,city,bio,photo,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-        (name, email, phone, hash_password(password), age, gender, city, bio, photo_path, telegram_id or None, datetime.utcnow().isoformat())
+        "INSERT INTO users (name,email,phone,password,age,gender,city,bio,photo,social_handle,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        (name, email, phone, hash_password(password), age, gender, city, bio, photo_path, social_handle, telegram_id or None, datetime.utcnow().isoformat())
     )
     db.commit()
     user_id = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()[0]

@@ -193,9 +193,8 @@ async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
     context.user_data["photo"] = photo_url
     await update.message.reply_text(
-        "📱 Share your *Instagram or Telegram* username so matches can contact you:\n"
-        "Example: @username or instagram.com/username\n\n"
-        "Type *skip* to leave blank:",
+        "📱 *Instagram or Telegram username* \u2014 required so your matches can contact you!\n\n"
+        "Example: @username or instagram.com/username",
         parse_mode="Markdown"
     )
     return SETUP_SOCIAL
@@ -203,7 +202,13 @@ async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     text = update.message.text.strip()
-    social = "" if text.lower() == "skip" else text
+    if len(text) < 2:
+        await update.message.reply_text(
+            "❌ Please enter your Instagram or Telegram username.\n"
+            "Example: @username or instagram.com/username"
+        )
+        return SETUP_SOCIAL
+    social = text
     name = context.user_data["name"]
     age = context.user_data["age"]
     gender = context.user_data["gender"]
