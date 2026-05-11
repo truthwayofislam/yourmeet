@@ -95,7 +95,7 @@ MAIN_KB = ReplyKeyboardMarkup([
 ], resize_keyboard=True)
 
 # ConversationHandler states
-SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_CITY, SETUP_BIO, SETUP_PHOTO, SETUP_SOCIAL = range(7)
+SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_PHONE, SETUP_CITY, SETUP_PHOTO, SETUP_SOCIAL = range(7)
 EDIT_CHOOSE, EDIT_VALUE, EDIT_PHOTO = range(7, 10)
 
 # /setup - create profile in chat
@@ -114,67 +114,89 @@ async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif row:
         await update.message.reply_text("✅ You already have a profile! Use /profile to view it.")
         return ConversationHandler.END
-    await update.message.reply_text("👋 Let's create your profile!\n\nWhat's your *name*?", parse_mode="Markdown")
+    await update.message.reply_text(
+        "👋 Welcome to *YourMeet*! Let's create your profile.\n\n"
+        "Please enter your *full name*:",
+        parse_mode="Markdown"
+    )
     return SETUP_NAME
 
 async def setup_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["name"] = update.message.text.strip()
-    await update.message.reply_text("🎂 How old are you? (Enter age)")
+    name = update.message.text.strip()
+    if len(name) < 2:
+        await update.message.reply_text("❌ Name must be at least 2 characters. Try again:")
+        return SETUP_NAME
+    context.user_data["name"] = name
+    await update.message.reply_text("🎂 How old are you? *(18-60)*", parse_mode="Markdown")
     return SETUP_AGE
 
 async def setup_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         age = int(update.message.text.strip())
-        if age < 18 or age > 100:
-            await update.message.reply_text("❌ Age must be between 18 and 100. Try again:")
+        if age < 18 or age > 60:
+            await update.message.reply_text("❌ Age must be between 18 and 60. Try again:")
             return SETUP_AGE
     except ValueError:
         await update.message.reply_text("❌ Please enter a valid number:")
         return SETUP_AGE
     context.user_data["age"] = age
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("👨 Male", callback_data="gender:male"),
-        InlineKeyboardButton("👩 Female", callback_data="gender:female"),
+        InlineKeyboardButton("👨 I am Male", callback_data="gender:male"),
+        InlineKeyboardButton("👩 I am Female", callback_data="gender:female"),
     ]])
-    await update.message.reply_text("⚧ Select your *gender*:", parse_mode="Markdown", reply_markup=kb)
+    await update.message.reply_text(
+        "👥 *Select your gender:*\n\nTap the button that matches you 👇",
+        parse_mode="Markdown", reply_markup=kb
+    )
     return SETUP_GENDER
 
 async def setup_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["gender"] = query.data.split(":")[1]
+    gender_label = "👨 Male" if context.user_data["gender"] == "male" else "👩 Female"
     try:
-        await query.edit_message_text(f"Gender set to *{context.user_data['gender']}* ✅", parse_mode="Markdown")
+        await query.edit_message_text(f"Gender: *{gender_label}* ✅", parse_mode="Markdown")
     except: pass
-    await query.message.reply_text("📍 Which *city* are you from? (or type 'skip')")
+    await query.message.reply_text(
+        "📱 Enter your *phone number* (with country code):\n"
+        "Example: +34612345678 or +919876543210",
+        parse_mode="Markdown"
+    )
+    return SETUP_PHONE
+
+async def setup_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import re
+    phone = update.message.text.strip()
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) < 7:
+        await update.message.reply_text("❌ Please enter a valid phone number with country code:\nExample: +34612345678")
+        return SETUP_PHONE
+    context.user_data["phone"] = phone
+    await update.message.reply_text(
+        "📍 Which *city* are you from? *(optional)*\n\nType your city or type *skip*:",
+        parse_mode="Markdown"
+    )
     return SETUP_CITY
 
 async def setup_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     context.user_data["city"] = "" if text.lower() == "skip" else text
-    await update.message.reply_text("💬 Write a short *bio* about yourself (or type 'skip'):")
-    return SETUP_BIO
-
-async def setup_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    context.user_data["bio"] = "" if text.lower() == "skip" else text
     await update.message.reply_text("📸 Send your *profile photo* (required):", parse_mode="Markdown")
     return SETUP_PHOTO
 
 async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
-        await update.message.reply_text("❌ Please send a *photo* (image file), not text!\n\nTap the 📎 attachment icon and select a photo.", parse_mode="Markdown")
+        await update.message.reply_text("❌ Please send a *photo*, not text!\n\nTap the 📎 attachment icon and select a photo.", parse_mode="Markdown")
         return SETUP_PHOTO
     file = await update.message.photo[-1].get_file()
-    # Save full URL using bot token so it doesn't expire
-    token = BOT_TOKEN
-    photo_url = f"https://api.telegram.org/file/bot{token}/{file.file_path}"
+    photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
     context.user_data["photo"] = photo_url
     await update.message.reply_text(
-        "📱 Share your Instagram or Telegram username so matches can contact you\n"
-        "Telegram: @rahul_tg\n"
-        "Instagram: @rahul_ig or instagram.com/rahul\n\n"
-        "Type 'skip' to leave blank:"
+        "📱 Share your *Instagram or Telegram* username so matches can contact you:\n"
+        "Example: @username or instagram.com/username\n\n"
+        "Type *skip* to leave blank:",
+        parse_mode="Markdown"
     )
     return SETUP_SOCIAL
 
@@ -185,33 +207,39 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.user_data["name"]
     age = context.user_data["age"]
     gender = context.user_data["gender"]
-    city = context.user_data["city"]
-    bio = context.user_data["bio"]
+    phone = context.user_data["phone"]
+    city = context.user_data.get("city", "")
     photo = context.user_data["photo"]
     conn = get_conn()
     email = f"tg_{tg_id}@yourmeet.app"
     password = secrets.token_hex(16)
-    conn.execute(
-        "INSERT INTO users (name,email,password,age,gender,city,bio,photo,social_handle,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))",
-        (name, email, password, age, gender, city, bio, photo, social, tg_id)
-    )
+    # Update existing minimal record created on /start, or insert new
+    existing = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE users SET name=?,password=?,age=?,gender=?,phone=?,city=?,photo=?,social_handle=?,email=? WHERE telegram_id=?",
+            (name, password, age, gender, phone, city, photo, social, email, tg_id)
+        )
+    else:
+        conn.execute(
+            "INSERT INTO users (name,email,password,age,gender,phone,city,photo,social_handle,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            (name, email, password, age, gender, phone, city, photo, social, tg_id)
+        )
     conn.commit()
     new_user = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     conn.close()
     context.user_data.clear()
-    # Notify admin bot for verification
     try:
         from admin_bot import send_for_review
         if new_user:
-            await send_for_review(new_user[0], name, age, gender, city, photo, f"via:bot_setup", "")  # phone N/A for bot setup
+            await send_for_review(new_user[0], name, age, gender, "", photo, f"via:bot_setup", phone)
     except Exception as e:
         print(f"[ADMIN NOTIFY] Failed: {e}")
     await update.message.reply_text(
-        f"🎉 *Profile created!*\n\n"
-        f"⏳ Your profile is under review. You'll get a message once approved!\n\n"
-        f"Meanwhile, complete your profile on the app 👇",
-        parse_mode="Markdown",
-        reply_markup=open_app_keyboard("/")
+        f"🎉 *Profile created successfully!*\n\n"
+        f"⏳ Your profile is under review. You'll be notified once approved!\n\n"
+        f"This usually takes less than 24 hours.",
+        parse_mode="Markdown"
     )
     return ConversationHandler.END
 
@@ -1005,8 +1033,8 @@ def build_app() -> Application:
             SETUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
             SETUP_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_age)],
             SETUP_GENDER: [CallbackQueryHandler(setup_gender, pattern="^gender:")],
+            SETUP_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_phone)],
             SETUP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
-            SETUP_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_bio)],
             SETUP_PHOTO: [MessageHandler(filters.PHOTO, setup_photo), MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo)],
             SETUP_SOCIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
         },

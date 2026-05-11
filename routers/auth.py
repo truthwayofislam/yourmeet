@@ -58,13 +58,10 @@ async def register(
     import re
     if not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
         return templates.TemplateResponse(request, "register.html", context={"error": "Enter a valid email address"})
-    # Phone — min 10 digits
+    # Phone — min 7 digits (international)
     digits = re.sub(r'\D', '', phone)
-    if len(digits) < 10:
-        return templates.TemplateResponse(request, "register.html", context={"error": "Phone must be at least 10 digits"})
-    # City required
-    if not city or len(city.strip()) < 2:
-        return templates.TemplateResponse(request, "register.html", context={"error": "Please enter your city"})
+    if len(digits) < 7:
+        return templates.TemplateResponse(request, "register.html", context={"error": "Enter a valid phone number with country code"})
     # Bio required
     if not bio or len(bio.strip()) < 10:
         return templates.TemplateResponse(request, "register.html", context={"error": "Bio must be at least 10 characters"})
