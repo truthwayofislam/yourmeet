@@ -232,37 +232,31 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     app_url = os.getenv('APP_URL', '')
     bot_username = os.getenv('BOT_USERNAME', 'Yoursmeetbot')
     api = f"https://api.telegram.org/bot{bot_token}"
-    sent, failed_ids = 0, []
+    sent, failed = 0, 0
     import asyncio
-
-    def _build_msg(name, photo, bio, city, social):
-        missing = []
-        if not photo: missing.append("📸 Profile photo")
-        if not bio: missing.append("💬 Bio")
-        if not city: missing.append("📍 City")
-        if not social: missing.append("📱 Instagram/Telegram handle")
-        missing_text = ("\n\n*Missing in your profile:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
-        return (
-            f"🚫 *{name}*, your YourMeet profile has been *blocked*."
-            f"\n\n*Why blocked?*"
-            f"\n• Fake or unclear photo"
-            f"\n• Inappropriate bio"
-            f"\n• Fake name or misleading info"
-            f"{missing_text}"
-            f"\n\n*To re-register:*"
-            f"\n1️⃣ Tap below → type /setup"
-            f"\n2️⃣ Use real photo, real name, genuine bio"
-            f"\n3️⃣ Wait for admin approval"
-        )
-
     keyboard = {"inline_keyboard": [
         [{"text": "🤖 Re-register via Bot", "url": f"https://t.me/{bot_username}"}],
         [{"text": "🌐 Re-register via App", "url": f"{app_url}/register"}]
     ]}
-
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
         for tg_id, name, photo, bio, city, social in rows:
-            text = _build_msg(name, photo, bio, city, social)
+            missing = []
+            if not photo: missing.append("📸 Profile photo")
+            if not bio: missing.append("💬 Bio")
+            if not city: missing.append("📍 City")
+            if not social: missing.append("📱 Instagram/Telegram handle")
+            missing_text = ("\n\n*Missing in your profile:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
+            text = (
+                f"🚫 *{name}*, your YourMeet profile has been *blocked*."
+                f"\n\n*Why blocked?*"
+                f"\n• Fake or unclear photo"
+                f"\n• Inappropriate bio or fake name"
+                f"{missing_text}"
+                f"\n\n*To re-register:*"
+                f"\n1️⃣ Tap below → type /setup"
+                f"\n2️⃣ Real photo, real name, genuine bio"
+                f"\n3️⃣ Wait for admin approval"
+            )
             try:
                 resp = await client.post(f"{api}/sendMessage", json={
                     "chat_id": tg_id, "text": text,
@@ -278,33 +272,14 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         "parse_mode": "Markdown", "reply_markup": keyboard
                     })
                     if resp2.status_code == 200: sent += 1
-                    else: failed_ids.append((tg_id, name, photo, bio, city, social))
+                    else: failed += 1
                 else:
-                    failed_ids.append((tg_id, name, photo, bio, city, social))
+                    failed += 1
             except:
-                failed_ids.append((tg_id, name, photo, bio, city, social))
+                failed += 1
             await asyncio.sleep(0.05)
-
-        # Auto retry failed ones once after 3 seconds
-        if failed_ids:
-            await asyncio.sleep(3)
-            retry_sent = 0
-            for tg_id, name, photo, bio, city, social in failed_ids:
-                text = _build_msg(name, photo, bio, city, social)
-                try:
-                    resp = await client.post(f"{api}/sendMessage", json={
-                        "chat_id": tg_id, "text": text,
-                        "parse_mode": "Markdown", "reply_markup": keyboard
-                    })
-                    if resp.status_code == 200:
-                        sent += 1
-                        retry_sent += 1
-                except: pass
-                await asyncio.sleep(0.1)
-
-    still_failed = len([x for x in failed_ids]) - (sent - (len(rows) - len(failed_ids)))
     await update.message.reply_text(
-        f"✅ Done!\n\n✔️ Sent: *{sent}/{len(rows)}*\n❌ Still failed: *{max(0, len(rows) - sent)}*",
+        f"✅ Done!\n\n✔️ Sent: *{sent}/{len(rows)}*\n❌ Failed: *{failed}* (bot blocked or account deleted)",
         parse_mode="Markdown"
     )
 
