@@ -1,6 +1,6 @@
 import os
 import warnings
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, PreCheckoutQueryHandler, ConversationHandler, filters, ContextTypes, Application
 from telegram.warnings import PTBUserWarning
 import secrets
@@ -158,24 +158,51 @@ async def setup_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await query.edit_message_text(f"Gender: *{gender_label}* ✅", parse_mode="Markdown")
     except: pass
+    from telegram import KeyboardButton, ReplyKeyboardMarkup
+    phone_kb = ReplyKeyboardMarkup(
+        [[KeyboardButton("📱 Share my phone number", request_contact=True)]],
+        resize_keyboard=True, one_time_keyboard=True
+    )
     await query.message.reply_text(
-        "📱 Enter your *phone number* (with country code):\n"
-        "Example: +34612345678 or +919876543210",
-        parse_mode="Markdown"
+        "📱 *Share your phone number*\n\n"
+        "Tap the button below to share, or type it manually with country code:\n"
+        "Example: +34612345678",
+        parse_mode="Markdown",
+        reply_markup=phone_kb
     )
     return SETUP_PHONE
 
 async def setup_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import re
+    # Handle contact share button
+    if update.message.contact:
+        phone = update.message.contact.phone_number
+        if not phone.startswith('+'):
+            phone = '+' + phone
+        context.user_data["phone"] = phone
+        await update.message.reply_text(
+            f"✅ Phone saved: *{phone}*",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        await update.message.reply_text(
+            "📍 Which *city* are you from? *(optional)*\n\nType your city or type *skip*:",
+            parse_mode="Markdown"
+        )
+        return SETUP_CITY
+    # Handle manual text input
     phone = update.message.text.strip()
     digits = re.sub(r'\D', '', phone)
     if len(digits) < 7:
-        await update.message.reply_text("❌ Please enter a valid phone number with country code:\nExample: +34612345678")
+        await update.message.reply_text("❌ Please share your phone number using the button below, or type it manually with country code.")
         return SETUP_PHONE
+    if not phone.startswith('+'):
+        phone = '+' + phone
     context.user_data["phone"] = phone
     await update.message.reply_text(
         "📍 Which *city* are you from? *(optional)*\n\nType your city or type *skip*:",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove()
     )
     return SETUP_CITY
 
@@ -1038,7 +1065,7 @@ def build_app() -> Application:
             SETUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
             SETUP_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_age)],
             SETUP_GENDER: [CallbackQueryHandler(setup_gender, pattern="^gender:")],
-            SETUP_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_phone)],
+            SETUP_PHONE: [MessageHandler(filters.CONTACT, setup_phone), MessageHandler(filters.TEXT & ~filters.COMMAND, setup_phone)],
             SETUP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
             SETUP_PHOTO: [MessageHandler(filters.PHOTO, setup_photo), MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo)],
             SETUP_SOCIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],

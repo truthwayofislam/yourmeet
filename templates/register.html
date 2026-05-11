@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Register{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/css/intlTelInput.css"/>
+<style>
+  .iti { width: 100%; }
+  .iti__flag-container { z-index: 10; }
+  .iti input { background: transparent !important; color: white !important; border: none !important; outline: none !important; width: 100%; padding: 12px 16px 12px 52px; font-size: 14px; }
+  .iti__selected-flag { background: transparent !important; border-radius: 12px 0 0 12px; padding-left: 10px; }
+  .iti__country-list { background: #1e1e2e; color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; }
+  .iti__country:hover, .iti__country.iti__highlight { background: rgba(255,255,255,0.1); }
+  .iti__divider { border-color: rgba(255,255,255,0.1); }
+  .iti__search-input { background: #2a2a3e !important; color: white !important; border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px; padding: 8px; width: calc(100% - 16px); margin: 8px; }
+</style>
 <div class="min-h-screen flex items-center justify-center px-4 py-8">
   <div class="w-full max-w-sm">
 
@@ -42,8 +53,8 @@
             <select name="gender" required
               class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1">
               <option value="">Select</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
+              <option value="male">👨 Male</option>
+              <option value="female">👩 Female</option>
             </select>
           </div>
         </div>
@@ -59,10 +70,10 @@
 
         <div>
           <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Phone <span class="text-red-400">*</span></label>
-          <div class="relative mt-1">
-            <i class="fas fa-phone absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
-            <input type="tel" name="phone" required placeholder="+34612345678 or +919876543210"
-              class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+          <div class="bg-surface border border-white/10 rounded-xl mt-1 overflow-hidden">
+            <input type="tel" id="phone-input" placeholder="Your phone number"
+              class="w-full bg-transparent text-white text-sm focus:outline-none"/>
+            <input type="hidden" name="phone" id="phone-hidden"/>
           </div>
         </div>
 
@@ -122,49 +133,55 @@
     </p>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/intlTelInput.min.js"></script>
 <script>
+  // intl-tel-input init
+  const phoneInput = document.getElementById('phone-input');
+  const iti = window.intlTelInput(phoneInput, {
+    utilsScript: "https://cdn.jsdelivr.net/npm/intl-tel-input@18.2.1/build/js/utils.js",
+    separateDialCode: true,
+    preferredCountries: ['in', 'es', 'us', 'gb', 'ae'],
+    autoPlaceholder: 'aggressive',
+  });
+
+  // On submit fill hidden phone field with full number
   const _qp = new URLSearchParams(window.location.search);
   const _nameField = document.getElementById('name-field');
   const _tgField = document.getElementById('tg-id-field');
   if (_qp.get('name') && _nameField) _nameField.value = _qp.get('name');
 
   function _fillTgId() {
-    if (_tgField && _tgField.value) return; // already filled
-    const id = _qp.get('tg_id')
-      || window.Telegram?.WebApp?.initDataUnsafe?.user?.id
-      || null;
+    if (_tgField && _tgField.value) return;
+    const id = _qp.get('tg_id') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null;
     if (id) _tgField.value = id;
   }
-
-  // Try immediately
   _fillTgId();
-
-  // Try after WebApp ready
   if (window.Telegram?.WebApp) {
     Telegram.WebApp.ready();
     Telegram.WebApp.expand();
     _fillTgId();
-    // Try again after short delay (WebApp sometimes loads data late)
     setTimeout(_fillTgId, 300);
     setTimeout(_fillTgId, 800);
   }
 
-  // Final check on submit
   document.querySelector('form').addEventListener('submit', function(e) {
-    _fillTgId(); // last chance to fill telegram_id before submit
+    _fillTgId();
+    // Fill hidden phone with full international number
+    document.getElementById('phone-hidden').value = iti.getNumber();
+
     const name = document.getElementById('name-field').value.trim();
     const email = document.querySelector('[name=email]').value.trim();
-    const phone = document.querySelector('[name=phone]').value.trim();
-    const city = document.querySelector('[name=city]').value.trim();
+    const phone = iti.getNumber();
     const bio = document.querySelector('[name=bio]').value.trim();
+    const social = document.querySelector('[name=social_handle]').value.trim();
     const photo = document.getElementById('photo-input').files[0];
     const errors = [];
 
     if (name.length < 2) errors.push('Name must be at least 2 characters');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('Enter a valid email address');
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length < 7) errors.push('Enter a valid phone number with country code');
+    if (!iti.isValidNumber()) errors.push('Enter a valid phone number');
     if (bio.length < 10) errors.push('Bio must be at least 10 characters');
+    if (social.length < 2) errors.push('Instagram or Telegram username is required');
     if (!photo) errors.push('Profile photo is required');
 
     if (errors.length > 0) {
