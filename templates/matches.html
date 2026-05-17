@@ -25,6 +25,7 @@
         <h3 class="font-semibold text-white">{{ match.name }}{% if match.is_verified %} <span class="text-green-400 text-sm">✅</span>{% endif %}, {{ match.age }}</h3>
         <p class="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
           <i class="fas fa-map-marker-alt text-primary"></i> {{ match.city or "India" }}
+          {% if match.matched_at %}<span class="text-gray-700">•</span> <i class="fas fa-calendar text-gray-600"></i> {{ match.matched_at }}{% endif %}
         </p>
         {% if match.social_handle %}
         {% if user.is_premium %}
@@ -52,6 +53,9 @@
         {% else %}
         <p class="text-gray-600 text-xs mt-2">No contact added yet</p>
         {% endif %}
+        <button onclick="unmatch({{ match.match_id }}, this)" class="text-gray-700 hover:text-red-400 text-xs mt-2 transition">
+          <i class="fas fa-times mr-1"></i>Unmatch
+        </button>
       </div>
     </div>
     {% endfor %}
@@ -71,4 +75,12 @@
   {% endif %}
 
 </div>
+<script>
+async function unmatch(matchId, btn) {
+  if (!confirm('Unmatch this person?')) return;
+  const card = btn.closest('.flex.items-center');
+  await fetch(`/unmatch/${matchId}`, {method:'POST'});
+  if (card) card.remove();
+}
+</script>
 {% endblock %}

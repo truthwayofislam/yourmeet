@@ -28,7 +28,8 @@ def get_current_user(request: Request, db=Depends(get_db)):
         row = db.execute(
             "SELECT id,name,email,phone,password,age,gender,bio,city,photo,is_premium,super_likes_left,"
             "created_at,telegram_id,is_admin,is_blocked,daily_swipes,swipes_reset_date,referral_count,"
-            "social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected "
+            "social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected,"
+            "language,interested_in,photos,interests,setup_step "
             "FROM users WHERE id=?", (int(payload["sub"]),)
         ).fetchone()
         user = row_to_user(row)

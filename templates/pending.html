@@ -1,68 +1,141 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile Under Review — YourMeet</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: var(--tg-theme-bg-color, #fff);
-            color: var(--tg-theme-text-color, #222);
-            min-height: 100vh;
-            display: flex; align-items: center; justify-content: center;
-            padding: 24px;
-        }
-        .card {
-            text-align: center;
-            max-width: 360px;
-            width: 100%;
-        }
-        .icon { font-size: 64px; margin-bottom: 16px; }
-        h1 { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
-        p { font-size: 15px; color: #666; line-height: 1.6; margin-bottom: 8px; }
-        .steps {
-            background: #f5f5f5;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 20px 0;
-            text-align: left;
-        }
-        .steps p { color: #444; margin-bottom: 6px; font-size: 14px; }
-        .steps p:last-child { margin-bottom: 0; }
-        .badge {
-            display: inline-block;
-            background: #fff3cd;
-            color: #856404;
-            border-radius: 20px;
-            padding: 6px 16px;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="icon">⏳</div>
-        <h1>Profile Under Review</h1>
-        <div class="badge">⏳ Pending Approval</div>
-        <p>Hey <strong>{{ user.name }}</strong>! Your profile has been submitted successfully.</p>
-        <div class="steps">
-            <p>✅ Profile submitted</p>
-            <p>🔍 Admin is reviewing your profile</p>
-            <p>📩 You'll get a Telegram message once approved</p>
-            <p>💕 Then you can start swiping!</p>
-        </div>
-        <p>This usually takes <strong>less than 24 hours</strong>.</p>
+{% extends "base.html" %}
+{% block title %}Profile Under Review{% endblock %}
+{% block content %}
+<div class="max-w-md mx-auto px-4 pt-4">
+
+  <!-- Pending Banner -->
+  <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4 mb-4 flex items-start gap-3">
+    <span class="text-2xl">⏳</span>
+    <div>
+      <p class="text-yellow-400 font-semibold text-sm">Profile Under Review</p>
+      <p class="text-gray-400 text-xs mt-1">Hey <strong class="text-white">{{ user.name.split()[0] }}</strong>! You have <strong class="text-yellow-400">{{ user.daily_swipes if user.daily_swipes is not none else 10 }} free swipes</strong> while we review your profile.</p>
     </div>
-    <script>
-        if (window.Telegram && window.Telegram.WebApp) {
-            Telegram.WebApp.ready();
-            Telegram.WebApp.expand();
-        }
-    </script>
-</body>
-</html>
+  </div>
+
+  <!-- Cards Stack -->
+  <div id="card-stack" class="relative" style="height: min(460px, calc(100dvh - 240px));">
+    {% if profiles %}
+      {% for profile in profiles %}
+      <div class="profile-card absolute inset-0 bg-card rounded-3xl overflow-hidden card-glow border border-white/5 transition-all duration-300"
+           data-id="{{ profile.id }}" style="z-index: {{ loop.length - loop.index0 }}; transform: scale({{ 1 - loop.index0 * 0.03 }}) translateY({{ loop.index0 * 10 }}px);">
+        <div class="relative h-full">
+          {% if profile.photo %}
+          <img src="{{ profile.photo | photo_url }}" class="w-full h-full object-cover"/>
+          {% else %}
+          <div class="w-full h-full bg-gradient-to-br from-surface to-card flex items-center justify-center">
+            <i class="fas fa-user text-6xl text-gray-600"></i>
+          </div>
+          {% endif %}
+          <div class="like-indicator absolute top-8 left-8 opacity-0 transition-opacity">
+            <span class="text-green-400 font-bold text-3xl border-4 border-green-400 px-4 py-1 rounded-xl rotate-[-15deg] inline-block">LIKE</span>
+          </div>
+          <div class="nope-indicator absolute top-8 right-8 opacity-0 transition-opacity">
+            <span class="text-red-400 font-bold text-3xl border-4 border-red-400 px-4 py-1 rounded-xl rotate-[15deg] inline-block">NOPE</span>
+          </div>
+          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 right-0 p-5">
+            <h2 class="text-2xl font-bold text-white">{{ profile.name }}{% if profile.is_verified %} <span class="text-green-400 text-lg">✅</span>{% endif %}, {{ profile.age }}</h2>
+            <p class="text-gray-300 text-sm flex items-center gap-1 mt-1">
+              <i class="fas fa-map-marker-alt text-primary text-xs"></i> {{ profile.city or "India" }}
+            </p>
+            {% if profile.bio %}
+            <p class="text-gray-400 text-xs mt-2 line-clamp-2">{{ profile.bio }}</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="absolute inset-0 bg-card rounded-3xl flex flex-col items-center justify-center border border-white/5">
+        <i class="fas fa-heart-broken text-3xl text-gray-600 mb-3"></i>
+        <p class="text-gray-400 font-medium">No profiles yet</p>
+        <p class="text-gray-600 text-sm mt-1">Check back soon!</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Action Buttons -->
+  {% if profiles %}
+  <div class="flex items-center justify-center gap-5 mt-5">
+    <button onclick="swipeAction('nope')" class="w-14 h-14 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-red-500/50 hover:bg-red-500/10 transition text-red-400 text-xl shadow-lg">
+      <i class="fas fa-times"></i>
+    </button>
+    <button onclick="swipeAction('like')" class="w-14 h-14 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-green-500/50 hover:bg-green-500/10 transition text-green-400 text-xl shadow-lg">
+      <i class="fas fa-heart"></i>
+    </button>
+  </div>
+  {% endif %}
+
+  <!-- Steps -->
+  <div class="bg-card rounded-2xl p-4 border border-white/5 mt-5 space-y-2 text-sm">
+    <p class="text-green-400">✅ Profile submitted</p>
+    <p class="text-yellow-400">🔍 Admin is reviewing your profile</p>
+    <p class="text-gray-500">📩 You'll get a Telegram message once approved</p>
+    <p class="text-gray-500">💕 Then you get 30 swipes/day!</p>
+  </div>
+
+</div>
+
+<!-- Limit Modal -->
+<div id="limit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
+  <div class="bg-card rounded-3xl p-8 text-center max-w-xs w-full border border-white/10 card-glow">
+    <div class="text-5xl mb-4">😔</div>
+    <h2 class="text-xl font-bold text-white mb-2">Daily Limit Reached!</h2>
+    <p class="text-gray-400 text-sm mb-6">You've used all 10 free swipes for today.<br/>Come back tomorrow or wait for approval!</p>
+    <button onclick="document.getElementById('limit-modal').classList.add('hidden')" class="w-full bg-surface border border-white/10 text-gray-400 py-3 rounded-xl text-sm">OK</button>
+  </div>
+</div>
+
+<script>
+const cards = document.querySelectorAll('.profile-card');
+let currentIndex = 0;
+
+async function swipeAction(action) {
+  const card = cards[currentIndex];
+  if (!card) return;
+  const id = card.dataset.id;
+
+  if (action === 'like') {
+    card.querySelector('.like-indicator').style.opacity = '1';
+    card.style.transform = 'translateX(150%) rotate(20deg)';
+  } else {
+    card.querySelector('.nope-indicator').style.opacity = '1';
+    card.style.transform = 'translateX(-150%) rotate(-20deg)';
+  }
+  card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
+  card.style.opacity = '0';
+
+  if (action === 'like') {
+    try {
+      const res = await fetch(`/like/${id}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({super: false})
+      });
+      const data = await res.json();
+      if (data.limit) {
+        card.style.transition = 'none';
+        card.style.transform = '';
+        card.style.opacity = '1';
+        document.getElementById('limit-modal').classList.remove('hidden');
+        return;
+      }
+    } catch(e) {}
+  } else {
+    try { await fetch(`/skip/${id}`, {method: 'POST'}); } catch(e) {}
+  }
+  setTimeout(() => { card.style.display = 'none'; currentIndex++; }, 400);
+}
+
+// Touch support
+let startX = 0;
+const stack = document.getElementById('card-stack');
+if (stack) {
+  stack.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, {passive: true});
+  stack.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - startX;
+    if (Math.abs(dx) > 60) swipeAction(dx > 0 ? 'like' : 'nope');
+  }, {passive: true});
+}
+</script>
+{% endblock %}

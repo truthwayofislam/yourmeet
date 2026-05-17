@@ -36,18 +36,18 @@
   </div>
 
   <!-- Stats -->
-  <div class="grid grid-cols-3 gap-3 mb-6">
+  <div class="grid grid-cols-3 gap-3 mb-6" id="stats-grid">
     <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
-      <div class="text-2xl font-bold gradient-text">{{ user.super_likes_left if not user.is_premium else '∞' }}</div>
-      <div class="text-gray-500 text-xs mt-1">Super Likes</div>
+      <div class="text-2xl font-bold gradient-text" id="stat-given">...</div>
+      <div class="text-gray-500 text-xs mt-1">Likes Given</div>
     </div>
     <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
-      <div class="text-2xl font-bold gradient-text">{{ user.gender|capitalize }}</div>
-      <div class="text-gray-500 text-xs mt-1">Gender</div>
+      <div class="text-2xl font-bold gradient-text" id="stat-received">...</div>
+      <div class="text-gray-500 text-xs mt-1">Likes Received</div>
     </div>
     <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
-      <div class="text-2xl font-bold gradient-text">{{ '✓' if user.is_premium else 'Free' }}</div>
-      <div class="text-gray-500 text-xs mt-1">Plan</div>
+      <div class="text-2xl font-bold gradient-text" id="stat-matches">...</div>
+      <div class="text-gray-500 text-xs mt-1">Matches</div>
     </div>
   </div>
 
@@ -95,12 +95,24 @@
         <p class="text-gray-500 text-xs mt-1">Required — your matches will use this to contact you</p>
       </div>
       <div>
-        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Update Photo</label>
-        <label class="flex items-center gap-3 bg-surface border border-dashed border-white/20 rounded-xl px-4 py-3 mt-1 cursor-pointer hover:border-primary transition">
-          <i class="fas fa-camera text-primary"></i>
-          <span class="text-gray-400 text-sm" id="photo-label2">Choose new photo</span>
-          <input type="file" name="photo" accept="image/*" class="hidden" onchange="document.getElementById('photo-label2').textContent = this.files[0]?.name || 'Choose new photo'"/>
-        </label>
+        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Photos (up to 6)</label>
+        {% set photo_list = [] %}
+        {% if user.photos %}{% set photo_list = user.photos | from_json %}{% endif %}
+        {% if not photo_list and user.photo %}{% set photo_list = [user.photo] %}{% endif %}
+        <div class="grid grid-cols-3 gap-2 mt-2" id="profile-photo-grid">
+          {% for p in photo_list %}
+          <div class="relative aspect-square rounded-xl overflow-hidden border border-white/10">
+            <img src="{{ p | photo_url }}" class="w-full h-full object-cover"/>
+          </div>
+          {% endfor %}
+          {% if photo_list|length < 6 %}
+          <label class="aspect-square rounded-xl border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-primary transition">
+            <i class="fas fa-plus text-gray-500"></i>
+            <input type="file" name="photo" accept="image/*" class="hidden" onchange="document.getElementById('photo-label2').textContent = this.files[0]?.name || 'Add photo'"/>
+          </label>
+          {% endif %}
+        </div>
+        <p class="text-gray-600 text-xs mt-1" id="photo-label2">Add a new photo</p>
       </div>
       <button type="submit" class="w-full gradient-btn text-white font-semibold py-3 rounded-xl transition text-sm">
         Save Changes <i class="fas fa-check ml-2"></i>
@@ -131,4 +143,11 @@
   </a>
 
 </div>
+<script>
+fetch('/profile/stats').then(r=>r.json()).then(d=>{
+  document.getElementById('stat-given').textContent = d.likes_given ?? '0';
+  document.getElementById('stat-received').textContent = d.likes_received ?? '0';
+  document.getElementById('stat-matches').textContent = d.matches ?? '0';
+}).catch(()=>{});
+</script>
 {% endblock %}

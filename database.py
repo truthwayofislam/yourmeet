@@ -71,6 +71,11 @@ def init_db():
         ("is_approved", "INTEGER DEFAULT 0"),
         ("premium_until", "TEXT DEFAULT ''"),
         ("is_rejected", "INTEGER DEFAULT 0"),
+        ("language", "TEXT DEFAULT 'en'"),
+        ("interested_in", "TEXT DEFAULT 'both'"),
+        ("photos", "TEXT DEFAULT ''"),
+        ("interests", "TEXT DEFAULT ''"),
+        ("setup_step", "INTEGER DEFAULT 0"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -86,6 +91,15 @@ def init_db():
     except: pass
     try:
         conn.execute("CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY AUTOINCREMENT, reporter_id INTEGER, reported_id INTEGER, reason TEXT, created_at TEXT)")
+        conn.commit()
+    except: pass
+
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_gender ON users(gender)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_is_approved ON users(is_approved)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_likes_from_user ON likes(from_user)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_likes_to_user ON likes(to_user)")
         conn.commit()
     except: pass
 
@@ -108,7 +122,8 @@ def row_to_user(row):
     keys = ["id","name","email","phone","password","age","gender","bio","city",
             "photo","is_premium","super_likes_left","created_at","telegram_id",
             "is_admin","is_blocked","daily_swipes","swipes_reset_date","referral_count","social_handle",
-            "is_verified","boosted_until","is_approved","premium_until","is_rejected"]
+            "is_verified","boosted_until","is_approved","premium_until","is_rejected",
+            "language","interested_in","photos","interests","setup_step"]
     d = dict(zip(keys, row))
     return UserObj(d)
 

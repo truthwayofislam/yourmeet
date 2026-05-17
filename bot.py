@@ -63,7 +63,12 @@ def get_conn():
 
 def get_user_by_tg(tg_id: str):
     conn = get_conn()
-    row = conn.execute("SELECT * FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    row = conn.execute(
+        "SELECT id,name,email,phone,password,age,gender,bio,city,photo,is_premium,super_likes_left,"
+        "created_at,telegram_id,is_admin,is_blocked,daily_swipes,swipes_reset_date,referral_count,"
+        "social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected,language,interested_in "
+        "FROM users WHERE telegram_id=?", (tg_id,)
+    ).fetchone()
     conn.close()
     return row
 
@@ -98,6 +103,45 @@ def open_app_keyboard(path=""):
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=f"{APP_URL}{path}"))
     ]])
+
+async def _show_language_select(update: Update):
+    from strings import LANGUAGES
+    # Build 3-column keyboard
+    items = list(LANGUAGES.items())
+    rows = []
+    for i in range(0, len(items), 3):
+        row = [InlineKeyboardButton(label, callback_data=f"setlang:{code}") for code, label in items[i:i+3]]
+        rows.append(row)
+    kb = InlineKeyboardMarkup(rows)
+    await update.message.reply_text("🌍 Please select your language:", reply_markup=kb)
+
+async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang = query.data.split(":")[1]
+    tg_id = str(query.from_user.id)
+    conn = get_conn()
+    conn.execute("UPDATE users SET language=? WHERE telegram_id=?", (lang, tg_id))
+    conn.commit()
+    conn.close()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except: pass
+    # Send welcome in selected language
+    from strings import get
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton(get(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))],
+        [InlineKeyboardButton(get(lang, "get_premium"), web_app=WebAppInfo(url=f"{APP_URL}/premium"))]
+    ])
+    await query.message.reply_text(
+        get(lang, "welcome", name=query.from_user.first_name),
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
+    await query.message.reply_text(get(lang, "quick_actions"), reply_markup=MAIN_KB)
+
+async def language_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _show_language_select(update)
 
 MAIN_KB = ReplyKeyboardMarkup([
     [KeyboardButton("🔥 Swipe"), KeyboardButton("💕 Matches")],
@@ -430,7 +474,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Save telegram_id immediately on /start so broadcast reaches them
     conn = get_conn()
-    existing = conn.execute("SELECT id, gender, photo FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    existing = conn.execute("SELECT id, language FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     if not existing:
         import secrets as _secrets
         conn.execute(
@@ -438,8 +482,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             (user.first_name, f"tg_{tg_id}@yourmeet.app", _secrets.token_hex(8), tg_id)
         )
         conn.commit()
+        # New user — show language selection
+        conn.close()
+        await _show_language_select(update)
+        return
     conn.close()
 
+    # Handle referral
     if context.args and context.args[0].startswith("ref_"):
         try:
             referrer_id = int(context.args[0][4:])
@@ -466,18 +515,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=APP_URL))],
         [InlineKeyboardButton("👑 Get Premium", web_app=WebAppInfo(url=f"{APP_URL}/premium"))]
     ])
+    from strings import get as _get
+    lang = existing[1] if existing and existing[1] else "en"
     await update.message.reply_text(
-        f"*Hey {user.first_name}! 👋*\n\n"
-        f"Welcome to *YourMeet* 💕\n\n"
-        f"🔥 Swipe & discover people\n"
-        f"⭐ Send super likes\n"
-        f"💕 Match & connect via Instagram/Telegram\n"
-        f"👑 Go Premium for unlimited access\n\n"
-        f"Tap below to open the app!",
+        _get(lang, "welcome", name=user.first_name),
         parse_mode="Markdown",
         reply_markup=kb
     )
-    await update.message.reply_text("👇 Quick actions:", reply_markup=MAIN_KB)
+    await update.message.reply_text(_get(lang, "quick_actions"), reply_markup=MAIN_KB)
 
 # /profile
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -556,14 +601,21 @@ def _next_profile(tg_id: str):
         conn.close()
         return None, None
     user_id, gender = me
-    opposite = "female" if gender == "male" else "male"
+    interested_in_row = conn.execute("SELECT interested_in FROM users WHERE id=?", (user_id,)).fetchone()
+    interested_in = (interested_in_row[0] if interested_in_row and interested_in_row[0] else 'both')
     liked = [r[0] for r in conn.execute("SELECT to_user FROM likes WHERE from_user=?", (user_id,)).fetchall()]
     skipped = [r[0] for r in conn.execute("SELECT skipped_id FROM skips WHERE user_id=?", (user_id,)).fetchall()]
     excluded = list(set(liked + skipped + [user_id]))
     placeholders = ",".join("?" * len(excluded))
+    if interested_in == 'both':
+        gender_filter = "gender IN ('male','female')"
+        gender_params = ()
+    else:
+        gender_filter = "gender=?"
+        gender_params = (interested_in,)
     row = conn.execute(
-        f"SELECT id, name, age, city, bio, photo, gender, is_verified FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 AND is_rejected=0 AND is_approved=1 LIMIT 1",
-        (*excluded, opposite)
+        f"SELECT id, name, age, city, bio, photo, gender, is_verified FROM users WHERE id NOT IN ({placeholders}) AND {gender_filter} AND age>=18 AND is_blocked=0 AND is_rejected=0 AND is_approved=1 LIMIT 1",
+        (*excluded, *gender_params)
     ).fetchone()
     conn.close()
     return user_id, row
@@ -1054,6 +1106,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/premium - Get Premium\n"
         "/delete - Delete account\n"
         "/about - About YourMeet & developer\n"
+        "/language - Change language\n"
         "/help - Show this message",
         parse_mode="Markdown",
         reply_markup=kb
@@ -1195,6 +1248,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("delete", delete_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("about", about_cmd))
+    app.add_handler(CommandHandler("language", language_cmd))
+    app.add_handler(CallbackQueryHandler(language_callback, pattern="^setlang:"))
     app.add_handler(PreCheckoutQueryHandler(handle_pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_successful_payment))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyboard_btn_handler))

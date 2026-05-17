@@ -41,8 +41,27 @@
 
         <!-- Photo -->
         <div class="relative h-full">
-          {% if profile.photo %}
-          <img src="{{ profile.photo | photo_url }}" class="w-full h-full object-cover"/>
+          {% set photo_list = [] %}
+          {% if profile.photos %}
+            {% set photo_list = profile.photos | from_json %}
+          {% endif %}
+          {% if not photo_list and profile.photo %}
+            {% set photo_list = [profile.photo] %}
+          {% endif %}
+
+          {% if photo_list %}
+          <div class="photo-carousel h-full" id="carousel-{{ profile.id }}" data-photos='{{ photo_list | tojson }}'>
+            <img src="{{ photo_list[0] | photo_url }}" class="w-full h-full object-cover carousel-img" id="cimg-{{ profile.id }}"/>
+            {% if photo_list | length > 1 %}
+            <div class="absolute top-3 left-0 right-0 flex justify-center gap-1 z-10">
+              {% for p in photo_list %}
+              <div class="h-1 rounded-full transition-all duration-300 {% if loop.first %}bg-white w-6{% else %}bg-white/40 w-3{% endif %}" id="dot-{{ profile.id }}-{{ loop.index0 }}"></div>
+              {% endfor %}
+            </div>
+            <div class="absolute inset-y-0 left-0 w-1/3 z-10" onclick="carouselPrev('{{ profile.id }}', {{ photo_list | length }}, event)"></div>
+            <div class="absolute inset-y-0 right-0 w-1/3 z-10" onclick="carouselNext('{{ profile.id }}', {{ photo_list | length }}, event)"></div>
+            {% endif %}
+          </div>
           {% else %}
           <div class="w-full h-full bg-gradient-to-br from-surface to-card flex items-center justify-center">
             <i class="fas fa-user text-6xl text-gray-600"></i>
@@ -76,6 +95,16 @@
                 </p>
                 {% if profile.bio %}
                 <p class="text-gray-400 text-xs mt-2 line-clamp-2">{{ profile.bio }}</p>
+                {% endif %}
+                {% if profile.interests %}
+                {% set tags = profile.interests | from_json %}
+                {% if tags %}
+                <div class="flex flex-wrap gap-1 mt-2">
+                  {% for tag in tags[:4] %}
+                  <span class="text-xs bg-white/10 text-white/80 px-2 py-0.5 rounded-full">{{ tag }}</span>
+                  {% endfor %}
+                </div>
+                {% endif %}
                 {% endif %}
               </div>
             </div>
@@ -112,6 +141,9 @@
   <p class="text-center text-gray-600 text-xs mt-3">
     <i class="fas fa-star text-blue-400 mr-1"></i>
     {% if user.is_premium %}Unlimited super likes{% else %}{{ user.super_likes_left }} super likes left{% endif %}
+    <span class="mx-2 text-gray-700">•</span>
+    <i class="fas fa-fire text-primary mr-1"></i>
+    {% if user.is_premium %}Unlimited swipes{% else %}{{ user.daily_swipes if user.daily_swipes is not none else 30 }} swipes left today{% endif %}
   </p>
 
   {% if user.is_premium %}
@@ -121,6 +153,22 @@
       <i class="fas fa-rocket"></i> Boost Profile (30 min)
     </button>
   </div>
+  {% if user.boosted_until %}
+  <p class="text-center text-green-400 text-xs mt-2" id="boost-active-msg">
+    🚀 Profile is boosted!
+  </p>
+  <script>
+    const boostedUntil = new Date("{{ user.boosted_until }} UTC");
+    if (boostedUntil > new Date()) {
+      document.getElementById('boost-active-msg').style.display = 'block';
+      document.getElementById('boost-btn').innerHTML = '<i class="fas fa-rocket"></i> Boosted 🔥';
+      document.getElementById('boost-btn').classList.add('text-green-400','border-green-400/30');
+    } else {
+      const el = document.getElementById('boost-active-msg');
+      if (el) el.style.display = 'none';
+    }
+  </script>
+  {% endif %}
   {% endif %}
   {% endif %}
 
@@ -180,6 +228,31 @@
 </div>
 
 <script>
+// Carousel state
+const carouselIdx = {};
+function carouselNext(id, total, e) {
+  e.stopPropagation();
+  carouselIdx[id] = ((carouselIdx[id] || 0) + 1) % total;
+  updateCarousel(id, total);
+}
+function carouselPrev(id, total, e) {
+  e.stopPropagation();
+  carouselIdx[id] = ((carouselIdx[id] || 0) - 1 + total) % total;
+  updateCarousel(id, total);
+}
+function updateCarousel(id, total) {
+  const idx = carouselIdx[id] || 0;
+  const el = document.getElementById('carousel-' + id);
+  if (!el) return;
+  const photos = JSON.parse(el.dataset.photos);
+  const img = document.getElementById('cimg-' + id);
+  if (img) img.src = photos[idx].startsWith('http') ? photos[idx] : '/photo/' + photos[idx];
+  for (let i = 0; i < total; i++) {
+    const dot = document.getElementById(`dot-${id}-${i}`);
+    if (dot) { dot.className = `h-1 rounded-full transition-all duration-300 ${i === idx ? 'bg-white w-6' : 'bg-white/40 w-3'}`; }
+  }
+}
+
 const cards = document.querySelectorAll('.profile-card');
 let currentIndex = 0;
 

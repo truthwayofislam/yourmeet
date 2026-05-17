@@ -58,6 +58,13 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
     print(f"[ADMIN BOT] send_for_review called — token={'SET' if token else 'MISSING'}, admin_id={admin_tg_id or 'MISSING'}")
     if not token or not admin_tg_id:
         return
+    # Fetch language from DB
+    try:
+        conn = get_conn()
+        lang_row = conn.execute("SELECT language FROM users WHERE id=?", (user_id,)).fetchone()
+        lang = (lang_row[0] if lang_row and lang_row[0] else "en").upper()
+    except:
+        lang = "EN"
     api = f"https://api.telegram.org/bot{token}"
     caption = (
         f"🆕 *New Profile*\n\n"
@@ -65,6 +72,7 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         f"📍 {city or 'No city'}\n"
         f"📧 {email if email and not email.startswith('via:') else 'N/A'}\n"
         f"📞 {phone if phone and phone != '' else 'N/A'}\n"
+        f"🌍 Language: {lang}\n"
         f"📲 Source: {'🌐 Web Form' if email and not email.startswith('via:') else ('🤖 Bot Setup' if email == 'via:bot_setup' else '📱 Telegram Login')}\n"
         f"🆔 DB ID: `{user_id}`"
     )
@@ -128,6 +136,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Tap Approve or Block on each profile.\n\n"
         "/pending - Show pending profiles\n"
         "/stats - App stats\n"
+        "/find <name> - Search user by name\n"
+        "/user <id> - View user details\n"
         "/broadcast msg - Send message to all users\n"
         "/remind - Message incomplete profile users\n"
         "/remind_blocked - Notify all blocked users\n"
@@ -237,7 +247,7 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     conn = get_conn()
     rows = conn.execute(
-        "SELECT telegram_id, name, photo, bio, city, social_handle FROM users WHERE (is_rejected=1 OR is_blocked=1) AND telegram_id IS NOT NULL AND telegram_id != ''"
+        "SELECT telegram_id, name, photo, bio, city, social_handle, COALESCE(language,'en') FROM users WHERE (is_rejected=1 OR is_blocked=1) AND telegram_id IS NOT NULL AND telegram_id != ''"
     ).fetchall()
     conn.close()
     if not rows:
@@ -255,24 +265,23 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [{"text": "🌐 Re-register via App", "url": f"{app_url}/register"}]
     ]}
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-        for tg_id, name, photo, bio, city, social in rows:
+        for tg_id, name, photo, bio, city, social, lang in rows:
+            from strings import get as _get
             missing = []
             if not photo: missing.append("📸 Profile photo")
             if not bio: missing.append("💬 Bio")
             if not city: missing.append("📍 City")
             if not social: missing.append("📱 Instagram/Telegram handle")
-            missing_text = ("\n\n*Missing in your profile:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
+            missing_text = ("\n\n*Missing:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
             text = (
-                f"🚫 *{name}*, your YourMeet profile has been *blocked*."
-                f"\n\n*Why blocked?*"
-                f"\n• Fake or unclear photo"
-                f"\n• Inappropriate bio or fake name"
-                f"{missing_text}"
-                f"\n\n*To re-register:*"
-                f"\n1️⃣ Tap below → type /setup"
-                f"\n2️⃣ Real photo, real name, genuine bio"
-                f"\n3️⃣ Wait for admin approval"
+                _get(lang or "en", "profile_rejected", name=name)
+                + missing_text
+                + "\n\n1️⃣ Tap below → /setup\n2️⃣ Real photo & bio\n3️⃣ Wait for approval"
             )
+            msg_keyboard = {"inline_keyboard": [
+                [{"text": _get(lang or "en", "re_register_bot"), "url": f"https://t.me/{bot_username}"}],
+                [{"text": _get(lang or "en", "re_register_app"), "url": f"{app_url}/register"}]
+            ]}
             try:
                 resp = await client.post(f"{api}/sendMessage", json={
                     "chat_id": tg_id, "text": text,
@@ -448,22 +457,22 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         tg_id, name = tg_row
         app_url = os.getenv("APP_URL", "")
+        # Get user's language
+        lang_row = conn.execute("SELECT language FROM users WHERE id=?", (uid,)).fetchone()
+        lang = (lang_row[0] if lang_row and lang_row[0] else "en")
+        from strings import get as _get
         if action in ("approve", "verify"):
             verified_line = "\n⭐ Your profile is also *Verified* — badge shown on your card!" if action == "verify" else ""
             await _notify_user(tg_id,
-                f"🎉 *Congratulations {name}!*\n\n"
-                f"Your YourMeet profile has been *approved* ✅\n"
-                f"You can now start swiping and matching!{verified_line}\n\n"
-                f"Tap below to find your match 💕",
-                {"inline_keyboard": [[{"text": "💕 Start Swiping", "url": app_url}]]}
+                _get(lang, "profile_verified" if action == "verify" else "profile_approved", name=name) + verified_line,
+                {"inline_keyboard": [[{"text": _get(lang, "start_swiping"), "url": app_url}]]}
             )
         else:
             await _notify_user(tg_id,
-                f"🚫 *{name}*, your profile was rejected.\n\n"
-                f"Please re-register with a clear photo and genuine bio.",
+                _get(lang, "profile_rejected", name=name),
                 {"inline_keyboard": [
-                    [{"text": "🔄 Re-register via Bot", "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}?start=setup"}],
-                    [{"text": "🌐 Re-register via App", "url": f"{app_url}/register"}]
+                    [{"text": _get(lang, "re_register_bot"), "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}"}],
+                    [{"text": _get(lang, "re_register_app"), "url": f"{app_url}/register"}]
                 ]}
             )
     status_line = f"\n\n{label}"
@@ -480,7 +489,84 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except: pass
 
-def build_admin_app() -> Application:
+# /find <name> — search user by name
+async def find_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        return
+    query = " ".join(context.args).strip() if context.args else ""
+    if not query:
+        await update.message.reply_text("⚠️ Usage: /find <name>")
+        return
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, name, age, gender, city, telegram_id, is_approved, is_blocked, is_rejected, is_premium "
+        "FROM users WHERE name LIKE ? AND is_admin=0 ORDER BY id DESC LIMIT 10",
+        (f"%{query}%",)
+    ).fetchall()
+    conn.close()
+    if not rows:
+        await update.message.reply_text(f"❌ No users found matching *{query}*", parse_mode="Markdown")
+        return
+    lines = []
+    for uid, name, age, gender, city, tg_id, approved, blocked, rejected, premium in rows:
+        status = "✅" if approved else ("⛔" if blocked else ("🚫" if rejected else "⏳"))
+        lines.append(f"{status} *{name}*, {age or '?'} • {gender or '?'} • {city or 'No city'}\n🆔 `/user {uid}`")
+    await update.message.reply_text("\n\n".join(lines), parse_mode="Markdown")
+
+# /user <id> — view user details
+async def user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
+        return
+    if not context.args:
+        await update.message.reply_text("⚠️ Usage: /user <id>")
+        return
+    try:
+        uid = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Invalid ID")
+        return
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id,name,age,gender,city,bio,photo,telegram_id,is_approved,is_blocked,is_rejected,"
+        "is_premium,is_verified,social_handle,email,phone,created_at,language,referral_count "
+        "FROM users WHERE id=?", (uid,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        await update.message.reply_text(f"❌ No user with ID {uid}")
+        return
+    uid, name, age, gender, city, bio, photo, tg_id, approved, blocked, rejected, premium, verified, social, email, phone, created_at, lang, refs = row
+    status = "✅ Approved" if approved else ("⛔ Banned" if blocked else ("🚫 Rejected" if rejected else "⏳ Pending"))
+    caption = (
+        f"👤 *{name}*, {age or '?'} • {gender or '?'}\n"
+        f"📍 {city or 'No city'}\n"
+        f"💬 _{bio or 'No bio'}_\n\n"
+        f"📊 Status: {status}\n"
+        f"👑 Premium: {'Yes' if premium else 'No'}\n"
+        f"⭐ Verified: {'Yes' if verified else 'No'}\n"
+        f"📱 Social: {social or 'N/A'}\n"
+        f"📧 Email: {email or 'N/A'}\n"
+        f"📞 Phone: {phone or 'N/A'}\n"
+        f"🌍 Language: {lang or 'en'}\n"
+        f"🔗 Referrals: {refs or 0}\n"
+        f"📅 Joined: {(created_at or '')[:10]}\n"
+        f"🆔 ID: `{uid}` | TG: `{tg_id or 'N/A'}`"
+    )
+    try:
+        if photo and photo.startswith("https://"):
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=15) as cl:
+                pr = await cl.get(photo)
+            if pr.status_code == 200:
+                await update.message.reply_photo(pr.content, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+                return
+        elif photo:
+            await update.message.reply_photo(photo, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+            return
+    except: pass
+    await update.message.reply_text(caption + "\n⚠️ No photo", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+
+
     token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("ADMIN_BOT_TOKEN is not set")
@@ -494,5 +580,7 @@ def build_admin_app() -> Application:
     app.add_handler(CommandHandler("remove_fake", remove_fake_cmd))
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CommandHandler("find", find_cmd))
+    app.add_handler(CommandHandler("user", user_cmd))
     app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
     return app

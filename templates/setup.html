@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Setup Profile — YourMeet</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{--primary:#E91E8C;--secondary:#9C27B0;--bg:#0f0f1a;--card:#1a1a2e;--surface:#16213e;--text:#fff;--gray:#9ca3af}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--tg-theme-bg-color,var(--bg));color:var(--tg-theme-text-color,var(--text));min-height:100vh;display:flex;flex-direction:column}
+    .progress-bar{height:4px;background:rgba(255,255,255,0.1);position:fixed;top:0;left:0;right:0;z-index:100}
+    .progress-fill{height:100%;background:linear-gradient(90deg,var(--primary),var(--secondary));transition:width 0.4s ease}
+    .step{display:none;flex-direction:column;flex:1;padding:24px 20px;animation:fadeIn 0.3s ease}
+    .step.active{display:flex}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .step-header{margin-bottom:28px}
+    .step-num{font-size:12px;color:var(--primary);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+    .step-title{font-size:24px;font-weight:700;margin-bottom:6px}
+    .step-sub{font-size:14px;color:var(--gray)}
+    input,textarea,select{width:100%;background:var(--surface,#16213e);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:14px 16px;color:var(--text,#fff);font-size:16px;outline:none;transition:border-color 0.2s;-webkit-appearance:none}
+    input:focus,textarea:focus,select:focus{border-color:var(--primary)}
+    textarea{resize:none;min-height:100px}
+    select option{background:#1a1a2e}
+    .btn{width:100%;padding:16px;border-radius:14px;font-size:16px;font-weight:600;border:none;cursor:pointer;transition:opacity 0.2s}
+    .btn-primary{background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff}
+    .btn-primary:disabled{opacity:0.5;cursor:not-allowed}
+    .btn-back{background:rgba(255,255,255,0.07);color:var(--gray);margin-bottom:12px}
+    .gender-grid,.interest-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
+    .interest-grid{grid-template-columns:1fr 1fr 1fr}
+    .choice-btn{padding:16px 12px;border-radius:14px;border:1.5px solid rgba(255,255,255,0.1);background:var(--surface,#16213e);color:var(--text,#fff);font-size:15px;cursor:pointer;text-align:center;transition:all 0.2s}
+    .choice-btn.selected{border-color:var(--primary);background:rgba(233,30,140,0.15);color:var(--primary)}
+    .interest-btn{padding:10px 8px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.1);background:var(--surface,#16213e);color:var(--text,#fff);font-size:13px;cursor:pointer;text-align:center;transition:all 0.2s}
+    .interest-btn.selected{border-color:var(--primary);background:rgba(233,30,140,0.15);color:var(--primary)}
+    .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+    .photo-slot{aspect-ratio:1;border-radius:14px;border:1.5px dashed rgba(255,255,255,0.2);background:var(--surface,#16213e);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;transition:border-color 0.2s}
+    .photo-slot:hover{border-color:var(--primary)}
+    .photo-slot img{width:100%;height:100%;object-fit:cover}
+    .photo-slot .remove-btn{position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;cursor:pointer;z-index:2}
+    .photo-slot .add-icon{color:rgba(255,255,255,0.3);font-size:24px}
+    .char-count{font-size:12px;color:var(--gray);text-align:right;margin-top:4px}
+    .error-msg{color:#f87171;font-size:13px;margin-top:8px;display:none}
+    .bottom{margin-top:auto;padding-top:20px}
+    .hint{font-size:12px;color:var(--gray);text-align:center;margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="progress-bar"><div class="progress-fill" id="progress" style="width:10%"></div></div>
+
+  <!-- Step 1: Name -->
+  <div class="step active" id="step-1">
+    <div class="step-header">
+      <div class="step-num">Step 1 of 10</div>
+      <div class="step-title">What's your name? 👋</div>
+      <div class="step-sub">This is how others will see you</div>
+    </div>
+    <input type="text" id="inp-name" placeholder="Your full name" maxlength="40" autocomplete="off"/>
+    <div class="error-msg" id="err-name">Name must be at least 2 characters</div>
+    <div class="bottom">
+      <button class="btn btn-primary" onclick="nextStep(1)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 2: Age -->
+  <div class="step" id="step-2">
+    <div class="step-header">
+      <div class="step-num">Step 2 of 10</div>
+      <div class="step-title">How old are you? 🎂</div>
+      <div class="step-sub">You must be 18 or older</div>
+    </div>
+    <input type="number" id="inp-age" placeholder="Your age" min="18" max="60"/>
+    <div class="error-msg" id="err-age">Age must be between 18 and 60</div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(2)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(2)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 3: Gender -->
+  <div class="step" id="step-3">
+    <div class="step-header">
+      <div class="step-num">Step 3 of 10</div>
+      <div class="step-title">I am... 👤</div>
+      <div class="step-sub">Select your gender</div>
+    </div>
+    <div class="gender-grid">
+      <button class="choice-btn" id="g-male" onclick="selectGender('male')">👨 Male</button>
+      <button class="choice-btn" id="g-female" onclick="selectGender('female')">👩 Female</button>
+    </div>
+    <div class="error-msg" id="err-gender">Please select your gender</div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(3)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(3)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 4: Interested In -->
+  <div class="step" id="step-4">
+    <div class="step-header">
+      <div class="step-num">Step 4 of 10</div>
+      <div class="step-title">Interested in... 💕</div>
+      <div class="step-sub">Who do you want to meet?</div>
+    </div>
+    <div class="gender-grid">
+      <button class="choice-btn" id="i-male" onclick="selectInterest('male')">👨 Men</button>
+      <button class="choice-btn" id="i-female" onclick="selectInterest('female')">👩 Women</button>
+    </div>
+    <button class="choice-btn" style="width:100%;margin-top:12px" id="i-both" onclick="selectInterest('both')">💑 Both</button>
+    <div class="error-msg" id="err-interest">Please make a selection</div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(4)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(4)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 5: Photos -->
+  <div class="step" id="step-5">
+    <div class="step-header">
+      <div class="step-num">Step 5 of 10</div>
+      <div class="step-title">Add your photos 📸</div>
+      <div class="step-sub">At least 1 photo required, up to 6</div>
+    </div>
+    <div class="photo-grid" id="photo-grid">
+      <!-- slots rendered by JS -->
+    </div>
+    <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="handlePhotoSelect(event)"/>
+    <div class="error-msg" id="err-photos">Please add at least 1 photo</div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(5)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(5)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 6: Bio -->
+  <div class="step" id="step-6">
+    <div class="step-header">
+      <div class="step-num">Step 6 of 10</div>
+      <div class="step-title">About you 💬</div>
+      <div class="step-sub">Write a short bio (min 10 characters)</div>
+    </div>
+    <textarea id="inp-bio" placeholder="Tell something about yourself..." maxlength="300" oninput="document.getElementById('bio-count').textContent=this.value.length+'/300'"></textarea>
+    <div class="char-count" id="bio-count">0/300</div>
+    <div class="error-msg" id="err-bio">Bio must be at least 10 characters</div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(6)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(6)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 7: Interests -->
+  <div class="step" id="step-7">
+    <div class="step-header">
+      <div class="step-num">Step 7 of 10</div>
+      <div class="step-title">Your interests 🎯</div>
+      <div class="step-sub">Pick up to 6 that match you</div>
+    </div>
+    <div class="interest-grid" id="interest-grid"></div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(7)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(7)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 8: Social Handle -->
+  <div class="step" id="step-8">
+    <div class="step-header">
+      <div class="step-num">Step 8 of 10</div>
+      <div class="step-title">Contact handle 📱</div>
+      <div class="step-sub">Instagram or Telegram — your matches will use this</div>
+    </div>
+    <input type="text" id="inp-social" placeholder="@your_username" maxlength="60" autocomplete="off"/>
+    <div class="error-msg" id="err-social">Please enter your Instagram or Telegram username</div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(8)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(8)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 9: Phone -->
+  <div class="step" id="step-9">
+    <div class="step-header">
+      <div class="step-num">Step 9 of 10</div>
+      <div class="step-title">Phone number 📞</div>
+      <div class="step-sub">Required — for account verification</div>
+    </div>
+    <input type="tel" id="inp-phone" placeholder="+1 234 567 8900" maxlength="20" autocomplete="tel"/>
+    <div class="error-msg" id="err-phone">Please enter a valid phone number with country code</div>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(9)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" onclick="nextStep(9)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
+    </div>
+  </div>
+
+  <!-- Step 10: City -->
+  <div class="step" id="step-10">
+    <div class="step-header">
+      <div class="step-num">Step 10 of 10</div>
+      <div class="step-title">Your city 📍</div>
+      <div class="step-sub">Optional — helps find people near you</div>
+    </div>
+    <input type="text" id="inp-city" placeholder="e.g. Mumbai, Madrid, Tokyo..." maxlength="60" autocomplete="off"/>
+    <div class="bottom">
+      <button class="btn btn-back" onclick="prevStep(10)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
+      <button class="btn btn-primary" id="submit-btn" onclick="submitProfile()">
+        <i class="fas fa-heart mr-1"></i> Create Profile
+      </button>
+      <p class="hint">Your profile will be reviewed by admin before going live</p>
+    </div>
+  </div>
+
+<script>
+const TOTAL_STEPS = 10;
+let currentStep = 1;
+const data = { name:'', age:0, gender:'', interested_in:'', photos:[], bio:'', interests:[], social:'', phone:'', city:'' };
+
+const INTERESTS = ['🎵 Music','✈️ Travel','💪 Fitness','📚 Books','🎮 Gaming','🍕 Food','📸 Photography','🎨 Art','🎬 Movies','🏋️ Sports','🐾 Pets','🌿 Nature','💃 Dancing','🧘 Yoga','🎤 Singing'];
+
+function renderInterests() {
+  const grid = document.getElementById('interest-grid');
+  grid.innerHTML = INTERESTS.map(i => `<button class="interest-btn${data.interests.includes(i)?' selected':''}" onclick="toggleInterest('${i}')">${i}</button>`).join('');
+}
+
+function toggleInterest(tag) {
+  if (data.interests.includes(tag)) {
+    data.interests = data.interests.filter(i => i !== tag);
+  } else if (data.interests.length < 6) {
+    data.interests.push(tag);
+  }
+  renderInterests();
+}
+
+function renderPhotoGrid() {
+  const grid = document.getElementById('photo-grid');
+  let html = '';
+  for (let i = 0; i < 6; i++) {
+    if (data.photos[i]) {
+      html += `<div class="photo-slot"><img src="${data.photos[i].preview}"/><div class="remove-btn" onclick="removePhoto(${i})"><i class="fas fa-times"></i></div></div>`;
+    } else if (i === data.photos.length) {
+      html += `<div class="photo-slot" onclick="document.getElementById('photo-file-input').click()"><i class="fas fa-plus add-icon"></i></div>`;
+    } else {
+      html += `<div class="photo-slot" style="opacity:0.3"><i class="fas fa-image add-icon"></i></div>`;
+    }
+  }
+  grid.innerHTML = html;
+}
+
+function handlePhotoSelect(e) {
+  const files = Array.from(e.target.files);
+  files.forEach(file => {
+    if (data.photos.length >= 6) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      data.photos.push({ file, preview: ev.target.result });
+      renderPhotoGrid();
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+
+function removePhoto(idx) {
+  data.photos.splice(idx, 1);
+  renderPhotoGrid();
+}
+
+function selectGender(g) {
+  data.gender = g;
+  document.getElementById('g-male').classList.toggle('selected', g === 'male');
+  document.getElementById('g-female').classList.toggle('selected', g === 'female');
+}
+
+function selectInterest(v) {
+  data.interested_in = v;
+  ['male','female','both'].forEach(x => document.getElementById('i-'+x).classList.toggle('selected', x === v));
+}
+
+function showError(id, show) {
+  document.getElementById(id).style.display = show ? 'block' : 'none';
+}
+
+function nextStep(step) {
+  if (step === 1) {
+    const v = document.getElementById('inp-name').value.trim();
+    if (v.length < 2) { showError('err-name', true); return; }
+    showError('err-name', false); data.name = v;
+  } else if (step === 2) {
+    const v = parseInt(document.getElementById('inp-age').value);
+    if (!v || v < 18 || v > 60) { showError('err-age', true); return; }
+    showError('err-age', false); data.age = v;
+  } else if (step === 3) {
+    if (!data.gender) { showError('err-gender', true); return; }
+    showError('err-gender', false);
+  } else if (step === 4) {
+    if (!data.interested_in) { showError('err-interest', true); return; }
+    showError('err-interest', false);
+  } else if (step === 5) {
+    if (data.photos.length === 0) { showError('err-photos', true); return; }
+    showError('err-photos', false);
+  } else if (step === 6) {
+    const v = document.getElementById('inp-bio').value.trim();
+    if (v.length < 10) { showError('err-bio', true); return; }
+    showError('err-bio', false); data.bio = v;
+  } else if (step === 7) {
+    // interests optional
+  } else if (step === 8) {
+    const v = document.getElementById('inp-social').value.trim();
+    if (v.length < 2) { showError('err-social', true); return; }
+    showError('err-social', false); data.social = v;
+  } else if (step === 9) {
+    const v = document.getElementById('inp-phone').value.trim().replace(/\s/g,'');
+    const digits = v.replace(/\D/g,'');
+    if (digits.length < 7) { showError('err-phone', true); return; }
+    showError('err-phone', false); data.phone = v.startsWith('+') ? v : '+' + v;
+  }
+  goToStep(step + 1);
+}
+
+function prevStep(step) { goToStep(step - 1); }
+
+function goToStep(n) {
+  // Auto-save current data to localStorage
+  localStorage.setItem('ym_setup', JSON.stringify({
+    name: data.name, age: data.age, gender: data.gender,
+    interested_in: data.interested_in, bio: data.bio,
+    interests: data.interests, social: data.social,
+    phone: data.phone, city: data.city, step: n
+  }));
+  document.getElementById(`step-${currentStep}`).classList.remove('active');
+  currentStep = n;
+  document.getElementById(`step-${currentStep}`).classList.add('active');
+  document.getElementById('progress').style.width = (currentStep / TOTAL_STEPS * 100) + '%';
+  if (currentStep === 5) renderPhotoGrid();
+  if (currentStep === 7) renderInterests();
+  window.scrollTo(0, 0);
+}
+
+// Restore saved data on load
+(function restoreSaved() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('ym_setup') || '{}');
+    if (saved.name) { data.name = saved.name; document.getElementById('inp-name').value = saved.name; }
+    if (saved.age) { data.age = saved.age; document.getElementById('inp-age').value = saved.age; }
+    if (saved.gender) { data.gender = saved.gender; selectGender(saved.gender); }
+    if (saved.interested_in) { data.interested_in = saved.interested_in; selectInterest(saved.interested_in); }
+    if (saved.bio) { data.bio = saved.bio; document.getElementById('inp-bio').value = saved.bio; document.getElementById('bio-count').textContent = saved.bio.length + '/300'; }
+    if (saved.interests) { data.interests = saved.interests; }
+    if (saved.social) { data.social = saved.social; document.getElementById('inp-social').value = saved.social; }
+    if (saved.phone) { data.phone = saved.phone; document.getElementById('inp-phone').value = saved.phone; }
+    if (saved.city) { data.city = saved.city; document.getElementById('inp-city').value = saved.city; }
+  } catch(e) {}
+})();
+
+async function submitProfile() {
+  data.city = document.getElementById('inp-city').value.trim();
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Creating...';
+
+  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+  const fd = new FormData();
+  fd.append('name', data.name);
+  fd.append('age', data.age);
+  fd.append('gender', data.gender);
+  fd.append('interested_in', data.interested_in);
+  fd.append('bio', data.bio);
+  fd.append('social_handle', data.social);
+  fd.append('city', data.city);
+  fd.append('phone', data.phone);
+  fd.append('interests', JSON.stringify(data.interests));
+  if (tgUser) {
+    fd.append('telegram_id', tgUser.id);
+    fd.append('name', tgUser.first_name || data.name);
+  }
+  // Upload photos
+  for (let i = 0; i < data.photos.length; i++) {
+    fd.append('photos', data.photos[i].file);
+  }
+
+  try {
+    const res = await fetch('/setup/submit', { method: 'POST', body: fd });
+    const json = await res.json();
+    if (json.ok) {
+      localStorage.removeItem('ym_setup');
+      if (window.Telegram?.WebApp) {
+        Telegram.WebApp.showAlert('🎉 Profile created! Wait for admin approval.', () => {
+          Telegram.WebApp.close();
+        });
+      } else {
+        window.location.href = '/';
+      }
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-heart mr-1"></i> Create Profile';
+      alert(json.error || 'Something went wrong');
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-heart mr-1"></i> Create Profile';
+    alert('Network error. Please try again.');
+  }
+}
+
+// Init Telegram WebApp
+if (window.Telegram?.WebApp) {
+  Telegram.WebApp.ready();
+  Telegram.WebApp.expand();
+}
+</script>
+</body>
+</html>

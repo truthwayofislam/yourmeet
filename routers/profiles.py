@@ -4,7 +4,7 @@ from templating import templates
 from database import get_db, row_to_user, row_to_obj
 from routers.auth import get_current_user
 from storage import upload_photo_to_telegram
-import shutil, uuid
+import shutil, uuid, json as _json, os
 from datetime import date, datetime, timedelta
 
 router = APIRouter()
@@ -14,33 +14,160 @@ MATCH_KEYS = ["id","user1_id","user2_id","matched_at"]
 def check_and_reset_swipes(db, user):
     today = str(date.today())
     if getattr(user, 'swipes_reset_date', '') != today:
-        db.execute("UPDATE users SET daily_swipes=3, super_likes_left=1, swipes_reset_date=? WHERE id=?", (today, user.id))
+        limit = 10 if not getattr(user, 'is_approved', 0) else 30
+        db.execute("UPDATE users SET daily_swipes=?, super_likes_left=1, swipes_reset_date=? WHERE id=?", (limit, today, user.id))
         db.commit()
-        user.__dict__['daily_swipes'] = 3
+        user.__dict__['daily_swipes'] = limit
         user.__dict__['super_likes_left'] = 1
         user.__dict__['swipes_reset_date'] = today
 
-@router.get("/", response_class=HTMLResponse)
+@router.post("/unmatch/{match_id}")
+async def unmatch(match_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    db.execute(
+        "DELETE FROM matches WHERE id=? AND (user1_id=? OR user2_id=?)",
+        (match_id, current_user.id, current_user.id)
+    )
+    db.commit()
+    return JSONResponse({"ok": True})
+
+@router.get("/profile/stats")
+async def profile_stats(db=Depends(get_db), current_user=Depends(get_current_user)):
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    likes_given = db.execute("SELECT COUNT(*) FROM likes WHERE from_user=?", (current_user.id,)).fetchone()[0]
+    likes_received = db.execute("SELECT COUNT(*) FROM likes WHERE to_user=?", (current_user.id,)).fetchone()[0]
+    matches = db.execute("SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?", (current_user.id, current_user.id)).fetchone()[0]
+    return JSONResponse({"likes_given": likes_given, "likes_received": likes_received, "matches": matches})
+
+
+async def setup_page(request: Request):
+    return templates.TemplateResponse(request, "setup.html")
+
+@router.post("/setup/submit")
+async def setup_submit(
+    request: Request,
+    name: str = Form(...), age: int = Form(...), gender: str = Form(...),
+    interested_in: str = Form("both"), bio: str = Form(""),
+    social_handle: str = Form(""), city: str = Form(""), phone: str = Form(""),
+    interests: str = Form(""), telegram_id: str = Form(None),
+    photos: list[UploadFile] = File(default=[]),
+    db=Depends(get_db)
+):
+    if age < 18:
+        return JSONResponse({"error": "Age must be 18+"}, status_code=400)
+    if len(bio.strip()) < 10:
+        return JSONResponse({"error": "Bio must be at least 10 characters"}, status_code=400)
+    if len(social_handle.strip()) < 2:
+        return JSONResponse({"error": "Social handle is required"}, status_code=400)
+    if not photos or not photos[0].filename:
+        return JSONResponse({"error": "At least 1 photo is required"}, status_code=400)
+
+    # Upload photos — first one is main photo, rest stored in photos JSON
+    uploaded = []
+    for photo in photos[:6]:
+        if not photo.filename:
+            continue
+        path = await upload_photo_to_telegram(photo)
+        if not path:
+            os.makedirs("static/img", exist_ok=True)
+            ext = photo.filename.split(".")[-1]
+            fname = f"{uuid.uuid4()}.{ext}"
+            path = f"static/img/{fname}"
+            with open(path, "wb") as f:
+                shutil.copyfileobj(photo.file, f)
+        uploaded.append(path)
+
+    main_photo = uploaded[0] if uploaded else ""
+    photos_json = _json.dumps(uploaded)
+
+    tg_id = telegram_id or None
+    import secrets as _sec
+    email = f"tg_{tg_id}@yourmeet.app" if tg_id else f"setup_{_sec.token_hex(6)}@yourmeet.app"
+    password = _sec.token_hex(16)
+
+    existing = db.execute("SELECT id, is_blocked, is_rejected FROM users WHERE telegram_id=?", (tg_id,)).fetchone() if tg_id else None
+    if existing and existing[1]:  # is_blocked
+        return JSONResponse({"error": "Account permanently banned"}, status_code=403)
+    if existing and existing[2]:  # is_rejected — delete old, re-register
+        old_id = existing[0]
+        for tbl, cols in [("likes","from_user,to_user"),("matches","user1_id,user2_id"),("skips","user_id,skipped_id"),("referrals","referrer_id,referred_id"),("reports","reporter_id,reported_id")]:
+            c1, c2 = cols.split(",")
+            db.execute(f"DELETE FROM {tbl} WHERE {c1}=? OR {c2}=?", (old_id, old_id))
+        db.execute("DELETE FROM users WHERE id=?", (old_id,))
+        db.commit()
+        existing = None
+
+    if existing:
+        db.execute(
+            "UPDATE users SET name=?,age=?,gender=?,interested_in=?,bio=?,social_handle=?,city=?,phone=?,"
+            "photo=?,photos=?,interests=?,is_approved=0 WHERE telegram_id=?",
+            (name, age, gender, interested_in, bio, social_handle, city, phone or None, main_photo, photos_json, interests, tg_id)
+        )
+        db.commit()
+        user_id = existing[0]
+    else:
+        db.execute(
+            "INSERT INTO users (name,email,password,age,gender,interested_in,bio,social_handle,city,phone,"
+            "photo,photos,interests,telegram_id,is_approved,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,datetime('now'))",
+            (name, email, password, age, gender, interested_in, bio, social_handle, city, phone or None, main_photo, photos_json, interests, tg_id)
+        )
+        db.commit()
+        user_id = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()[0]
+
+    try:
+        from admin_bot import send_for_review
+        await send_for_review(user_id, name, age, gender, city, main_photo, email, "")
+    except Exception as e:
+        print(f"[SETUP SUBMIT] admin notify failed: {e}")
+
+    return JSONResponse({"ok": True})
+
+
 async def home(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
     # Incomplete profile — force complete registration
     if not current_user.gender or not current_user.photo or not getattr(current_user, 'age', 0):
         return RedirectResponse("/register")
-    # Not approved yet — show pending page
+    # Not approved yet — show pending page with limited swipe access
     if not getattr(current_user, 'is_approved', 0):
-        return templates.TemplateResponse(request, "pending.html", context={"user": current_user})
+        liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (current_user.id,)).fetchall()]
+        skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (current_user.id,)).fetchall()]
+        excluded = list(set(liked + skipped + [current_user.id]))
+        placeholders = ",".join("?" * len(excluded))
+        rows = db.execute(
+            f"""SELECT id,name,email,phone,password,age,gender,bio,city,photo,is_premium,super_likes_left,
+                created_at,telegram_id,is_admin,is_blocked,daily_swipes,swipes_reset_date,referral_count,
+                social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected,
+                language,interested_in,photos,interests,setup_step
+                FROM users WHERE id NOT IN ({placeholders}) AND gender!=? AND age>=18 AND is_blocked=0 AND is_rejected=0 AND is_approved=1 ORDER BY RANDOM() LIMIT 10""",
+            (*excluded, current_user.gender or 'none')
+        ).fetchall()
+        profiles = [row_to_user(r) for r in rows]
+        return templates.TemplateResponse(request, "pending.html", context={"user": current_user, "profiles": profiles, "age_min": 18, "age_max": 99})
     liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (current_user.id,)).fetchall()]
     skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (current_user.id,)).fetchall()]
     excluded = list(set(liked + skipped + [current_user.id]))
     placeholders = ",".join("?" * len(excluded))
-    opposite = "female" if current_user.gender == "male" else "male"
+    interested_in = getattr(current_user, 'interested_in', 'both') or 'both'
+    if interested_in == 'both':
+        gender_filter = "gender IN ('male','female')"
+        gender_params = ()
+    else:
+        gender_filter = "gender=?"
+        gender_params = (interested_in,)
     age_min = max(18, min(int(request.query_params.get("age_min", 18)), 99))
     age_max = max(18, min(int(request.query_params.get("age_max", 99)), 99))
     rows = db.execute(
-        f"""SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0 AND is_rejected=0 AND is_approved=1
+        f"""SELECT id,name,email,phone,password,age,gender,bio,city,photo,is_premium,super_likes_left,
+            created_at,telegram_id,is_admin,is_blocked,daily_swipes,swipes_reset_date,referral_count,
+            social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected,
+            language,interested_in,photos,interests,setup_step
+            FROM users WHERE id NOT IN ({placeholders}) AND {gender_filter} AND age BETWEEN ? AND ? AND is_blocked=0 AND is_rejected=0 AND is_approved=1
             ORDER BY CASE WHEN boosted_until > datetime('now') THEN 0 ELSE 1 END, RANDOM() LIMIT 10""",
-        (*excluded, opposite, age_min, age_max)
+        (*excluded, *gender_params, age_min, age_max)
     ).fetchall()
     profiles = [row_to_user(r) for r in rows]
     return templates.TemplateResponse(request, "index.html", context={"user": current_user, "profiles": profiles, "active": "home", "age_min": age_min, "age_max": age_max})
@@ -158,14 +285,25 @@ async def matches_page(request: Request, db=Depends(get_db), current_user=Depend
         return RedirectResponse("/login")
     if not current_user.gender or not current_user.photo:
         return RedirectResponse("/register")
-    rows = db.execute(
-        "SELECT * FROM matches WHERE user1_id=? OR user2_id=?", (current_user.id, current_user.id)
+    match_rows = db.execute(
+        "SELECT id,user1_id,user2_id,matched_at FROM matches WHERE user1_id=? OR user2_id=? ORDER BY matched_at DESC", (current_user.id, current_user.id)
     ).fetchall()
     matched_users = []
-    for r in rows:
+    for r in match_rows:
         m = row_to_obj(r, MATCH_KEYS)
         other_id = m.user2_id if m.user1_id == current_user.id else m.user1_id
-        urow = db.execute("SELECT * FROM users WHERE id=?", (other_id,)).fetchone()
+        urow = db.execute(
+            "SELECT id,name,email,phone,password,age,gender,bio,city,photo,is_premium,super_likes_left,"
+            "created_at,telegram_id,is_admin,is_blocked,daily_swipes,swipes_reset_date,referral_count,"
+            "social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected,"
+            "language,interested_in,photos,interests,setup_step "
+            "FROM users WHERE id=?", (other_id,)
+        ).fetchone()
+        if urow:
+            u = row_to_user(urow)
+            u.__dict__['match_id'] = m.id
+            u.__dict__['matched_at'] = (m.matched_at or '')[:10]
+            matched_users.append(u)
         if urow:
             matched_users.append(row_to_user(urow))
     return templates.TemplateResponse(request, "matches.html", context={"user": current_user, "matches": matched_users, "active": "matches"})
