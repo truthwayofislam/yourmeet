@@ -73,8 +73,10 @@ BLOCKED_MSG = (
 )
 
 async def _check_blocked(update: Update, tg_id: str) -> bool:
-    row = get_user_by_tg(tg_id)
-    if row and row[15]:  # is_blocked
+    conn = get_conn()
+    row = conn.execute("SELECT is_blocked FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    conn.close()
+    if row and row[0]:
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Re-register", web_app=WebAppInfo(url=f"{APP_URL}/register"))]])
         msg = update.message or (update.callback_query.message if update.callback_query else None)
         if msg:
@@ -101,17 +103,19 @@ EDIT_CHOOSE, EDIT_VALUE, EDIT_PHOTO = range(7, 10)
 # /setup - create profile in chat
 async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    row = get_user_by_tg(tg_id)
-    if row and row[15]:  # blocked — delete old account so they can re-register
+    conn = get_conn()
+    blocked_row = conn.execute("SELECT id, is_blocked FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    conn.close()
+    if blocked_row and blocked_row[1]:  # is_blocked
         conn = get_conn()
-        old_id = row[0]
+        old_id = blocked_row[0]
         conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (old_id, old_id))
         conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (old_id, old_id))
         conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (old_id, old_id))
         conn.execute("DELETE FROM users WHERE id=?", (old_id,))
         conn.commit()
         conn.close()
-    elif row:
+    elif blocked_row:
         await update.message.reply_text("✅ You already have a profile! Use /profile to view it.")
         return ConversationHandler.END
     await update.message.reply_text(
@@ -566,7 +570,16 @@ async def _send_profile(send_fn, tg_id: str):
     caption = f"*{name}*, {age}" + (f" — 📍{city}" if city else "") + (f"\n_{bio}_" if bio else "")
     kb = _swipe_keyboard(pid)
     if photo and photo.startswith("https://"):
-        await send_fn(photo, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
+        try:
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=15) as cl:
+                r = await cl.get(photo)
+            if r.status_code == 200:
+                await send_fn(r.content, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
+            else:
+                await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
+        except:
+            await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
     else:
         await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
 
@@ -576,9 +589,15 @@ async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await _check_blocked(update, tg_id): return ConversationHandler.END
     row = get_user_by_tg(tg_id)
     if not row:
-        await update.message.reply_text("👋 No profile found! Let's create one first.\n\nWhat's your *name*?", parse_mode="Markdown")
-        return SETUP_NAME
-    if not row[22]:  # is_approved
+        await update.message.reply_text("👋 No profile found! Let's create one.\n\nUse /setup to create your profile.", parse_mode="Markdown")
+        return ConversationHandler.END
+    # Check approval using named query instead of index
+    conn = get_conn()
+    approved_row = conn.execute("SELECT is_approved, is_blocked FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    conn.close()
+    if approved_row and approved_row[1]:  # is_blocked
+        return ConversationHandler.END
+    if not approved_row or not approved_row[0]:  # is_approved=0
         await update.message.reply_text(
             "⏳ *Profile under review!*\n\nAdmin will approve your profile soon. You'll get a notification once approved!",
             parse_mode="Markdown"
