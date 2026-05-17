@@ -72,11 +72,21 @@ BLOCKED_MSG = (
     "Please re-register with a clear photo and genuine bio."
 )
 
+BANNED_MSG = (
+    "🚫 *Your account has been permanently banned.*\n\n"
+    "You can no longer use this service."
+)
+
 async def _check_blocked(update: Update, tg_id: str) -> bool:
     conn = get_conn()
-    row = conn.execute("SELECT is_blocked FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    row = conn.execute("SELECT is_blocked, is_rejected FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     conn.close()
-    if row and row[0]:
+    if row and row[0]:  # is_blocked
+        msg = update.message or (update.callback_query.message if update.callback_query else None)
+        if msg:
+            await msg.reply_text(BANNED_MSG, parse_mode="Markdown")
+        return True
+    if row and row[1]:  # is_rejected
         kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Re-register", web_app=WebAppInfo(url=f"{APP_URL}/register"))]])
         msg = update.message or (update.callback_query.message if update.callback_query else None)
         if msg:
@@ -104,14 +114,19 @@ EDIT_CHOOSE, EDIT_VALUE, EDIT_PHOTO = range(7, 10)
 async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     conn = get_conn()
-    blocked_row = conn.execute("SELECT id, is_blocked FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    blocked_row = conn.execute("SELECT id, is_blocked, is_rejected FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     conn.close()
     if blocked_row and blocked_row[1]:  # is_blocked
+        await update.message.reply_text("🚫 *Your account has been permanently banned.*", parse_mode="Markdown")
+        return ConversationHandler.END
+    if blocked_row and blocked_row[2]:  # is_rejected
         conn = get_conn()
         old_id = blocked_row[0]
         conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (old_id, old_id))
         conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (old_id, old_id))
         conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (old_id, old_id))
+        conn.execute("DELETE FROM referrals WHERE referrer_id=? OR referred_id=?", (old_id, old_id))
+        conn.execute("DELETE FROM reports WHERE reporter_id=? OR reported_id=?", (old_id, old_id))
         conn.execute("DELETE FROM users WHERE id=?", (old_id,))
         conn.commit()
         conn.close()
@@ -430,8 +445,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referrer_id = int(context.args[0][4:])
             conn = get_conn()
             me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+            referrer_exists = conn.execute("SELECT id FROM users WHERE id=?", (referrer_id,)).fetchone()
             already = me and conn.execute("SELECT id FROM referrals WHERE referred_id=?", (me[0],)).fetchone()
-            if me and not already and me[0] != referrer_id:
+            if me and referrer_exists and not already and me[0] != referrer_id:
                 conn.execute("INSERT INTO referrals (referrer_id,referred_id,created_at) VALUES (?,?,datetime('now'))", (referrer_id, me[0]))
                 conn.execute("UPDATE users SET referral_count=referral_count+1 WHERE id=?", (referrer_id,))
                 ref_count = conn.execute("SELECT referral_count FROM users WHERE id=?", (referrer_id,)).fetchone()[0]
@@ -935,6 +951,9 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = me[0]
     conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id))
     conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (user_id, user_id))
+    conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (user_id, user_id))
+    conn.execute("DELETE FROM referrals WHERE referrer_id=? OR referred_id=?", (user_id, user_id))
+    conn.execute("DELETE FROM reports WHERE reporter_id=? OR reported_id=?", (user_id, user_id))
     conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     conn.commit()
     conn.close()
@@ -952,7 +971,8 @@ async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     user_id = row[0]
     referral_count = row[18] if len(row) > 18 else 0
-    link = f"https://t.me/Yoursmeetbot?start=ref_{user_id}"
+    bot_name = os.getenv("TELEGRAM_BOT_NAME", "Yoursmeetbot")
+    link = f"https://t.me/{bot_name}?start=ref_{user_id}"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20me%20on%20YourMeet%20💕")],
         [InlineKeyboardButton("🔥 Start Swiping", callback_data="swipe_now")],

@@ -45,13 +45,6 @@ async def activate_stars(request: Request, db=Depends(get_db), current_user=Depe
     plan = body.get("plan", "monthly")
     if plan not in PLANS:
         return JSONResponse({"error": "invalid plan"}, status_code=400)
-    db.execute(
-        "INSERT INTO payments (user_id, amount, plan, status, created_at) VALUES (?,?,?,'paid',datetime('now'))",
-        (current_user.id, PLANS[plan]["stars"], plan)
-    )
-    from datetime import datetime, timedelta
-    days = PLANS[plan]["days"]
-    premium_until = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-    db.execute("UPDATE users SET is_premium=1, super_likes_left=999, premium_until=? WHERE id=?", (premium_until, current_user.id))
-    db.commit()
+    
+    # Do nothing - Actual activation happens via bot.py handle_successful_payment
     return JSONResponse({"success": True})

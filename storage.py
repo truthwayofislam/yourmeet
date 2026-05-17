@@ -33,13 +33,7 @@ async def upload_photo_to_telegram(file: UploadFile) -> str:
             return ""
 
         file_id = result["result"]["photo"][-1]["file_id"]
-        file_resp = await client.get(f"{telegram_api}/getFile?file_id={file_id}")
-        file_data = file_resp.json()
-        if not file_data.get("ok"):
-            return file_id
-
-        file_path = file_data["result"]["file_path"]
-        return f"https://api.telegram.org/file/bot{token}/{file_path}"
+        return file_id
 
 
 def get_photo_url(photo: str) -> str:
@@ -53,4 +47,4 @@ def get_photo_url(photo: str) -> str:
         return photo
     if photo.startswith("static/"):
         return f"/{photo}"
-    return ""
+    return f"/photo/{photo}"

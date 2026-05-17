@@ -118,6 +118,14 @@ async def connect_telegram(request: Request, db=Depends(get_db), current_user=De
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     body = await request.json()
     tg_id = str(body.get("id", ""))
+    
+    # Verify Telegram hash
+    import hmac, hashlib
+    data_check = "\n".join(f"{k}={v}" for k, v in sorted(body.items()) if k != "hash")
+    expected = hmac.new(hashlib.sha256(os.getenv("TELEGRAM_BOTS_KEY", "").encode()).digest(), data_check.encode(), hashlib.sha256).hexdigest()
+    if not body.get("hash") or expected != body.get("hash"):
+        return JSONResponse({"error": "invalid auth"}, status_code=403)
+        
     if not tg_id:
         return JSONResponse({"error": "invalid"}, status_code=400)
     # Check not taken by another user
@@ -139,7 +147,9 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     if not user or not verify_password(password, user.password):
         return templates.TemplateResponse(request, "login.html", context={"error": "Invalid credentials"})
     if user.is_blocked:
-        return templates.TemplateResponse(request, "login.html", context={"error": "Your account has been blocked"})
+        return templates.TemplateResponse(request, "login.html", context={"error": "Your account has been permanently banned"})
+    if user.is_rejected:
+        return templates.TemplateResponse(request, "login.html", context={"error": "Your account was rejected. Please re-register with a clear photo."})
     response = RedirectResponse("/", status_code=302)
     response.set_cookie("token", create_token(user.id))
     return response
@@ -153,18 +163,22 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
     import hmac, hashlib
     data_check = "\n".join(f"{k}={v}" for k, v in sorted(body.items()) if k != "hash")
     expected = hmac.new(hashlib.sha256(os.getenv("TELEGRAM_BOTS_KEY","").encode()).digest(), data_check.encode(), hashlib.sha256).hexdigest()
-    if body.get("hash") and expected != body.get("hash"):
-        return JSONResponse({"error": "invalid"}, status_code=403)
+    if not body.get("hash") or expected != body.get("hash"):
+        return JSONResponse({"error": "invalid auth"}, status_code=403)
     if not tg_id:
         return JSONResponse({"error": "invalid"}, status_code=400)
     row = db.execute("SELECT * FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     user = row_to_user(row)
     if user and user.is_blocked:
-        # Delete old blocked account so user can re-register fresh
+        return JSONResponse({"error": "permanently_banned"}, status_code=403)
+    if user and user.is_rejected:
+        # Delete rejected account so user can re-register fresh
         old_id = user.id
         db.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (old_id, old_id))
         db.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (old_id, old_id))
         db.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (old_id, old_id))
+        db.execute("DELETE FROM referrals WHERE referrer_id=? OR referred_id=?", (old_id, old_id))
+        db.execute("DELETE FROM reports WHERE reporter_id=? OR reported_id=?", (old_id, old_id))
         db.execute("DELETE FROM users WHERE id=?", (old_id,))
         db.commit()
         user = None

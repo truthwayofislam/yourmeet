@@ -22,6 +22,7 @@ def init_db():
             super_likes_left INTEGER DEFAULT 3,
             created_at TEXT, telegram_id TEXT,
             is_admin INTEGER DEFAULT 0, is_blocked INTEGER DEFAULT 0,
+            is_rejected INTEGER DEFAULT 0,
             daily_swipes INTEGER DEFAULT 3,
             swipes_reset_date TEXT DEFAULT '',
             referral_count INTEGER DEFAULT 0,
@@ -69,6 +70,7 @@ def init_db():
         ("boosted_until", "TEXT DEFAULT ''"),
         ("is_approved", "INTEGER DEFAULT 0"),
         ("premium_until", "TEXT DEFAULT ''"),
+        ("is_rejected", "INTEGER DEFAULT 0"),
     ]:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -87,6 +89,12 @@ def init_db():
         conn.commit()
     except: pass
 
+    # Migrate legacy blocked users to rejected (so they can re-register)
+    try:
+        conn.execute("UPDATE users SET is_rejected=1, is_blocked=0 WHERE is_blocked=1")
+        conn.commit()
+    except: pass
+
 def get_db():
     conn = get_conn()
     try:
@@ -99,7 +107,7 @@ def row_to_user(row):
         return None
     keys = ["id","name","email","phone","password","age","gender","bio","city",
             "photo","is_premium","super_likes_left","created_at","telegram_id",
-            "is_admin","is_blocked","daily_swipes","swipes_reset_date","referral_count","social_handle",
+            "is_admin","is_blocked","is_rejected","daily_swipes","swipes_reset_date","referral_count","social_handle",
             "is_verified","boosted_until","is_approved","premium_until"]
     d = dict(zip(keys, row))
     return UserObj(d)
@@ -120,5 +128,7 @@ class UserObj(DictObj):
     def is_admin(self): return bool(self.__dict__.get("is_admin", 0))
     @property
     def is_blocked(self): return bool(self.__dict__.get("is_blocked", 0))
+    @property
+    def is_rejected(self): return bool(self.__dict__.get("is_rejected", 0))
     @property
     def is_verified(self): return bool(self.__dict__.get("is_verified", 0))

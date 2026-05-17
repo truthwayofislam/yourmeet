@@ -139,6 +139,8 @@ async def delete_user(user_id: int, db=Depends(get_db), current_user=Depends(get
     db.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (user_id, user_id))
     db.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id))
     db.execute("DELETE FROM reports WHERE reporter_id=? OR reported_id=?", (user_id, user_id))
+    db.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (user_id, user_id))
+    db.execute("DELETE FROM referrals WHERE referrer_id=? OR referred_id=?", (user_id, user_id))
     db.execute("DELETE FROM users WHERE id=?", (user_id,))
     db.commit()
     return RedirectResponse("/admin", status_code=302)

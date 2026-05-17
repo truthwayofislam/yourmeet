@@ -77,6 +77,7 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         import json
         async with httpx.AsyncClient(timeout=30) as client:
             if photo and photo.startswith("https://"):
+                # URL-based photo (old style) — download and upload
                 photo_resp = await client.get(photo)
                 if photo_resp.status_code == 200:
                     resp = await client.post(f"{api}/sendPhoto", data={
@@ -85,9 +86,8 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
                         "parse_mode": "Markdown",
                         "reply_markup": json.dumps(keyboard)
                     }, files={"photo": ("photo.jpg", photo_resp.content, "image/jpeg")})
-                    print(f"[ADMIN BOT] sendPhoto: {resp.status_code}")
+                    print(f"[ADMIN BOT] sendPhoto(url): {resp.status_code}")
                 else:
-                    # Download failed — send photo URL as clickable link instead
                     caption_with_link = caption + f"\n\n🖼 [View Photo]({photo})"
                     resp = await client.post(f"{api}/sendMessage", json={
                         "chat_id": admin_tg_id,
@@ -96,6 +96,16 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
                         "reply_markup": keyboard,
                         "disable_web_page_preview": False
                     })
+            elif photo:
+                # file_id — send directly, fastest method, never expires
+                resp = await client.post(f"{api}/sendPhoto", data={
+                    "chat_id": admin_tg_id,
+                    "photo": photo,
+                    "caption": caption,
+                    "parse_mode": "Markdown",
+                    "reply_markup": json.dumps(keyboard)
+                })
+                print(f"[ADMIN BOT] sendPhoto(file_id): {resp.status_code}")
             else:
                 resp = await client.post(f"{api}/sendMessage", json={
                     "chat_id": admin_tg_id,
@@ -150,6 +160,9 @@ async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_photo(pr.content, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
                 else:
                     await update.message.reply_text(caption + "\n⚠️ Photo error", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+            elif photo:
+                # It's a file_id — send directly, fastest and never expires
+                await update.message.reply_photo(photo, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
             else:
                 await update.message.reply_text(caption + "\n⚠️ No photo", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
         except:
@@ -224,7 +237,7 @@ async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     conn = get_conn()
     rows = conn.execute(
-        "SELECT telegram_id, name, photo, bio, city, social_handle FROM users WHERE is_blocked=1 AND telegram_id IS NOT NULL AND telegram_id != ''"
+        "SELECT telegram_id, name, photo, bio, city, social_handle FROM users WHERE (is_rejected=1 OR is_blocked=1) AND telegram_id IS NOT NULL AND telegram_id != ''"
     ).fetchall()
     conn.close()
     if not rows:
@@ -384,6 +397,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         real = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND email NOT LIKE 'fake_%@yourmeet.app' AND email NOT LIKE '%@telegram.local' AND email NOT LIKE 'tg_%@yourmeet.app'").fetchone()[0]
         pending = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0").fetchone()[0]
         blocked = conn.execute("SELECT COUNT(*) FROM users WHERE is_blocked=1").fetchone()[0]
+        rejected = conn.execute("SELECT COUNT(*) FROM users WHERE is_rejected=1").fetchone()[0]
         premium = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
         matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
         today_users = conn.execute("SELECT COUNT(*) FROM users WHERE date(created_at)=date('now')").fetchone()[0]
@@ -399,7 +413,8 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🆕 Joined Today: *{today_users}*\n"
         f"⏳ Pending Approval: *{pending}*\n"
         f"👑 Premium: *{premium}*\n"
-        f"🚫 Blocked: *{blocked}*\n"
+        f"🚫 Rejected (can re-register): *{rejected}*\n"
+        f"⛔ Permanently Banned: *{blocked}*\n"
         f"💕 Total Matches: *{matches}*",
         parse_mode="Markdown"
     )
@@ -415,14 +430,14 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"[ADMIN] verify_callback: action={action}, uid={uid}")
     conn = get_conn()
     if action == "approve":
-        conn.execute("UPDATE users SET is_blocked=0, is_approved=1 WHERE id=?", (uid,))
+        conn.execute("UPDATE users SET is_blocked=0, is_rejected=0, is_approved=1 WHERE id=?", (uid,))
         label = "✅ Approved"
     elif action == "verify":
-        conn.execute("UPDATE users SET is_blocked=0, is_verified=1, is_approved=1 WHERE id=?", (uid,))
+        conn.execute("UPDATE users SET is_blocked=0, is_rejected=0, is_verified=1, is_approved=1 WHERE id=?", (uid,))
         label = "✅ Approved + Verified ⭐"
     else:
-        conn.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (uid,))
-        label = "🚫 Blocked"
+        conn.execute("UPDATE users SET is_rejected=1, is_approved=0 WHERE id=?", (uid,))
+        label = "🚫 Blocked/Rejected"
     conn.commit()
     tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
     conn.close()

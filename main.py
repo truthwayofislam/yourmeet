@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -101,6 +101,21 @@ app.include_router(auth.router)
 app.include_router(profiles.router)
 app.include_router(payment.router)
 app.include_router(admin.router)
+
+@app.get("/photo/{file_id}")
+async def proxy_photo(file_id: str):
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "")
+    if not bot_token:
+        return Response(status_code=404)
+    api = f"https://api.telegram.org/bot{bot_token}"
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{api}/getFile?file_id={file_id}")
+        if not r.is_success or not r.json().get("ok"):
+            return Response(status_code=404)
+        file_path = r.json()["result"]["file_path"]
+        url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        img_resp = await client.get(url)
+        return Response(content=img_resp.content, media_type="image/jpeg")
 
 @app.post("/webhook/{token}")
 async def telegram_webhook(token: str, request: Request):

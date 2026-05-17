@@ -49,6 +49,8 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
 async def like_user(target_id: int, request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if target_id == current_user.id:
+        return JSONResponse({"error": "invalid"}, status_code=400)
     body = await request.json()
     is_super = body.get("super", False)
     already_liked = db.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (current_user.id, target_id)).fetchone()
@@ -92,6 +94,8 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
 async def skip_user(target_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if target_id == current_user.id:
+        return JSONResponse({"error": "invalid"}, status_code=400)
     try:
         db.execute("INSERT OR IGNORE INTO skips (user_id, skipped_id) VALUES (?,?)", (current_user.id, target_id))
         db.commit()
@@ -144,7 +148,7 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
         db.execute("INSERT INTO reports (reporter_id,reported_id,reason,created_at) VALUES (?,?,?,datetime('now'))", (current_user.id, target_id, reason))
         count = db.execute("SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)).fetchone()[0]
         if count >= 3:
-            db.execute("UPDATE users SET is_blocked=1 WHERE id=?", (target_id,))
+            db.execute("UPDATE users SET is_approved=0 WHERE id=?", (target_id,))
         db.commit()
     return JSONResponse({"ok": True})
 
