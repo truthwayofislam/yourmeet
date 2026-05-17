@@ -180,19 +180,21 @@
 
   // Auth on every page load
   (async () => {
-    const token = document.cookie.match(/token=([^;]+)/)?.[1];
-    if (!token && tg?.initDataUnsafe?.user) {
-      const u = tg.initDataUnsafe.user;
+    const tgUser = tg?.initDataUnsafe?.user;
+    if (tgUser) {
       const res = await fetch('/auth/telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: u.id, first_name: u.first_name, language_code: u.language_code }),
+        body: JSON.stringify({ id: tgUser.id, first_name: tgUser.first_name, language_code: tgUser.language_code }),
       });
       if (res.ok) {
         const data = await res.json();
         if (data.token) {
-          document.cookie = `token=${data.token};path=/;max-age=2592000`;
-          if (data.new_user) window.location.href = '/setup';
+          document.cookie = `token=${data.token};path=/;max-age=2592000;SameSite=None;Secure`;
+          if (data.new_user && !window.location.pathname.startsWith('/setup')) {
+            window.location.href = '/setup';
+            return;
+          }
         }
       }
     }

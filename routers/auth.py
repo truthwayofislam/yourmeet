@@ -91,7 +91,7 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
                 "UPDATE users SET language=? WHERE id=?", (lang, user.id)
             )
             db.commit()
-        new_user = not bool(user.photo and user.age and user.gender)
+        new_user = not bool(user.photo and user.age and user.gender and user.city and user.social_handle)
 
     token = create_token(user.id)
     return JSONResponse({"token": token, "new_user": new_user, "lang": user.language})
