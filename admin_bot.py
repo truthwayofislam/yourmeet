@@ -567,6 +567,7 @@ async def user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(caption + "\n⚠️ No photo", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
 
 
+def build_admin_app() -> Application:
     token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("ADMIN_BOT_TOKEN is not set")
