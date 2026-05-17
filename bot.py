@@ -221,8 +221,10 @@ async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Please send a *photo*, not text!\n\nTap the 📎 attachment icon and select a photo.", parse_mode="Markdown")
         return SETUP_PHOTO
     file = await update.message.photo[-1].get_file()
-    photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
-    context.user_data["photo"] = photo_url
+    # Save file_id — never expires, Telegram serves it directly
+    photo_file_id = update.message.photo[-1].file_id
+    context.user_data["photo"] = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
+    context.user_data["photo_file_id"] = photo_file_id
     await update.message.reply_text(
         "📱 *Instagram or Telegram username* \u2014 required so your matches can contact you!\n\n"
         "Example: @username or instagram.com/username",
@@ -245,7 +247,7 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gender = context.user_data["gender"]
     phone = context.user_data["phone"]
     city = context.user_data.get("city", "")
-    photo = context.user_data["photo"]
+    photo = context.user_data["photo_file_id"]  # use file_id — never expires
     conn = get_conn()
     email = f"tg_{tg_id}@yourmeet.app"
     password = secrets.token_hex(16)
@@ -364,15 +366,17 @@ async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
         await update.message.reply_text("❌ Please send a photo:")
         return EDIT_PHOTO
-    file = await update.message.photo[-1].get_file()
-    photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
+    # Save file_id — never expires
+    photo_file_id = update.message.photo[-1].file_id
     conn = get_conn()
-    conn.execute("UPDATE users SET photo=?, is_approved=0 WHERE telegram_id=?", (photo_url, tg_id))
+    conn.execute("UPDATE users SET photo=?, is_approved=0 WHERE telegram_id=?", (photo_file_id, tg_id))
     conn.commit()
     conn.close()
     context.user_data.clear()
-    # Notify admin for re-approval
+    # Notify admin for re-approval — use URL for admin preview
     try:
+        file = await update.message.photo[-1].get_file()
+        photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
         row = get_user_by_tg(tg_id)
         if row:
             from admin_bot import send_for_review
@@ -576,15 +580,20 @@ async def _send_profile(send_fn, tg_id: str):
         + (f"\n\n_{bio}_" if bio else "")
     )
     kb = _swipe_keyboard(pid)
-    if photo and photo.startswith("https://"):
+    if photo:
         try:
-            import httpx as _httpx
-            async with _httpx.AsyncClient(timeout=15) as cl:
-                r = await cl.get(photo)
-            if r.status_code == 200:
-                await send_fn(r.content, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
+            if photo.startswith("https://"):
+                # URL — download bytes first
+                import httpx as _httpx
+                async with _httpx.AsyncClient(timeout=15) as cl:
+                    r = await cl.get(photo)
+                if r.status_code == 200:
+                    await send_fn(r.content, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
+                else:
+                    await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
             else:
-                await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
+                # file_id — send directly, never expires
+                await send_fn(photo, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
         except:
             await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
     else:
@@ -654,8 +663,28 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     caption="😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
                     parse_mode="Markdown"
                 )
-            except: pass
+            except:
+                try:
+                    await query.edit_message_text(
+                        text="😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
+                        parse_mode="Markdown"
+                    )
+                except: pass
             return
+        # Super like check for free users
+        if is_super and not is_premium:
+            sl_row = conn.execute("SELECT super_likes_left FROM users WHERE id=?", (user_id,)).fetchone()
+            if sl_row and sl_row[0] <= 0:
+                conn.close()
+                try:
+                    await query.edit_message_caption(caption="⭐ *No super likes left today!*\n\nYou get 1 free super like per day. Come back tomorrow or go Premium!", parse_mode="Markdown")
+                except:
+                    try:
+                        await query.edit_message_text(text="⭐ *No super likes left today!*\n\nYou get 1 free super like per day. Come back tomorrow or go Premium!", parse_mode="Markdown")
+                    except: pass
+                return
+            conn.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (user_id,))
+            conn.commit()
         if not conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (user_id, target_id)).fetchone():
             conn.execute("INSERT INTO likes (from_user,to_user,is_super,created_at) VALUES (?,?,?,datetime('now'))", (user_id, target_id, int(is_super)))
             conn.commit()
