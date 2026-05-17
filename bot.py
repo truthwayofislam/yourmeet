@@ -539,7 +539,7 @@ def _next_profile(tg_id: str):
     excluded = list(set(liked + skipped + [user_id]))
     placeholders = ",".join("?" * len(excluded))
     row = conn.execute(
-        f"SELECT id, name, age, city, bio, photo FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 AND is_approved=1 LIMIT 1",
+        f"SELECT id, name, age, city, bio, photo, gender, is_verified FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 AND is_approved=1 LIMIT 1",
         (*excluded, opposite)
     ).fetchone()
     conn.close()
@@ -557,7 +557,7 @@ async def _send_profile(send_fn, tg_id: str):
     if not row:
         await send_fn("😔 No one left to swipe! Check back later.")
         return
-    pid, name, age, city, bio, photo = row
+    pid, name, age, city, bio, photo, gender, is_verified = row
 
     # Show promo every 3 swipes
     conn = get_conn()
@@ -567,7 +567,14 @@ async def _send_profile(send_fn, tg_id: str):
     if swipe_count > 0 and swipe_count % 3 == 0:
         await send_fn(PROMO_MSG, parse_mode="Markdown", reply_markup=open_app_keyboard("/register"))
 
-    caption = f"*{name}*, {age}" + (f" — 📍{city}" if city else "") + (f"\n_{bio}_" if bio else "")
+    gender_emoji = "👨" if gender == "male" else "👩"
+    verified_badge = " ⭐" if is_verified else ""
+    caption = (
+        f"{gender_emoji} *{name}*{verified_badge}, {age}"
+        + (f" — 📍 {city}" if city else "")
+        + (f"\n👤 {gender.capitalize()}" if gender else "")
+        + (f"\n\n_{bio}_" if bio else "")
+    )
     kb = _swipe_keyboard(pid)
     if photo and photo.startswith("https://"):
         try:
@@ -672,7 +679,10 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.close()
                 try:
                     await query.edit_message_caption(caption="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
-                except: pass
+                except:
+                    try:
+                        await query.edit_message_text(text="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
+                    except: pass
                 if target_row and target_row[0]:
                     try:
                         await notify_match(query.get_bot(), target_row[0], me_name, me_social, target_is_premium)
@@ -688,14 +698,20 @@ async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         emoji = "⭐" if is_super else "❤️"
         try:
-            await query.edit_message_caption(caption=f"{emoji} Liked! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
-        except: pass
+            await query.edit_message_caption(caption=f"{emoji} Liked! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        except:
+            try:
+                await query.edit_message_text(text=f"{emoji} Liked! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+            except: pass
     elif action == "nope":
         _record_skip(user_id, target_id)
         conn.close()
         try:
-            await query.edit_message_caption(caption="👎 Skipped! See next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
-        except: pass
+            await query.edit_message_caption(caption="👎 Skipped! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+        except:
+            try:
+                await query.edit_message_text(text="👎 Skipped! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
+            except: pass
 
 # callback: next
 async def next_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
