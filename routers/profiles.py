@@ -42,6 +42,7 @@ async def profile_stats(db=Depends(get_db), current_user=Depends(get_current_use
     return JSONResponse({"likes_given": likes_given, "likes_received": likes_received, "matches": matches})
 
 
+@router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     return templates.TemplateResponse(request, "setup.html")
 
@@ -125,6 +126,7 @@ async def setup_submit(
     return JSONResponse({"ok": True})
 
 
+@router.get("/", response_class=HTMLResponse)
 async def home(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return RedirectResponse("/login")
@@ -304,8 +306,6 @@ async def matches_page(request: Request, db=Depends(get_db), current_user=Depend
             u.__dict__['match_id'] = m.id
             u.__dict__['matched_at'] = (m.matched_at or '')[:10]
             matched_users.append(u)
-        if urow:
-            matched_users.append(row_to_user(urow))
     return templates.TemplateResponse(request, "matches.html", context={"user": current_user, "matches": matched_users, "active": "matches"})
 
 @router.get("/profile", response_class=HTMLResponse)
