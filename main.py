@@ -131,15 +131,23 @@ def ping():
 
 
 @app.get("/debug/env")
-def debug_env():
-    import os
+async def debug_env():
+    import os, httpx
     chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "").strip().strip("'\"")
     bot_key = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    # Direct test
+    result = None
+    if bot_key and chat_id:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                f"https://api.telegram.org/bot{bot_key}/sendMessage",
+                json={"chat_id": chat_id, "text": "storage test"}
+            )
+            result = r.json()
     return JSONResponse({
-        "chat_id_value": chat_id,
-        "chat_id_len": len(chat_id),
-        "bot_key_set": bool(bot_key),
-        "bot_key_prefix": bot_key[:10] if bot_key else "",
+        "chat_id": chat_id,
+        "chat_id_bytes": list(chat_id.encode()),
+        "telegram_result": result,
     })
 
 
