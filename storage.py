@@ -1,14 +1,16 @@
 import os
 import httpx
-import base64
 
 
 async def upload_photo(file) -> str:
     """Upload photo to Telegram storage chat, return file_id."""
-    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    bot_token = os.getenv("TELEGRAM_STORAGE_BOT_TOKEN", "").strip().strip("'\"")
+    if not bot_token:
+        bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
     storage_chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "").strip().strip("'\"")
+
     if not bot_token or not storage_chat_id:
-        print(f"[STORAGE] missing env — TELEGRAM_BOTS_KEY={'set' if bot_token else 'MISSING'}, TELEGRAM_STORAGE_CHAT_ID={'set' if storage_chat_id else 'MISSING'}")
+        print(f"[STORAGE] missing env — bot_token={'set' if bot_token else 'MISSING'}, chat_id={'set' if storage_chat_id else 'MISSING'}")
         return ""
     try:
         content = await file.read()
