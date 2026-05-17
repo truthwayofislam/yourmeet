@@ -4,8 +4,8 @@ import httpx
 
 async def upload_photo(file) -> str:
     """Upload photo to Telegram storage chat, return file_id."""
-    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "")
-    storage_chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "")
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    storage_chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "").strip().strip("'\"")
     if not bot_token or not storage_chat_id:
         print(f"[STORAGE] missing env — TELEGRAM_BOTS_KEY={'set' if bot_token else 'MISSING'}, TELEGRAM_STORAGE_CHAT_ID={'set' if storage_chat_id else 'MISSING'}")
         return ""
