@@ -140,5 +140,20 @@ async def admin_telegram_webhook(token: str, request: Request):
 def ping():
     return JSONResponse({"status": "ok"})
 
+@app.get("/nuke-db/{secret}")
+async def nuke_db(secret: str):
+    expected = os.getenv("SECRET_KEY", "")
+    if not expected or secret != expected:
+        return JSONResponse({"error": "unauthorized"}, status_code=403)
+    from database import get_conn
+    conn = get_conn()
+    tables = ["likes", "matches", "skips", "reports", "referrals", "messages", "payments", "users"]
+    for t in tables:
+        try:
+            conn.execute(f"DROP TABLE IF EXISTS {t}")
+        except: pass
+    conn.commit()
+    return JSONResponse({"ok": True, "dropped": tables})
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
