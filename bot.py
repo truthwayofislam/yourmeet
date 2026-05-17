@@ -26,6 +26,7 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("boost", cmd_boost))
     app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
+    app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -218,6 +219,32 @@ async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
+
+async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    plan = query.data.split(":")[1]
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    if not user:
+        return
+    from routers.payment import PLANS
+    if plan not in PLANS:
+        return
+    p = PLANS[plan]
+    try:
+        await ctx.bot.send_invoice(
+            chat_id=tg_id,
+            title=p["title"],
+            description=p["desc"],
+            payload=f"premium:{plan}:{user.id}",
+            currency="XTR",
+            prices=[{"label": p["title"], "amount": p["stars"]}],
+            provider_token="",
+        )
+    except Exception as e:
+        print(f"[BOT] send_invoice failed: {e}")
+
 
 async def cb_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

@@ -52,7 +52,16 @@
   }
   .card-name { font-size: 26px; font-weight: 700; }
   .card-meta { font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px; }
-  .card-bio { font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-bio { font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .translate-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.8); font-size: 11px; padding: 4px 10px;
+    border-radius: 20px; cursor: pointer; margin-bottom: 8px;
+    transition: background 0.2s;
+  }
+  .translate-btn:active { background: rgba(255,255,255,0.2); }
+  .translate-btn.loading { opacity: 0.6; pointer-events: none; }
   .card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
   .card-tag { padding: 4px 10px; background: rgba(255,255,255,0.15); border-radius: 12px; font-size: 12px; }
 
@@ -155,7 +164,10 @@
           {% if p.city %}📍 {{ p.city }}{% endif %}
         </div>
         {% if p.bio %}
-        <div class="card-bio">{{ p.bio }}</div>
+        <div class="card-bio" id="bio-{{ p.id }}">{{ p.bio }}</div>
+        <button class="translate-btn" id="tbtn-{{ p.id }}" onclick="translateBio('{{ p.id }}', this)">
+          <i class="fa-solid fa-language"></i> Translate
+        </button>
         {% endif %}
         {% if interests %}
         <div class="card-tags">
@@ -316,6 +328,37 @@
     empty.className = 'empty-state';
     empty.innerHTML = '<div class="emoji">😔</div><p>No more profiles right now. Check back later!</p>';
     wrap.appendChild(empty);
+  }
+
+  async function translateBio(cardId, btn) {
+    const bioEl = document.getElementById(`bio-${cardId}`);
+    if (!bioEl) return;
+    const originalText = bioEl.dataset.original || bioEl.textContent.trim();
+    if (bioEl.dataset.translated === '1') {
+      bioEl.textContent = originalText;
+      bioEl.dataset.translated = '0';
+      btn.innerHTML = '<i class="fa-solid fa-language"></i> Translate';
+      return;
+    }
+    bioEl.dataset.original = originalText;
+    btn.classList.add('loading');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Translating...';
+    const lang = window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code?.slice(0,2) || 'en';
+    if (lang === 'en') { btn.classList.remove('loading'); btn.innerHTML = '<i class="fa-solid fa-language"></i> Translate'; return; }
+    try {
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lang, strings: { bio: originalText } }),
+      });
+      const data = await res.json();
+      if (data.bio) {
+        bioEl.textContent = data.bio;
+        bioEl.dataset.translated = '1';
+        btn.innerHTML = '<i class="fa-solid fa-rotate-left"></i> Original';
+      }
+    } catch { btn.innerHTML = '<i class="fa-solid fa-language"></i> Translate'; }
+    btn.classList.remove('loading');
   }
 </script>
 {% endblock %}

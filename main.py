@@ -11,6 +11,7 @@ load_dotenv()
 
 from database import init_db, get_conn
 from routers import auth, setup, profiles, map, chat, payment, translate
+from routers.auth import get_current_user
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
 ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
