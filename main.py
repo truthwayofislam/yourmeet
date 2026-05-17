@@ -104,16 +104,25 @@ async def premium_page(request: Request, current_user=Depends(get_current_user))
 async def proxy_photo(file_id: str):
     """Proxy Telegram file_id to image bytes."""
     import httpx
-    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
-    if not bot_token:
-        return Response(status_code=404)
+    # Try storage bot first, then main bot
+    tokens = [
+        os.getenv("TELEGRAM_STORAGE_BOT_TOKEN", "").strip().strip("'\"")
+        or os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    ]
+    main_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    if main_token and main_token not in tokens:
+        tokens.append(main_token)
+
     async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
-        if not r.is_success or not r.json().get("ok"):
-            return Response(status_code=404)
-        file_path = r.json()["result"]["file_path"]
-        img = await client.get(f"https://api.telegram.org/file/bot{bot_token}/{file_path}")
-        return Response(content=img.content, media_type="image/jpeg")
+        for token in tokens:
+            if not token:
+                continue
+            r = await client.get(f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}")
+            if r.is_success and r.json().get("ok"):
+                file_path = r.json()["result"]["file_path"]
+                img = await client.get(f"https://api.telegram.org/file/bot{token}/{file_path}")
+                return Response(content=img.content, media_type="image/jpeg")
+    return Response(status_code=404)
 
 
 @app.post("/webhook/{token}")

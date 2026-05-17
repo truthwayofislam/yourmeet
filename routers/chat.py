@@ -139,6 +139,34 @@ async def forward_message(tg_id_from: str, text: str, db) -> bool:
         return False
 
 
+async def _start_chat_session(db, match_id: int, user1, user2):
+    """Auto-start chat session on match."""
+    if not user1.telegram_id or not user2.telegram_id:
+        return
+    existing = db.execute(
+        """SELECT id FROM chat_sessions
+           WHERE ((user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?))
+           AND is_active=1""",
+        (user1.id, user2.id, user2.id, user1.id),
+    ).fetchone()
+    if existing:
+        return
+    is_premium_chat = user1.is_premium or user2.is_premium
+    expires_at = None if is_premium_chat else \
+        (datetime.utcnow() + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        """INSERT INTO chat_sessions
+           (user1_id, user2_id, user1_tg_id, user2_tg_id, is_premium_chat, expires_at)
+           VALUES (?,?,?,?,?,?)""",
+        (user1.id, user2.id, user1.telegram_id, user2.telegram_id,
+         int(is_premium_chat), expires_at),
+    )
+    db.commit()
+    duration = "unlimited" if is_premium_chat else "1 minute"
+    await _notify_chat_start(user1.telegram_id, user2.name, duration, user1.language or "en")
+    await _notify_chat_start(user2.telegram_id, user1.name, duration, user2.language or "en")
+
+
 async def cleanup_expired_sessions(db):
     """Called by scheduler every minute."""
     expired = db.execute(

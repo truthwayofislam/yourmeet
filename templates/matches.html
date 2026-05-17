@@ -35,6 +35,10 @@
     padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(244,67,54,0.3);
     background: rgba(244,67,54,0.08); color: #f44336; font-size: 12px; cursor: pointer;
   }
+  .btn-chat {
+    padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(233,30,140,0.3);
+    background: rgba(233,30,140,0.1); color: var(--primary); font-size: 16px; cursor: pointer;
+  }
 
   .empty-matches {
     text-align: center; padding: 60px 32px;
@@ -80,6 +84,7 @@
       </div>
 
       <div class="match-actions">
+        <button class="btn-chat" onclick="startChat({{ m.match_id }})"><i class="fa-solid fa-comment"></i></button>
         <button class="btn-unmatch" onclick="unmatch({{ m.match_id }}, this)">Unmatch</button>
       </div>
     </div>
@@ -114,6 +119,16 @@
     btn.disabled = true;
     const res = await fetch(`/unmatch/${matchId}`, { method: 'POST' });
     if ((await res.json()).ok) btn.closest('.match-card').remove();
+  }
+
+  async function startChat(matchId) {
+    const res = await fetch(`/chat/start/${matchId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('💬 Chat started! Open your Telegram bot to chat.');
+    } else {
+      showToast(data.error || 'Could not start chat.');
+    }
   }
 
   function showUpgradePrompt() {

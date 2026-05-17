@@ -146,11 +146,24 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
                 (current_user.id, target_id),
             )
             db.commit()
+            # Auto start chat session on match
+            try:
+                from routers.chat import _start_chat_session
+                target = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (target_id,)).fetchone())
+                match_row = db.execute(
+                    "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
+                    (current_user.id, target_id, target_id, current_user.id)
+                ).fetchone()
+                if match_row and target:
+                    await _start_chat_session(db, match_row[0], current_user, target)
+            except Exception as e:
+                print(f"[LIKE] chat session failed: {e}")
             # Notify via bot
             try:
                 from main import bot_app
                 from bot import notify_match
-                target = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (target_id,)).fetchone())
+                if not target:
+                    target = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (target_id,)).fetchone())
                 if bot_app and target and target.telegram_id:
                     await notify_match(bot_app.bot, target, current_user)
                 if bot_app and current_user.telegram_id:
