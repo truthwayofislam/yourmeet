@@ -25,7 +25,12 @@ def get_current_user(request: Request, db=Depends(get_db)):
         return None
     try:
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
-        row = db.execute("SELECT * FROM users WHERE id=?", (int(payload["sub"]),)).fetchone()
+        row = db.execute(
+            "SELECT id,name,email,phone,password,age,gender,bio,city,photo,is_premium,super_likes_left,"
+            "created_at,telegram_id,is_admin,is_blocked,daily_swipes,swipes_reset_date,referral_count,"
+            "social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected "
+            "FROM users WHERE id=?", (int(payload["sub"]),)
+        ).fetchone()
         user = row_to_user(row)
         if user and user.is_premium:
             premium_until = getattr(user, 'premium_until', '')
