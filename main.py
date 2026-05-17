@@ -130,5 +130,18 @@ def ping():
     return JSONResponse({"status": "ok"})
 
 
+@app.get("/debug/env")
+def debug_env():
+    import os
+    chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "")
+    bot_key = os.getenv("TELEGRAM_BOTS_KEY", "")
+    return JSONResponse({
+        "chat_id_value": repr(chat_id),
+        "chat_id_len": len(chat_id),
+        "bot_key_set": bool(bot_key),
+        "bot_key_prefix": bot_key[:10] if bot_key else "",
+    })
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
