@@ -57,7 +57,7 @@ async def _send_pending_profile(bot, chat_id: str, user):
     photos = json.loads(user.photos or "[]")
     interests = json.loads(user.interests or "[]")
     text = (
-        f"👤 *Pending Profile #{user.id}*\n\n"
+        f"👤 <b>Pending Profile #{user.id}</b>\n\n"
         f"📛 Name: {user.name}\n"
         f"🎂 Age: {user.age}\n"
         f"⚡ Gender: {user.gender}\n"
@@ -76,13 +76,13 @@ async def _send_pending_profile(bot, chat_id: str, user):
                 chat_id=chat_id,
                 photo=user.photo,
                 caption=text,
-                parse_mode="Markdown",
+                parse_mode="HTML",
                 reply_markup=keyboard,
             )
             return
         except Exception:
             pass
-    await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown",
+    await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML",
                            reply_markup=keyboard)
 
 
@@ -91,7 +91,7 @@ async def _send_pending_profile(bot, chat_id: str, user):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
-    await update.message.reply_text("👋 *YourMeet Admin Bot*\n\nUse /pending to review profiles.", parse_mode="Markdown")
+    await update.message.reply_text("👋 <b>YourMeet Admin Bot</b>\n\nUse /pending to review profiles.", parse_mode="HTML")
 
 
 async def cmd_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -121,7 +121,7 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     matches = db.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
     likes = db.execute("SELECT COUNT(*) FROM likes").fetchone()[0]
     text = (
-        f"📊 *App Stats*\n\n"
+        f"📊 <b>App Stats</b>\n\n"
         f"👥 Total users: {total}\n"
         f"✅ Approved: {approved}\n"
         f"⏳ Pending: {pending}\n"
@@ -129,7 +129,7 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"💕 Matches: {matches}\n"
         f"❤️ Total likes: {likes}"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -144,7 +144,7 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     sent, failed = 0, 0
     for tg_id in tg_ids:
         try:
-            await ctx.bot.send_message(chat_id=tg_id, text=msg, parse_mode="Markdown")
+            await ctx.bot.send_message(chat_id=tg_id, text=msg, parse_mode="HTML")
             sent += 1
         except Exception:
             failed += 1
@@ -319,7 +319,7 @@ async def _notify_user(bot, db, user_id: int, string_key: str):
     lang = lang or "en"
     try:
         notify_bot = Bot(token=main_bot_token) if main_bot_token else bot
-        await notify_bot.send_message(chat_id=tg_id, text=s(lang, string_key), parse_mode="Markdown")
+        await notify_bot.send_message(chat_id=tg_id, text=s(lang, string_key), parse_mode="HTML")
     except Exception as e:
         print(f"[ADMIN BOT] notify failed: {e}")
 
@@ -329,7 +329,7 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
     if not ADMIN_TG_ID or not ADMIN_BOT_TOKEN:
         return
     text = (
-        f"🔔 *New Profile Submitted*\n\n"
+        f"🔔 <b>New Profile Submitted</b>\n\n"
         f"ID: {user_id} | {name}, {age} | {gender} | {city or '-'}\n\n"
         f"Use /pending to review."
     )
@@ -339,9 +339,9 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         if photo:
             await bot.send_photo(
                 chat_id=ADMIN_TG_ID, photo=photo,
-                caption=text, parse_mode="Markdown"
+                caption=text, parse_mode="HTML"
             )
         else:
-            await bot.send_message(chat_id=ADMIN_TG_ID, text=text, parse_mode="Markdown")
+            await bot.send_message(chat_id=ADMIN_TG_ID, text=text, parse_mode="HTML")
     except Exception as e:
         print(f"[ADMIN BOT] send_for_review failed: {e}")

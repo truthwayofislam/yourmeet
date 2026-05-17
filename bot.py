@@ -72,7 +72,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))],
     ])
-    await update.message.reply_text(s(lang, "welcome"), parse_mode="Markdown", reply_markup=keyboard)
+    await update.message.reply_text(s(lang, "welcome"), parse_mode="HTML", reply_markup=keyboard)
 
 
 async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -80,7 +80,7 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user or not user.photo:
-        await update.message.reply_text(s(lang, "no_profile"), parse_mode="Markdown",
+        await update.message.reply_text(s(lang, "no_profile"), parse_mode="HTML",
                                         reply_markup=_open_app_keyboard(lang))
         return
     premium = "✅" if user.is_premium else "❌"
@@ -88,7 +88,7 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = s(lang, "your_profile", name=user.name, age=user.age,
              gender=user.gender or "-", city=user.city or "-",
              premium=premium, status=status)
-    await update.message.reply_text(text, parse_mode="Markdown",
+    await update.message.reply_text(text, parse_mode="HTML",
                                     reply_markup=_open_app_keyboard(lang))
 
 
@@ -97,7 +97,7 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user:
-        await update.message.reply_text(s(lang, "no_profile"), parse_mode="Markdown")
+        await update.message.reply_text(s(lang, "no_profile"), parse_mode="HTML")
         return
     from database import get_conn
     db = get_conn()
@@ -105,7 +105,7 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?",
         (user.id, user.id)
     ).fetchone()[0]
-    await update.message.reply_text(s(lang, "your_matches", count=count), parse_mode="Markdown",
+    await update.message.reply_text(s(lang, "your_matches", count=count), parse_mode="HTML",
                                     reply_markup=_open_app_keyboard(lang))
 
 
@@ -114,7 +114,7 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user:
-        await update.message.reply_text(s(lang, "no_profile"), parse_mode="Markdown")
+        await update.message.reply_text(s(lang, "no_profile"), parse_mode="HTML")
         return
     from database import get_conn
     db = get_conn()
@@ -126,7 +126,7 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         s(lang, "your_stats", given=given, received=received,
           matches=matches, swipes=user.daily_swipes),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 
@@ -139,7 +139,7 @@ async def cmd_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("3 Months — 350 ⭐", callback_data="buy:quarterly")],
         [InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=f"{APP_URL}/premium"))],
     ])
-    await update.message.reply_text(s(lang, "premium_info"), parse_mode="Markdown",
+    await update.message.reply_text(s(lang, "premium_info"), parse_mode="HTML",
                                     reply_markup=keyboard)
 
 
@@ -148,7 +148,7 @@ async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     link = f"https://t.me/{BOT_USERNAME}?start=ref_{tg_id}"
-    await update.message.reply_text(s(lang, "referral_msg", link=link), parse_mode="Markdown")
+    await update.message.reply_text(s(lang, "referral_msg", link=link))
 
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -156,7 +156,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(str(update.effective_user.id))
     if user:
         lang = user.language or lang
-    await update.message.reply_text(s(lang, "help_msg"), parse_mode="Markdown")
+    await update.message.reply_text(s(lang, "help_msg"), parse_mode="HTML")
 
 
 async def cmd_about(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -164,14 +164,14 @@ async def cmd_about(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(str(update.effective_user.id))
     if user:
         lang = user.language or lang
-    await update.message.reply_text(s(lang, "about_msg"), parse_mode="Markdown")
+    await update.message.reply_text(s(lang, "about_msg"), parse_mode="HTML")
 
 
 async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
-    await update.message.reply_text(s(lang, "delete_confirm"), parse_mode="Markdown")
+    await update.message.reply_text(s(lang, "delete_confirm"), parse_mode="HTML")
 
 
 async def cmd_confirm_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -183,7 +183,7 @@ async def cmd_confirm_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         db = get_conn()
         from routers.auth import _delete_user_data
         _delete_user_data(db, user.id)
-    await update.message.reply_text(s(lang, "account_deleted"), parse_mode="Markdown")
+    await update.message.reply_text(s(lang, "account_deleted"), parse_mode="HTML")
 
 
 async def cmd_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -206,7 +206,7 @@ async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user or not user.is_premium:
-        await update.message.reply_text(s(lang, "btn_upgrade"), parse_mode="Markdown",
+        await update.message.reply_text(s(lang, "btn_upgrade"), parse_mode="HTML",
                                         reply_markup=_open_app_keyboard(lang))
         return
     from datetime import datetime, timedelta
@@ -215,7 +215,7 @@ async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     until = (datetime.utcnow() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
     db.execute("UPDATE users SET boosted_until=? WHERE id=?", (until, user.id))
     db.commit()
-    await update.message.reply_text(s(lang, "boost_active"), parse_mode="Markdown")
+    await update.message.reply_text(s(lang, "boost_active"), parse_mode="HTML")
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
@@ -257,7 +257,7 @@ async def cb_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         db = get_conn()
         db.execute("UPDATE users SET language=? WHERE telegram_id=?", (lang, tg_id))
         db.commit()
-    await query.edit_message_text(s(lang, "language_changed"), parse_mode="Markdown")
+    await query.edit_message_text(s(lang, "language_changed"), parse_mode="HTML")
 
 
 # ── Payments ──────────────────────────────────────────────────────────────────
@@ -277,7 +277,7 @@ async def successful_payment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lang = (user.language if user else "en") or "en"
     premium_until = user.premium_until[:10] if user and user.premium_until else "-"
     await update.message.reply_text(
-        s(lang, "premium_activated", date=premium_until), parse_mode="Markdown"
+        s(lang, "premium_activated", date=premium_until), parse_mode="HTML"
     )
 
 
@@ -313,7 +313,7 @@ async def notify_match(bot, user, matched_with):
         await bot.send_message(
             chat_id=user.telegram_id,
             text=s(lang, "match_notify", name=matched_with.name),
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_markup=keyboard,
         )
     except Exception as e:
