@@ -18,7 +18,7 @@
     padding: 12px 0; border-bottom: 1px solid var(--border);
   }
   .feature-row:last-child { border-bottom: none; }
-  .feature-icon { font-size: 22px; width: 32px; text-align: center; }
+  .feature-icon { font-size: 20px; width: 32px; text-align: center; color: var(--primary); }
   .feature-text { flex: 1; }
   .feature-text strong { display: block; font-size: 15px; margin-bottom: 2px; }
   .feature-text span { font-size: 13px; color: var(--text-muted); }
@@ -67,22 +67,22 @@
   <div class="features-list">
     <h3>What you get</h3>
     {% set features = [
-      ("🔥", "Unlimited Swipes", "No daily limits"),
-      ("⭐", "Unlimited Super Likes", "Stand out from the crowd"),
-      ("👁", "See Who Liked You", "Know who's interested"),
-      ("🔗", "Contact on Match", "See Instagram/Telegram directly"),
-      ("🚀", "Profile Boost", "30 min priority in feed"),
-      ("💬", "Unlimited Bot Chat", "No 1-minute limit"),
-      ("🏆", "Priority in Feed", "Shown first to others"),
+      ("fa-fire", "Unlimited Swipes", "No daily limits"),
+      ("fa-star", "Unlimited Super Likes", "Stand out from the crowd"),
+      ("fa-eye", "See Who Liked You", "Know who's interested"),
+      ("fa-link", "Contact on Match", "See Instagram/Telegram directly"),
+      ("fa-rocket", "Profile Boost", "30 min priority in feed"),
+      ("fa-comment", "Unlimited Bot Chat", "No 1-minute limit"),
+      ("fa-trophy", "Priority in Feed", "Shown first to others"),
     ] %}
     {% for icon, title, desc in features %}
     <div class="feature-row">
-      <span class="feature-icon">{{ icon }}</span>
+      <span class="feature-icon"><i class="fa-solid {{ icon }}"></i></span>
       <div class="feature-text">
         <strong>{{ title }}</strong>
         <span>{{ desc }}</span>
       </div>
-      <span class="feature-check">✓</span>
+      <span class="feature-check">&#10003;</span>
     </div>
     {% endfor %}
   </div>

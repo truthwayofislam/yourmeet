@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>YourMeet</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <style>
     :root {
       --primary: #E91E8C;
@@ -67,6 +68,7 @@
       transition: color 0.2s; min-width: 56px;
     }
     .nav-item svg { width: 22px; height: 22px; }
+    .nav-item i { font-size: 20px; }
     .nav-item.active { color: var(--primary); }
     .nav-item.active svg { filter: drop-shadow(0 0 6px var(--primary)); }
 
@@ -139,33 +141,23 @@
 {% if active is defined %}
 <nav class="bottom-nav">
   <a href="/" class="nav-item {% if active == 'home' %}active{% endif %}">
-    <svg viewBox="0 0 24 24" fill="{% if active == 'home' %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2">
-      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-    </svg>
+    <i class="fa-solid fa-fire"></i>
     <span data-i18n="nav_home">Home</span>
   </a>
   <a href="/map" class="nav-item {% if active == 'map' %}active{% endif %}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
-    </svg>
+    <i class="fa-solid fa-earth-americas"></i>
     <span data-i18n="nav_map">Map</span>
   </a>
   <a href="/matches" class="nav-item {% if active == 'matches' %}active{% endif %}">
-    <svg viewBox="0 0 24 24" fill="{% if active == 'matches' %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2">
-      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-    </svg>
+    <i class="fa-solid fa-heart"></i>
     <span data-i18n="nav_matches">Matches</span>
   </a>
   <a href="/profile" class="nav-item {% if active == 'profile' %}active{% endif %}">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
-    </svg>
+    <i class="fa-solid fa-user"></i>
     <span data-i18n="nav_profile">Profile</span>
   </a>
   <a href="/premium" class="nav-item {% if active == 'premium' %}active{% endif %}">
-    <svg viewBox="0 0 24 24" fill="{% if active == 'premium' %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-    </svg>
+    <i class="fa-solid fa-crown"></i>
     <span data-i18n="nav_premium">Premium</span>
   </a>
 </nav>

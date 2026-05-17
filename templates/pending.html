@@ -43,7 +43,7 @@
   .info-card { padding: 16px; margin-bottom: 16px; }
   .info-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .info-row:last-child { border-bottom: none; }
-  .info-icon { font-size: 20px; width: 28px; text-align: center; }
+  .info-icon { font-size: 18px; width: 28px; text-align: center; color: var(--primary); }
   .info-text { font-size: 14px; color: var(--text-muted); }
   .info-text strong { color: var(--text); display: block; font-size: 15px; }
 </style>
@@ -102,19 +102,19 @@
   <!-- Profile summary -->
   <div class="glass info-card">
     <div class="info-row">
-      <span class="info-icon">👤</span>
+      <span class="info-icon"><i class="fa-solid fa-user"></i></span>
       <div class="info-text"><strong>{{ user.name }}</strong>Your name</div>
     </div>
     <div class="info-row">
-      <span class="info-icon">🎂</span>
+      <span class="info-icon"><i class="fa-solid fa-cake-candles"></i></span>
       <div class="info-text"><strong>{{ user.age }}</strong>Age</div>
     </div>
     <div class="info-row">
-      <span class="info-icon">🏙</span>
+      <span class="info-icon"><i class="fa-solid fa-city"></i></span>
       <div class="info-text"><strong>{{ user.city or 'Not set' }}</strong>City</div>
     </div>
     <div class="info-row">
-      <span class="info-icon">⏳</span>
+      <span class="info-icon"><i class="fa-solid fa-clock"></i></span>
       <div class="info-text"><strong>Under Review</strong>Profile status</div>
     </div>
   </div>

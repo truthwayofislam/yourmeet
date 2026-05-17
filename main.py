@@ -1,7 +1,7 @@
 import os
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -90,18 +90,28 @@ app.include_router(payment.router)
 app.include_router(translate.router)
 
 
-@app.get("/photo/{file_id}")
+@app.get("/premium")
+async def premium_page(request: Request, current_user=Depends(get_current_user)):
+    from fastapi.responses import HTMLResponse, RedirectResponse
+    from templating import templates
+    if not current_user:
+        return RedirectResponse("/setup")
+    return templates.TemplateResponse(request, "premium.html", {"user": current_user, "active": "premium"})
+
+
+@app.get("/photo/{file_id:path}")
 async def proxy_photo(file_id: str):
     """Proxy Telegram file_id to image bytes."""
     import httpx
-    if not BOT_TOKEN:
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    if not bot_token:
         return Response(status_code=404)
     async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile?file_id={file_id}")
+        r = await client.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
         if not r.is_success or not r.json().get("ok"):
             return Response(status_code=404)
         file_path = r.json()["result"]["file_path"]
-        img = await client.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}")
+        img = await client.get(f"https://api.telegram.org/file/bot{bot_token}/{file_path}")
         return Response(content=img.content, media_type="image/jpeg")
 
 
@@ -128,27 +138,6 @@ async def admin_webhook(token: str, request: Request):
 @app.api_route("/ping", methods=["GET", "HEAD"])
 def ping():
     return JSONResponse({"status": "ok"})
-
-
-@app.get("/debug/env")
-async def debug_env():
-    import os, httpx
-    chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "").strip().strip("'\"")
-    bot_key = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
-    # Direct test
-    result = None
-    if bot_key and chat_id:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(
-                f"https://api.telegram.org/bot{bot_key}/sendMessage",
-                json={"chat_id": chat_id, "text": "storage test"}
-            )
-            result = r.json()
-    return JSONResponse({
-        "chat_id": chat_id,
-        "chat_id_bytes": list(chat_id.encode()),
-        "telegram_result": result,
-    })
 
 
 if __name__ == "__main__":

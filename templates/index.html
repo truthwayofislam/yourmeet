@@ -76,7 +76,7 @@
   .action-btn {
     width: 60px; height: 60px; border-radius: 50%; border: none;
     display: flex; align-items: center; justify-content: center;
-    font-size: 24px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+    font-size: 22px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
     box-shadow: 0 4px 16px rgba(0,0,0,0.3);
   }
   .action-btn:active { transform: scale(0.9); }
@@ -170,9 +170,9 @@
   </div>
 
   <div class="action-btns">
-    <button class="action-btn btn-nope" onclick="swipeAction('nope')" title="Nope">👎</button>
-    <button class="action-btn btn-super" onclick="swipeAction('super')" title="Super Like">⭐</button>
-    <button class="action-btn btn-like" onclick="swipeAction('like')" title="Like">❤️</button>
+    <button class="action-btn btn-nope" onclick="swipeAction('nope')" title="Nope"><i class="fa-solid fa-xmark"></i></button>
+    <button class="action-btn btn-super" onclick="swipeAction('super')" title="Super Like"><i class="fa-solid fa-star"></i></button>
+    <button class="action-btn btn-like" onclick="swipeAction('like')" title="Like"><i class="fa-solid fa-heart"></i></button>
   </div>
 
   {% else %}

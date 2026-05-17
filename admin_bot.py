@@ -310,13 +310,16 @@ async def cb_next_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def _notify_user(bot, db, user_id: int, string_key: str):
     from strings import get as s
+    from telegram import Bot
+    main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
     row = db.execute("SELECT telegram_id, language FROM users WHERE id=?", (user_id,)).fetchone()
     if not row or not row[0]:
         return
     tg_id, lang = row
     lang = lang or "en"
     try:
-        await bot.send_message(chat_id=tg_id, text=s(lang, string_key), parse_mode="Markdown")
+        notify_bot = Bot(token=main_bot_token) if main_bot_token else bot
+        await notify_bot.send_message(chat_id=tg_id, text=s(lang, string_key), parse_mode="Markdown")
     except Exception as e:
         print(f"[ADMIN BOT] notify failed: {e}")
 

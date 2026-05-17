@@ -11,7 +11,8 @@
   .step-page.active { display: flex; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-  .step-emoji { font-size: 52px; margin-bottom: 16px; }
+  .step-icon { font-size: 44px; margin-bottom: 16px; color: var(--primary); }
+  .step-icon i { font-size: 44px; }
   .step-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
   .step-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 28px; }
 
@@ -30,7 +31,7 @@
     background: var(--surface); color: var(--text); font-size: 15px; font-weight: 600;
     cursor: pointer; text-align: center; transition: all 0.2s;
   }
-  .gender-btn .emoji { font-size: 32px; display: block; margin-bottom: 8px; }
+  .gender-btn .icon { font-size: 28px; display: block; margin-bottom: 8px; color: var(--primary); }
   .gender-btn.selected { border-color: var(--primary); background: rgba(233,30,140,0.1); color: var(--primary); }
 
   .interest-grid { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -49,7 +50,7 @@
   }
   .photo-slot:hover { border-color: var(--primary); }
   .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
-  .photo-slot .add-icon { font-size: 28px; color: var(--text-muted); }
+  .photo-slot .add-icon { font-size: 24px; color: var(--text-muted); }
   .photo-slot .remove-btn {
     position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
     background: rgba(244,67,54,0.9); border-radius: 50%; border: none;
@@ -77,7 +78,7 @@
 
   <!-- Step 1: Name -->
   <div class="step-page active" id="step-1">
-    <div class="step-emoji">👋</div>
+    <div class="step-icon"><i class="fa-solid fa-user-pen"></i></div>
     <div class="step-title" data-i18n="step_name">What's your name?</div>
     <div class="step-subtitle">This is how others will see you.</div>
     <input class="input-field" id="inp-name" type="text" placeholder="Your name" maxlength="30" />
@@ -86,7 +87,7 @@
 
   <!-- Step 2: Age -->
   <div class="step-page" id="step-2">
-    <div class="step-emoji">🎂</div>
+    <div class="step-icon"><i class="fa-solid fa-cake-candles"></i></div>
     <div class="step-title" data-i18n="step_age">How old are you?</div>
     <div class="step-subtitle">You must be 18 or older.</div>
     <input class="input-field" id="inp-age" type="number" placeholder="Your age" min="18" max="60" />
@@ -95,15 +96,15 @@
 
   <!-- Step 3: Gender -->
   <div class="step-page" id="step-3">
-    <div class="step-emoji">⚡</div>
+    <div class="step-icon"><i class="fa-solid fa-venus-mars"></i></div>
     <div class="step-title" data-i18n="step_gender">Your gender</div>
     <div class="step-subtitle">Select one.</div>
     <div class="gender-grid">
       <button class="gender-btn" data-val="male" onclick="selectGender(this)">
-        <span class="emoji">👨</span><span data-i18n="male">Male</span>
+        <span class="icon"><i class="fa-solid fa-mars"></i></span><span data-i18n="male">Male</span>
       </button>
       <button class="gender-btn" data-val="female" onclick="selectGender(this)">
-        <span class="emoji">👩</span><span data-i18n="female">Female</span>
+        <span class="icon"><i class="fa-solid fa-venus"></i></span><span data-i18n="female">Female</span>
       </button>
     </div>
     <div class="error-msg" id="err-3"></div>
@@ -111,18 +112,18 @@
 
   <!-- Step 4: Interested In -->
   <div class="step-page" id="step-4">
-    <div class="step-emoji">💕</div>
+    <div class="step-icon"><i class="fa-solid fa-heart"></i></div>
     <div class="step-title" data-i18n="step_interested">Interested in</div>
     <div class="step-subtitle">Who do you want to meet?</div>
     <div class="gender-grid" style="grid-template-columns:1fr 1fr 1fr;">
       <button class="gender-btn" data-val="male" onclick="selectInterested(this)">
-        <span class="emoji">👨</span><span data-i18n="male">Male</span>
+        <span class="icon"><i class="fa-solid fa-mars"></i></span><span data-i18n="male">Male</span>
       </button>
       <button class="gender-btn" data-val="female" onclick="selectInterested(this)">
-        <span class="emoji">👩</span><span data-i18n="female">Female</span>
+        <span class="icon"><i class="fa-solid fa-venus"></i></span><span data-i18n="female">Female</span>
       </button>
       <button class="gender-btn" data-val="both" onclick="selectInterested(this)">
-        <span class="emoji">💑</span><span data-i18n="both">Both</span>
+        <span class="icon"><i class="fa-solid fa-venus-mars"></i></span><span data-i18n="both">Both</span>
       </button>
     </div>
     <div class="error-msg" id="err-4"></div>
@@ -130,13 +131,13 @@
 
   <!-- Step 5: Photos -->
   <div class="step-page" id="step-5">
-    <div class="step-emoji">📸</div>
+    <div class="step-icon"><i class="fa-solid fa-camera"></i></div>
     <div class="step-title" data-i18n="step_photos">Add your photos</div>
     <div class="step-subtitle">Min 1, max 6. First photo is your main photo.</div>
     <div class="photo-grid" id="photoGrid">
       {% for i in range(6) %}
       <div class="photo-slot" id="slot-{{ i }}" onclick="triggerPhoto({{ i }})">
-        <span class="add-icon">+</span>
+        <span class="add-icon"><i class="fa-solid fa-plus"></i></span>
       </div>
       {% endfor %}
     </div>
@@ -146,7 +147,7 @@
 
   <!-- Step 6: Bio -->
   <div class="step-page" id="step-6">
-    <div class="step-emoji">✍️</div>
+    <div class="step-icon"><i class="fa-solid fa-pen-to-square"></i></div>
     <div class="step-title" data-i18n="step_bio">About you</div>
     <div class="step-subtitle">Write something interesting. Min 10 characters.</div>
     <textarea class="input-field" id="inp-bio" rows="5" placeholder="Tell others about yourself..." maxlength="300" oninput="updateCharCount(this,'bio-count',300)"></textarea>
@@ -156,11 +157,11 @@
 
   <!-- Step 7: Interests -->
   <div class="step-page" id="step-7">
-    <div class="step-emoji">🎯</div>
+    <div class="step-icon"><i class="fa-solid fa-tags"></i></div>
     <div class="step-title" data-i18n="step_interests">Your interests</div>
     <div class="step-subtitle">Pick up to 8 that describe you.</div>
     <div class="interest-grid" id="interestGrid">
-      {% for tag in ["Music 🎵","Travel ✈️","Fitness 💪","Gaming 🎮","Cooking 🍳","Art 🎨","Movies 🎬","Books 📚","Sports ⚽","Photography 📷","Dancing 💃","Yoga 🧘","Hiking 🥾","Coffee ☕","Fashion 👗","Tech 💻","Pets 🐾","Nature 🌿"] %}
+      {% for tag in ["Music","Travel","Fitness","Gaming","Cooking","Art","Movies","Books","Sports","Photography","Dancing","Yoga","Hiking","Coffee","Fashion","Tech","Pets","Nature"] %}
       <div class="interest-chip" onclick="toggleInterest(this)">{{ tag }}</div>
       {% endfor %}
     </div>
@@ -169,16 +170,19 @@
 
   <!-- Step 8: Phone -->
   <div class="step-page" id="step-8">
-    <div class="step-emoji">📱</div>
+    <div class="step-icon"><i class="fa-solid fa-mobile-screen"></i></div>
     <div class="step-title" data-i18n="step_phone">Your phone number</div>
-    <div class="step-subtitle">Include country code. e.g. +1234567890</div>
-    <input class="input-field" id="inp-phone" type="tel" placeholder="+1234567890" />
+    <div class="step-subtitle">Select your country code and enter number.</div>
+    <div style="display:flex;gap:8px;">
+      <select id="inp-country-code" class="input-field" style="width:140px;flex-shrink:0;"></select>
+      <input class="input-field" id="inp-phone-num" type="tel" placeholder="1234567890" style="flex:1;" />
+    </div>
     <div class="error-msg" id="err-8"></div>
   </div>
 
   <!-- Step 9: City -->
   <div class="step-page" id="step-9">
-    <div class="step-emoji">🏙</div>
+    <div class="step-icon"><i class="fa-solid fa-city"></i></div>
     <div class="step-title" data-i18n="step_city">Your city</div>
     <div class="step-subtitle">This helps with map discovery.</div>
     <input class="input-field" id="inp-city" type="text" placeholder="e.g. New York, London, Tokyo" />
@@ -187,7 +191,7 @@
 
   <!-- Step 10: Social -->
   <div class="step-page" id="step-10">
-    <div class="step-emoji">🔗</div>
+    <div class="step-icon"><i class="fa-solid fa-link"></i></div>
     <div class="step-title" data-i18n="step_social">Your social handle</div>
     <div class="step-subtitle">Instagram or Telegram username. Shared on match.</div>
     <input class="input-field" id="inp-social" type="text" placeholder="@yourusername" />
@@ -286,9 +290,12 @@
     }
     if (step === 7) { return true; }
     if (step === 8) {
-      const v = document.getElementById('inp-phone').value.trim();
-      if (!v) { setErr('err-8', 'Phone number is required.'); return false; }
-      save('phone', v); return true;
+      const code = document.getElementById('inp-country-code').value;
+      const num = document.getElementById('inp-phone-num').value.trim();
+      if (!num) { setErr('err-8', 'Phone number is required.'); return false; }
+      const full = code + num;
+      document.getElementById('inp-phone-num').dataset.full = full;
+      save('phone', full); return true;
     }
     if (step === 9) {
       const v = document.getElementById('inp-city').value.trim();
@@ -368,7 +375,7 @@
     fd.append('interested_in', selectedInterested);
     fd.append('bio', document.getElementById('inp-bio').value.trim());
     fd.append('city', document.getElementById('inp-city').value.trim());
-    fd.append('phone', document.getElementById('inp-phone').value.trim());
+    fd.append('phone', document.getElementById('inp-phone-num').dataset.full || document.getElementById('inp-phone-num').value.trim());
     fd.append('social_handle', document.getElementById('inp-social').value.trim());
     fd.append('interests', JSON.stringify(selectedInterests));
     if (tgUser) fd.append('telegram_id', String(tgUser.id));
@@ -395,5 +402,33 @@
   }
 
   updateProgress();
-</script>
+
+  // Country codes
+  const COUNTRY_CODES = [
+    ["+1","US/CA"],["+7","RU"],["+20","EG"],["+27","ZA"],["+30","GR"],
+    ["+31","NL"],["+32","BE"],["+33","FR"],["+34","ES"],["+36","HU"],
+    ["+39","IT"],["+40","RO"],["+41","CH"],["+43","AT"],["+44","UK"],
+    ["+45","DK"],["+46","SE"],["+47","NO"],["+48","PL"],["+49","DE"],
+    ["+51","PE"],["+52","MX"],["+54","AR"],["+55","BR"],["+56","CL"],
+    ["+57","CO"],["+58","VE"],["+60","MY"],["+61","AU"],["+62","ID"],
+    ["+63","PH"],["+64","NZ"],["+65","SG"],["+66","TH"],["+81","JP"],
+    ["+82","KR"],["+84","VN"],["+86","CN"],["+90","TR"],["+91","IN"],
+    ["+92","PK"],["+94","LK"],["+98","IR"],["+212","MA"],["+213","DZ"],
+    ["+216","TN"],["+234","NG"],["+254","KE"],["+255","TZ"],["+351","PT"],
+    ["+353","IE"],["+358","FI"],["+380","UA"],["+420","CZ"],["+421","SK"],
+    ["+966","SA"],["+971","AE"],["+972","IL"],["+974","QA"],["+977","NP"],
+    ["+994","AZ"],["+995","GE"],["+998","UZ"],
+  ];
+  const sel = document.getElementById('inp-country-code');
+  if (sel) {
+    COUNTRY_CODES.forEach(([code, name]) => {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = `${code} ${name}`;
+      sel.appendChild(opt);
+    });
+    const langToCode = { ru:'+7',en:'+1',es:'+34',ko:'+82',zh:'+86',id:'+62',ar:'+966',pt:'+55',fr:'+33',de:'+49',tr:'+90',it:'+39',ja:'+81',hi:'+91' };
+    const langCode = (window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code || 'en').slice(0,2);
+    sel.value = langToCode[langCode] || '+1';
+  }
 {% endblock %}
