@@ -26,6 +26,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Profile Boosted!</b>\n\nYour profile will be shown first for the next 30 minutes!",
         "language_changed": "✅ Language updated!",
         "not_approved_yet": "⏳ Your profile is still under review. We'll notify you soon!",
+        "btn_upgrade": "👑 Upgrade to Premium for unlimited features!",
     },
 
     "es": {
