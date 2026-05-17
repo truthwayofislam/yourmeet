@@ -35,84 +35,91 @@ async def setup_submit(
     photos: list[UploadFile] = File(default=[]),
     db=Depends(get_db),
 ):
-    # Validate
-    if age < 18 or age > 60:
-        return JSONResponse({"error": "Age must be between 18 and 60"}, status_code=400)
-    if len(bio.strip()) < 10:
-        return JSONResponse({"error": "Bio must be at least 10 characters"}, status_code=400)
-    if not social_handle.strip():
-        return JSONResponse({"error": "Social handle is required"}, status_code=400)
-    if not city.strip():
-        return JSONResponse({"error": "City is required"}, status_code=400)
-    valid_photos = [p for p in photos if p.filename]
-    if not valid_photos:
-        return JSONResponse({"error": "At least 1 photo is required"}, status_code=400)
-
-    # Upload photos
-    uploaded = []
-    for photo in valid_photos[:6]:
-        file_id = await upload_photo(photo)
-        if file_id:
-            uploaded.append(file_id)
-
-    if not uploaded:
-        return JSONResponse({"error": "Photo upload failed, try again"}, status_code=500)
-
-    main_photo = uploaded[0]
-    photos_json = json.dumps(uploaded)
-
-    # Geocode city to lat/lng
-    lat, lng = await _geocode(city)
-
-    tg_id = telegram_id or None
-    cols = ", ".join(USER_COLS)
-
-    existing = None
-    if tg_id:
-        row = db.execute(
-            f"SELECT {cols} FROM users WHERE telegram_id=?", (tg_id,)
-        ).fetchone()
-        existing = row_to_user(row)
-
-    if existing:
-        if existing.is_blocked:
-            return JSONResponse({"error": "Account permanently banned"}, status_code=403)
-        db.execute(
-            """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-               lat=?, lng=?, phone=?, social_handle=?, photo=?, photos=?, interests=?,
-               is_approved=0, is_rejected=0 WHERE telegram_id=?""",
-            (name, age, gender, interested_in, bio.strip(), city.strip(),
-             lat, lng, phone or None, social_handle.strip(),
-             main_photo, photos_json, interests, tg_id),
-        )
-        db.commit()
-        user_id = existing.id
-        token = create_token(user_id)
-    else:
-        import secrets as _sec
-        email = f"tg_{tg_id}@yourmeet.app" if tg_id else f"user_{_sec.token_hex(6)}@yourmeet.app"
-        db.execute(
-            """INSERT INTO users
-               (name, age, gender, interested_in, bio, city, lat, lng, phone,
-                social_handle, photo, photos, interests, telegram_id, is_approved)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
-            (name, age, gender, interested_in, bio.strip(), city.strip(),
-             lat, lng, phone or None, social_handle.strip(),
-             main_photo, photos_json, interests, tg_id),
-        )
-        db.commit()
-        row = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-        user_id = row[0]
-        token = create_token(user_id)
-
-    # Notify admin
     try:
-        from admin_bot import send_for_review
-        await send_for_review(user_id, name, age, gender, city, main_photo)
-    except Exception as e:
-        print(f"[SETUP] admin notify failed: {e}")
+        # Validate
+        if age < 18 or age > 60:
+            return JSONResponse({"error": "Age must be between 18 and 60"}, status_code=400)
+        if len(bio.strip()) < 10:
+            return JSONResponse({"error": "Bio must be at least 10 characters"}, status_code=400)
+        if not social_handle.strip():
+            return JSONResponse({"error": "Social handle is required"}, status_code=400)
+        if not city.strip():
+            return JSONResponse({"error": "City is required"}, status_code=400)
+        valid_photos = [p for p in photos if p.filename]
+        if not valid_photos:
+            return JSONResponse({"error": "At least 1 photo is required"}, status_code=400)
 
-    return JSONResponse({"ok": True, "token": token})
+        # Upload photos
+        uploaded = []
+        for photo in valid_photos[:6]:
+            file_id = await upload_photo(photo)
+            if file_id:
+                uploaded.append(file_id)
+
+        if not uploaded:
+            return JSONResponse({"error": "Photo upload failed. Check TELEGRAM_STORAGE_CHAT_ID env var."}, status_code=500)
+
+        main_photo = uploaded[0]
+        photos_json = json.dumps(uploaded)
+
+        # Geocode city to lat/lng
+        lat, lng = await _geocode(city)
+
+        tg_id = telegram_id.strip() if telegram_id and telegram_id.strip() else None
+        cols = ", ".join(USER_COLS)
+
+        existing = None
+        if tg_id:
+            row = db.execute(
+                f"SELECT {cols} FROM users WHERE telegram_id=?", (tg_id,)
+            ).fetchone()
+            existing = row_to_user(row)
+
+        if existing:
+            if existing.is_blocked:
+                return JSONResponse({"error": "Account permanently banned"}, status_code=403)
+            db.execute(
+                """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
+                   lat=?, lng=?, phone=?, social_handle=?, photo=?, photos=?, interests=?,
+                   is_approved=0, is_rejected=0 WHERE telegram_id=?""",
+                (name, age, gender, interested_in, bio.strip(), city.strip(),
+                 lat, lng, phone or None, social_handle.strip(),
+                 main_photo, photos_json, interests, tg_id),
+            )
+            db.commit()
+            user_id = existing.id
+        else:
+            db.execute(
+                """INSERT INTO users
+                   (name, age, gender, interested_in, bio, city, lat, lng, phone,
+                    social_handle, photo, photos, interests, telegram_id, is_approved)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+                (name, age, gender, interested_in, bio.strip(), city.strip(),
+                 lat, lng, phone or None, social_handle.strip(),
+                 main_photo, photos_json, interests, tg_id),
+            )
+            db.commit()
+            if tg_id:
+                row = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+            else:
+                row = db.execute("SELECT last_insert_rowid()").fetchone()
+            user_id = row[0]
+
+        token = create_token(user_id)
+
+        # Notify admin
+        try:
+            from admin_bot import send_for_review
+            await send_for_review(user_id, name, age, gender, city, main_photo)
+        except Exception as e:
+            print(f"[SETUP] admin notify failed: {e}")
+
+        return JSONResponse({"ok": True, "token": token})
+
+    except Exception as e:
+        import traceback
+        print(f"[SETUP] 500 error: {traceback.format_exc()}")
+        return JSONResponse({"error": f"Server error: {str(e)}"}, status_code=500)
 
 
 async def _geocode(city: str):
