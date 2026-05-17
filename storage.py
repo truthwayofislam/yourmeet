@@ -1,5 +1,6 @@
 import os
 import httpx
+import base64
 
 
 async def upload_photo(file) -> str:
@@ -11,15 +12,15 @@ async def upload_photo(file) -> str:
         return ""
     try:
         content = await file.read()
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
                 f"https://api.telegram.org/bot{bot_token}/sendPhoto",
                 data={"chat_id": storage_chat_id},
-                files={"photo": ("photo.jpg", content, "image/jpeg")},
+                files={"photo": (file.filename or "photo.jpg", content, file.content_type or "image/jpeg")},
             )
+            print(f"[STORAGE] upload response: {resp.status_code} — {resp.text[:300]}")
             if resp.status_code == 200:
                 return resp.json()["result"]["photo"][-1]["file_id"]
-            print(f"[STORAGE] Telegram API error: {resp.status_code} — {resp.text}")
     except Exception as e:
         print(f"[STORAGE] upload failed: {e}")
     return ""
