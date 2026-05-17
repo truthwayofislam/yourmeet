@@ -141,7 +141,7 @@ async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     conn = get_conn()
     rows = conn.execute(
-        "SELECT id, name, age, gender, city, photo FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0 ORDER BY id DESC LIMIT 20"
+        "SELECT id, name, age, gender, city, photo FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0 AND is_rejected=0 ORDER BY id DESC LIMIT 20"
     ).fetchall()
     conn.close()
     if not rows:
@@ -395,7 +395,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = get_conn()
         total = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0").fetchone()[0]
         real = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND email NOT LIKE 'fake_%@yourmeet.app' AND email NOT LIKE '%@telegram.local' AND email NOT LIKE 'tg_%@yourmeet.app'").fetchone()[0]
-        pending = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0").fetchone()[0]
+        pending = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0 AND is_rejected=0").fetchone()[0]
         blocked = conn.execute("SELECT COUNT(*) FROM users WHERE is_blocked=1").fetchone()[0]
         rejected = conn.execute("SELECT COUNT(*) FROM users WHERE is_rejected=1").fetchone()[0]
         premium = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]

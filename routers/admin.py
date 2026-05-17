@@ -64,19 +64,19 @@ async def seed_profiles(secret: str, db=Depends(get_db)):
     count = 0
     for name in GIRL_NAMES[:80]:
         try:
-            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10)",
+            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes,is_approved) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10,1)",
                 (name, f"fake_{name.lower()}_{secrets.token_hex(4)}@yourmeet.app", secrets.token_hex(16), random.randint(18,28), "female", random.choice(CITIES), random.choice(GIRL_BIOS), random.choice(INDIAN_GIRL_PHOTOS)))
             count += 1
         except: pass
     for name in BOY_NAMES:
         try:
-            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10)",
+            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes,is_approved) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10,1)",
                 (name, f"fake_{name.lower()}_{secrets.token_hex(4)}@yourmeet.app", secrets.token_hex(16), random.randint(18,28), "male", random.choice(CITIES), random.choice(BOY_BIOS), random.choice(INDIAN_BOY_PHOTOS)))
             count += 1
         except: pass
     for p in INTL_PROFILES:
         try:
-            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10)",
+            db.execute("INSERT INTO users (name,email,password,age,gender,city,bio,photo,created_at,is_premium,super_likes_left,daily_swipes,is_approved) VALUES (?,?,?,?,?,?,?,?,datetime('now'),0,3,10,1)",
                 (p["name"], f"fake_{p['name'].lower()}_{secrets.token_hex(4)}@yourmeet.app", secrets.token_hex(16), random.randint(18,28), "female", p["city"], p["bio"], p["photo"]))
             count += 1
         except: pass
@@ -128,7 +128,8 @@ async def toggle_block(user_id: int, db=Depends(get_db), current_user=Depends(ge
         return RedirectResponse("/login")
     row = db.execute("SELECT is_blocked FROM users WHERE id=?", (user_id,)).fetchone()
     if row:
-        db.execute("UPDATE users SET is_blocked=? WHERE id=?", (0 if row[0] else 1, user_id))
+        new_val = 0 if row[0] else 1
+        db.execute("UPDATE users SET is_blocked=?, is_approved=? WHERE id=?", (new_val, 0 if new_val else 1, user_id))
         db.commit()
     return RedirectResponse("/admin", status_code=302)
 

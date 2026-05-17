@@ -38,7 +38,7 @@ async def home(request: Request, db=Depends(get_db), current_user=Depends(get_cu
     age_min = max(18, min(int(request.query_params.get("age_min", 18)), 99))
     age_max = max(18, min(int(request.query_params.get("age_max", 99)), 99))
     rows = db.execute(
-        f"""SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0 AND is_approved=1
+        f"""SELECT * FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age BETWEEN ? AND ? AND is_blocked=0 AND is_rejected=0 AND is_approved=1
             ORDER BY CASE WHEN boosted_until > datetime('now') THEN 0 ELSE 1 END, RANDOM() LIMIT 10""",
         (*excluded, opposite, age_min, age_max)
     ).fetchall()
@@ -148,7 +148,7 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
         db.execute("INSERT INTO reports (reporter_id,reported_id,reason,created_at) VALUES (?,?,?,datetime('now'))", (current_user.id, target_id, reason))
         count = db.execute("SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)).fetchone()[0]
         if count >= 3:
-            db.execute("UPDATE users SET is_approved=0 WHERE id=?", (target_id,))
+            db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (target_id,))
         db.commit()
     return JSONResponse({"ok": True})
 

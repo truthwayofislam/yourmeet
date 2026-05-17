@@ -270,12 +270,12 @@ async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     if existing:
         conn.execute(
-            "UPDATE users SET name=?,password=?,age=?,gender=?,phone=?,city=?,photo=?,social_handle=?,email=? WHERE telegram_id=?",
+            "UPDATE users SET name=?,password=?,age=?,gender=?,phone=?,city=?,photo=?,social_handle=?,email=?,is_approved=0 WHERE telegram_id=?",
             (name, password, age, gender, phone, city, photo, social, email, tg_id)
         )
     else:
         conn.execute(
-            "INSERT INTO users (name,email,password,age,gender,phone,city,photo,social_handle,telegram_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))",
+            "INSERT INTO users (name,email,password,age,gender,phone,city,photo,social_handle,telegram_id,is_approved,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,datetime('now'))",
             (name, email, password, age, gender, phone, city, photo, social, tg_id)
         )
     conn.commit()
@@ -483,19 +483,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     if await _check_blocked(update, tg_id): return
-    row = get_user_by_tg(tg_id)
+    conn = get_conn()
+    row = conn.execute("SELECT id, name, age, city, bio, is_premium, gender FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    conn.close()
     if not row:
         await update.message.reply_text("❌ Account not found. Please register first!", reply_markup=open_app_keyboard("/register"))
         return
-    name, age, city, bio, is_premium = row[1], row[5], row[8], row[7], row[10]
+    uid, name, age, city, bio, is_premium, gender = row
     plan = "👑 Premium" if is_premium else "🆓 Free"
+    gender_emoji = "👨" if gender == "male" else "👩" if gender == "female" else "👤"
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("✏️ Edit Profile", web_app=WebAppInfo(url=f"{APP_URL}/profile")),
          InlineKeyboardButton("💕 Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches"))],
         [InlineKeyboardButton("🔥 Start Swiping", callback_data="swipe_now")],
     ])
     await update.message.reply_text(
-        f"👤 *Your Profile*\n\n"
+        f"{gender_emoji} *Your Profile*\n\n"
         f"📛 Name: *{name}*\n"
         f"🎂 Age: *{age}*\n"
         f"📍 City: *{city or 'Not set'}*\n"
@@ -559,7 +562,7 @@ def _next_profile(tg_id: str):
     excluded = list(set(liked + skipped + [user_id]))
     placeholders = ",".join("?" * len(excluded))
     row = conn.execute(
-        f"SELECT id, name, age, city, bio, photo, gender, is_verified FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 AND is_approved=1 LIMIT 1",
+        f"SELECT id, name, age, city, bio, photo, gender, is_verified FROM users WHERE id NOT IN ({placeholders}) AND gender=? AND age>=18 AND is_blocked=0 AND is_rejected=0 AND is_approved=1 LIMIT 1",
         (*excluded, opposite)
     ).fetchone()
     conn.close()
@@ -795,8 +798,10 @@ async def friends_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /premium
 async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    row = get_user_by_tg(tg_id)
-    if row and row[10]:
+    conn = get_conn()
+    row = conn.execute("SELECT is_premium FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    conn.close()
+    if row and row[0]:
         await update.message.reply_text("👑 *You are already Premium!*\n\nEnjoy unlimited access 🎉", parse_mode="Markdown")
         return
     kb = InlineKeyboardMarkup([
@@ -864,11 +869,13 @@ async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def boost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     if await _check_blocked(update, tg_id): return
-    row = get_user_by_tg(tg_id)
+    conn = get_conn()
+    row = conn.execute("SELECT id, is_premium FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    conn.close()
     if not row:
         await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
         return
-    if not row[10]:  # is_premium
+    if not row[1]:  # is_premium
         await update.message.reply_text(
             "👑 *Boost is a Premium feature!*\n\nUpgrade to put your profile at the top of everyone's discover feed for 30 mins 🚀",
             parse_mode="Markdown", reply_markup=open_app_keyboard("/premium")
@@ -965,12 +972,13 @@ async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     if await _check_blocked(update, tg_id): return
-    row = get_user_by_tg(tg_id)
+    conn = get_conn()
+    row = conn.execute("SELECT id, referral_count FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    conn.close()
     if not row:
         await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
         return
-    user_id = row[0]
-    referral_count = row[18] if len(row) > 18 else 0
+    user_id, referral_count = row[0], row[1] or 0
     bot_name = os.getenv("TELEGRAM_BOT_NAME", "Yoursmeetbot")
     link = f"https://t.me/{bot_name}?start=ref_{user_id}"
     kb = InlineKeyboardMarkup([

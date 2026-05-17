@@ -22,7 +22,7 @@ async def send_incomplete_reminders():
     rows = conn.execute(
         "SELECT telegram_id, name, photo, bio, city, social_handle FROM users "
         "WHERE is_admin=0 AND is_blocked=0 AND telegram_id IS NOT NULL AND telegram_id != '' "
-        "AND (photo='' OR bio='' OR city='' OR social_handle='')"
+        "AND (photo IS NULL OR photo='' OR bio IS NULL OR bio='' OR city IS NULL OR city='' OR social_handle IS NULL OR social_handle='')"
     ).fetchall()
     conn.close()
     bot_token = os.getenv("TELEGRAM_BOTS_KEY", "")

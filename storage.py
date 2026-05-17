@@ -3,7 +3,7 @@ import httpx
 from fastapi import UploadFile
 
 def _get_telegram_api():
-    token = os.getenv("TELEGRAM_BOT_KEY", "")
+    token = os.getenv("TELEGRAM_BOTS_KEY", "") or os.getenv("TELEGRAM_BOT_KEY", "")
     return f"https://api.telegram.org/bot{token}", token
 
 async def upload_photo_to_telegram(file: UploadFile) -> str:
