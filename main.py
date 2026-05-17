@@ -133,10 +133,10 @@ def ping():
 @app.get("/debug/env")
 def debug_env():
     import os
-    chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "")
-    bot_key = os.getenv("TELEGRAM_BOTS_KEY", "")
+    chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "").strip().strip("'\"")
+    bot_key = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
     return JSONResponse({
-        "chat_id_value": repr(chat_id),
+        "chat_id_value": chat_id,
         "chat_id_len": len(chat_id),
         "bot_key_set": bool(bot_key),
         "bot_key_prefix": bot_key[:10] if bot_key else "",
