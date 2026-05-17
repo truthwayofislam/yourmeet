@@ -1,367 +1,321 @@
 {% extends "base.html" %}
-{% block title %}Discover{% endblock %}
 {% block content %}
-<div class="max-w-md mx-auto px-4 pt-4">
+<style>
+  .home-wrap { padding: 0; height: calc(100vh - 64px); display: flex; flex-direction: column; overflow: hidden; }
 
-  <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold gradient-text">YourMeet</h1>
-      <p class="text-gray-400 text-xs">Hey {{ user.name.split()[0] }} 👋</p>
+  /* Header */
+  .home-header {
+    padding: 14px 20px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .logo { font-size: 22px; font-weight: 800; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .swipe-counter {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  }
+  .swipe-counter span { color: var(--primary); }
+
+  /* Card stack */
+  .card-stack { flex: 1; position: relative; padding: 0 16px; overflow: hidden; }
+  .swipe-card {
+    position: absolute; inset: 0; margin: 0 16px;
+    border-radius: 20px; overflow: hidden;
+    cursor: grab; user-select: none;
+    transition: transform 0.1s;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .swipe-card:active { cursor: grabbing; }
+  .swipe-card img {
+    width: 100%; height: 100%; object-fit: cover;
+    pointer-events: none;
+  }
+  .card-no-photo {
+    width: 100%; height: 100%; background: var(--surface);
+    display: flex; align-items: center; justify-content: center; font-size: 80px;
+  }
+
+  /* Photo dots */
+  .photo-dots {
+    position: absolute; top: 12px; left: 12px; right: 12px;
+    display: flex; gap: 4px;
+  }
+  .photo-dot { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.4); }
+  .photo-dot.active { background: #fff; }
+
+  /* Card overlay */
+  .card-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 60px 20px 20px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.85));
+  }
+  .card-name { font-size: 26px; font-weight: 700; }
+  .card-meta { font-size: 14px; color: rgba(255,255,255,0.8); margin-bottom: 8px; }
+  .card-bio { font-size: 13px; color: rgba(255,255,255,0.7); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .card-tag { padding: 4px 10px; background: rgba(255,255,255,0.15); border-radius: 12px; font-size: 12px; }
+
+  /* Swipe indicators */
+  .like-indicator, .nope-indicator {
+    position: absolute; top: 40px;
+    padding: 8px 16px; border-radius: 8px;
+    font-size: 28px; font-weight: 800;
+    border: 3px solid; opacity: 0;
+    transform: rotate(-15deg);
+    pointer-events: none;
+  }
+  .like-indicator { left: 20px; color: #4caf50; border-color: #4caf50; transform: rotate(-15deg); }
+  .nope-indicator { right: 20px; color: #f44336; border-color: #f44336; transform: rotate(15deg); }
+
+  /* Action buttons */
+  .action-btns {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    gap: 16px; padding: 12px 20px 16px;
+  }
+  .action-btn {
+    width: 60px; height: 60px; border-radius: 50%; border: none;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  }
+  .action-btn:active { transform: scale(0.9); }
+  .btn-nope { background: #1a1a2e; border: 2px solid rgba(244,67,54,0.4); }
+  .btn-super { background: #1a1a2e; border: 2px solid rgba(33,150,243,0.4); width: 48px; height: 48px; font-size: 20px; }
+  .btn-like { background: var(--gradient); }
+
+  /* Empty state */
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 20px; text-align: center;
+  }
+  .empty-state .emoji { font-size: 64px; margin-bottom: 16px; }
+  .empty-state p { color: var(--text-muted); font-size: 15px; }
+
+  /* Match modal */
+  .match-modal {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.85);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 32px 24px; text-align: center;
+  }
+  .match-modal.show { display: flex; animation: fadeIn 0.4s ease; }
+  .match-avatars { display: flex; gap: -16px; margin-bottom: 24px; }
+  .match-avatar { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary); }
+  .match-avatar:last-child { margin-left: -20px; }
+  .match-title { font-size: 32px; font-weight: 800; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }
+  .match-sub { color: var(--text-muted); font-size: 15px; margin-bottom: 28px; }
+  .match-btns { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+</style>
+
+<div class="home-wrap">
+  <div class="home-header">
+    <div class="logo">YourMeet 💕</div>
+    <div class="swipe-counter">
+      🔥 <span id="swipeCount">{{ user.daily_swipes }}</span>
+      <span style="color:var(--text-muted)" data-i18n="swipes_left">swipes left</span>
     </div>
-    <div class="flex items-center gap-2">
-      {% if user.is_premium %}
-      <span class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full border border-yellow-500/30">
-        <i class="fas fa-crown mr-1"></i>Premium
-      </span>
-      {% endif %}
-      <a href="/logout" class="w-9 h-9 bg-surface rounded-full flex items-center justify-center text-gray-400 hover:text-red-400 transition">
-        <i class="fas fa-sign-out-alt text-sm"></i>
-      </a>
-    </div>
   </div>
 
-  <!-- Age Filter -->
-  <div class="flex items-center gap-2 mb-4">
-    <span class="text-gray-400 text-xs">Age:</span>
-    <input type="number" id="age-min" value="{{ age_min }}" min="18" max="99"
-      class="w-14 bg-surface border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-center focus:outline-none focus:border-primary"/>
-    <span class="text-gray-600 text-xs">–</span>
-    <input type="number" id="age-max" value="{{ age_max }}" min="18" max="99"
-      class="w-14 bg-surface border border-white/10 rounded-lg px-2 py-1 text-white text-xs text-center focus:outline-none focus:border-primary"/>
-    <button onclick="applyAgeFilter()" class="gradient-btn text-white text-xs px-3 py-1 rounded-lg ml-1">Apply</button>
-  </div>
-
-  <!-- Cards Stack -->
-  <div id="card-stack" class="relative" style="height: min(480px, calc(100dvh - 220px));">
-    {% if profiles %}
-      {% for profile in profiles %}
-      <div class="profile-card absolute inset-0 bg-card rounded-3xl overflow-hidden card-glow border border-white/5 transition-all duration-300"
-           data-id="{{ profile.id }}" style="z-index: {{ loop.length - loop.index0 }}; transform: scale({{ 1 - loop.index0 * 0.03 }}) translateY({{ loop.index0 * 10 }}px);">
-
-        <!-- Photo -->
-        <div class="relative h-full">
-          {% set photo_list = [] %}
-          {% if profile.photos %}
-            {% set photo_list = profile.photos | from_json %}
-          {% endif %}
-          {% if not photo_list and profile.photo %}
-            {% set photo_list = [profile.photo] %}
-          {% endif %}
-
-          {% if photo_list %}
-          <div class="photo-carousel h-full" id="carousel-{{ profile.id }}" data-photos='{{ photo_list | tojson }}'>
-            <img src="{{ photo_list[0] | photo_url }}" class="w-full h-full object-cover carousel-img" id="cimg-{{ profile.id }}"/>
-            {% if photo_list | length > 1 %}
-            <div class="absolute top-3 left-0 right-0 flex justify-center gap-1 z-10">
-              {% for p in photo_list %}
-              <div class="h-1 rounded-full transition-all duration-300 {% if loop.first %}bg-white w-6{% else %}bg-white/40 w-3{% endif %}" id="dot-{{ profile.id }}-{{ loop.index0 }}"></div>
-              {% endfor %}
-            </div>
-            <div class="absolute inset-y-0 left-0 w-1/3 z-10" onclick="carouselPrev('{{ profile.id }}', {{ photo_list | length }}, event)"></div>
-            <div class="absolute inset-y-0 right-0 w-1/3 z-10" onclick="carouselNext('{{ profile.id }}', {{ photo_list | length }}, event)"></div>
-            {% endif %}
-          </div>
-          {% else %}
-          <div class="w-full h-full bg-gradient-to-br from-surface to-card flex items-center justify-center">
-            <i class="fas fa-user text-6xl text-gray-600"></i>
-          </div>
-          {% endif %}
-
-          <!-- Report Button -->
-          <button onclick="reportUser({{ profile.id }}, event)"
-            class="absolute top-4 right-4 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center text-gray-400 hover:text-red-400 transition z-10">
-            <i class="fas fa-flag text-xs"></i>
-          </button>
-
-          <!-- Gradient overlay -->
-          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
-
-          <!-- Like/Nope indicators -->
-          <div class="like-indicator absolute top-8 left-8 opacity-0 transition-opacity">
-            <span class="text-green-400 font-bold text-3xl border-4 border-green-400 px-4 py-1 rounded-xl rotate-[-15deg] inline-block">LIKE</span>
-          </div>
-          <div class="nope-indicator absolute top-8 right-8 opacity-0 transition-opacity">
-            <span class="text-red-400 font-bold text-3xl border-4 border-red-400 px-4 py-1 rounded-xl rotate-[15deg] inline-block">NOPE</span>
-          </div>
-
-          <!-- Profile Info -->
-          <div class="absolute bottom-0 left-0 right-0 p-5">
-            <div class="flex items-end justify-between">
-              <div>
-                <h2 class="text-2xl font-bold text-white">{{ profile.name }}{% if profile.is_verified %} <span class="text-green-400 text-lg">✅</span>{% endif %}, {{ profile.age }}</h2>
-                <p class="text-gray-300 text-sm flex items-center gap-1 mt-1">
-                  <i class="fas fa-map-marker-alt text-primary text-xs"></i> {{ profile.city or "India" }}
-                </p>
-                {% if profile.bio %}
-                <p class="text-gray-400 text-xs mt-2 line-clamp-2">{{ profile.bio }}</p>
-                {% endif %}
-                {% if profile.interests %}
-                {% set tags = profile.interests | from_json %}
-                {% if tags %}
-                <div class="flex flex-wrap gap-1 mt-2">
-                  {% for tag in tags[:4] %}
-                  <span class="text-xs bg-white/10 text-white/80 px-2 py-0.5 rounded-full">{{ tag }}</span>
-                  {% endfor %}
-                </div>
-                {% endif %}
-                {% endif %}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div class="absolute inset-0 bg-card rounded-3xl flex flex-col items-center justify-center border border-white/5">
-        <div class="w-20 h-20 rounded-full bg-surface flex items-center justify-center mb-4">
-          <i class="fas fa-heart-broken text-3xl text-gray-600"></i>
-        </div>
-        <p class="text-gray-400 font-medium">No more profiles</p>
-        <p class="text-gray-600 text-sm mt-1">Check back later!</p>
-      </div>
-    {% endif %}
-  </div>
-
-  <!-- Action Buttons -->
   {% if profiles %}
-  <div class="flex items-center justify-center gap-5 mt-6">
-    <button onclick="swipeAction('nope')" class="w-14 h-14 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-red-500/50 hover:bg-red-500/10 transition text-red-400 text-xl shadow-lg">
-      <i class="fas fa-times"></i>
-    </button>
-    <button onclick="swipeAction('super')" class="w-12 h-12 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-blue-500/50 hover:bg-blue-500/10 transition text-blue-400 text-lg shadow-lg">
-      <i class="fas fa-star"></i>
-    </button>
-    <button onclick="swipeAction('like')" class="w-14 h-14 bg-surface rounded-full flex items-center justify-center border border-white/10 hover:border-green-500/50 hover:bg-green-500/10 transition text-green-400 text-xl shadow-lg">
-      <i class="fas fa-heart"></i>
-    </button>
-  </div>
+  <div class="card-stack" id="cardStack">
+    {% for p in profiles %}
+    {% set photos = p.photos | from_json %}
+    {% set interests = p.interests | from_json %}
+    <div class="swipe-card" id="card-{{ p.id }}"
+         data-id="{{ p.id }}"
+         data-photos='{{ photos | tojson }}'
+         data-photo-idx="0">
 
-  <!-- Super likes counter -->
-  <p class="text-center text-gray-600 text-xs mt-3">
-    <i class="fas fa-star text-blue-400 mr-1"></i>
-    {% if user.is_premium %}Unlimited super likes{% else %}{{ user.super_likes_left }} super likes left{% endif %}
-    <span class="mx-2 text-gray-700">•</span>
-    <i class="fas fa-fire text-primary mr-1"></i>
-    {% if user.is_premium %}Unlimited swipes{% else %}{{ user.daily_swipes if user.daily_swipes is not none else 30 }} swipes left today{% endif %}
-  </p>
+      {% if p.photo %}
+      <img src="{{ p.photo | photo_url }}" id="cardImg-{{ p.id }}" alt="{{ p.name }}" />
+      {% else %}
+      <div class="card-no-photo">👤</div>
+      {% endif %}
 
-  {% if user.is_premium %}
-  <div class="flex justify-center mt-3">
-    <button onclick="boostProfile()" id="boost-btn"
-      class="flex items-center gap-2 bg-surface border border-primary/30 text-primary text-xs px-4 py-2 rounded-full hover:bg-primary/10 transition">
-      <i class="fas fa-rocket"></i> Boost Profile (30 min)
-    </button>
-  </div>
-  {% if user.boosted_until %}
-  <p class="text-center text-green-400 text-xs mt-2" id="boost-active-msg">
-    🚀 Profile is boosted!
-  </p>
-  <script>
-    const boostedUntil = new Date("{{ user.boosted_until }} UTC");
-    if (boostedUntil > new Date()) {
-      document.getElementById('boost-active-msg').style.display = 'block';
-      document.getElementById('boost-btn').innerHTML = '<i class="fas fa-rocket"></i> Boosted 🔥';
-      document.getElementById('boost-btn').classList.add('text-green-400','border-green-400/30');
-    } else {
-      const el = document.getElementById('boost-active-msg');
-      if (el) el.style.display = 'none';
-    }
-  </script>
-  {% endif %}
-  {% endif %}
-  {% endif %}
+      {% if photos | length > 1 %}
+      <div class="photo-dots" id="dots-{{ p.id }}">
+        {% for ph in photos %}
+        <div class="photo-dot {% if loop.first %}active{% endif %}"></div>
+        {% endfor %}
+      </div>
+      {% endif %}
 
-</div>
+      <div class="like-indicator" id="like-{{ p.id }}">LIKE ❤️</div>
+      <div class="nope-indicator" id="nope-{{ p.id }}">NOPE 👎</div>
 
-<!-- Swipe Limit Modal -->
-<div id="limit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-  <div class="bg-card rounded-3xl p-8 text-center max-w-xs w-full border border-white/10 card-glow">
-    <div class="text-5xl mb-4">😔</div>
-    <h2 class="text-xl font-bold text-white mb-2">Daily Limit Reached!</h2>
-    <p class="text-gray-400 text-sm mb-6">You've used all 3 free swipes today.<br/>Share with 3 friends to get <span class="text-primary font-semibold">+10 swipes</span> or go Premium!</p>
-    <div class="flex flex-col gap-3">
-      <a href="/premium" class="gradient-btn text-white py-3 rounded-xl text-sm font-semibold">
-        <i class="fas fa-crown mr-2"></i>Go Premium
-      </a>
-      <button onclick="document.getElementById('limit-modal').classList.add('hidden')" class="bg-surface border border-white/10 text-gray-400 py-3 rounded-xl text-sm">
-        Maybe Later
-      </button>
+      <div class="card-overlay">
+        <div class="card-name">
+          {{ p.name }}, {{ p.age }}
+          {% if p.is_verified %}<span style="font-size:18px;">⭐</span>{% endif %}
+        </div>
+        <div class="card-meta">
+          {% if p.city %}📍 {{ p.city }}{% endif %}
+        </div>
+        {% if p.bio %}
+        <div class="card-bio">{{ p.bio }}</div>
+        {% endif %}
+        {% if interests %}
+        <div class="card-tags">
+          {% for tag in interests[:4] %}
+          <span class="card-tag">{{ tag }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
     </div>
+    {% endfor %}
   </div>
+
+  <div class="action-btns">
+    <button class="action-btn btn-nope" onclick="swipeAction('nope')" title="Nope">👎</button>
+    <button class="action-btn btn-super" onclick="swipeAction('super')" title="Super Like">⭐</button>
+    <button class="action-btn btn-like" onclick="swipeAction('like')" title="Like">❤️</button>
+  </div>
+
+  {% else %}
+  <div class="empty-state">
+    <div class="emoji">😔</div>
+    <p data-i18n="no_more_profiles">No more profiles right now. Check back later!</p>
+  </div>
+  {% endif %}
 </div>
 
 <!-- Match Modal -->
-<div id="match-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-  <div class="bg-card rounded-3xl p-8 text-center max-w-xs w-full border border-white/10 card-glow">
-    <div class="text-5xl mb-4">💕</div>
-    <h2 class="text-2xl font-bold gradient-text mb-2">It's a Match!</h2>
-    <p class="text-gray-400 text-sm mb-2">You and <span id="match-name" class="text-white font-semibold"></span> liked each other!</p>
-    <p class="text-gray-500 text-xs mb-6">Go to Matches to see contact details</p>
-    <div class="flex gap-3 mb-3">
-      <button onclick="closeModal()" class="flex-1 bg-surface border border-white/10 text-white py-3 rounded-xl text-sm font-medium hover:bg-white/5 transition">
-        Keep Swiping
-      </button>
-      <a href="/matches" class="flex-1 gradient-btn text-white py-3 rounded-xl text-sm font-medium text-center">
-        View Match
-      </a>
-    </div>
-    <button onclick="reportMatch()" class="text-gray-600 text-xs hover:text-red-400 transition">
-      <i class="fas fa-flag mr-1"></i>Report this profile
-    </button>
+<div class="match-modal" id="matchModal">
+  <div class="match-avatars">
+    <img class="match-avatar" src="{{ user.photo | photo_url }}" id="myAvatar" />
+    <img class="match-avatar" src="" id="matchAvatar" />
+  </div>
+  <div class="match-title" data-i18n="its_a_match">It's a Match! 💕</div>
+  <div class="match-sub" id="matchSub"></div>
+  <div class="match-btns">
+    <a href="/matches" class="btn btn-primary" data-i18n="btn_view_matches">View Matches</a>
+    <button class="btn btn-secondary" onclick="closeMatch()" data-i18n="btn_keep_swiping">Keep Swiping</button>
   </div>
 </div>
+{% endblock %}
 
-<!-- Report Modal -->
-<div id="report-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-  <div class="bg-card rounded-3xl p-6 max-w-xs w-full border border-white/10">
-    <h3 class="text-white font-semibold mb-4">🚩 Report Profile</h3>
-    <div class="space-y-2 mb-4">
-      {% for reason in ['Fake profile', 'Inappropriate photo', 'Spam', 'Underage', 'Other'] %}
-      <button onclick="submitReport('{{ reason }}')" class="w-full text-left bg-surface border border-white/10 text-gray-300 text-sm px-4 py-3 rounded-xl hover:border-red-500/50 hover:text-red-400 transition">
-        {{ reason }}
-      </button>
-      {% endfor %}
-    </div>
-    <button onclick="document.getElementById('report-modal').classList.add('hidden')" class="w-full text-gray-500 text-sm py-2">Cancel</button>
-  </div>
-</div>
-
+{% block scripts %}
 <script>
-// Carousel state
-const carouselIdx = {};
-function carouselNext(id, total, e) {
-  e.stopPropagation();
-  carouselIdx[id] = ((carouselIdx[id] || 0) + 1) % total;
-  updateCarousel(id, total);
-}
-function carouselPrev(id, total, e) {
-  e.stopPropagation();
-  carouselIdx[id] = ((carouselIdx[id] || 0) - 1 + total) % total;
-  updateCarousel(id, total);
-}
-function updateCarousel(id, total) {
-  const idx = carouselIdx[id] || 0;
-  const el = document.getElementById('carousel-' + id);
-  if (!el) return;
-  const photos = JSON.parse(el.dataset.photos);
-  const img = document.getElementById('cimg-' + id);
-  if (img) img.src = photos[idx].startsWith('http') ? photos[idx] : '/photo/' + photos[idx];
-  for (let i = 0; i < total; i++) {
-    const dot = document.getElementById(`dot-${id}-${i}`);
-    if (dot) { dot.className = `h-1 rounded-full transition-all duration-300 ${i === idx ? 'bg-white w-6' : 'bg-white/40 w-3'}`; }
+  const cards = [...document.querySelectorAll('.swipe-card')].reverse();
+  let currentIdx = cards.length - 1;
+  let isDragging = false, startX = 0, startY = 0, currentX = 0;
+  let swipesLeft = {{ user.daily_swipes }};
+
+  function getTopCard() { return cards[currentIdx] || null; }
+
+  // Touch / Mouse drag
+  function initDrag(card) {
+    const onStart = (e) => {
+      isDragging = true;
+      const pt = e.touches ? e.touches[0] : e;
+      startX = pt.clientX; startY = pt.clientY; currentX = 0;
+      card.style.transition = 'none';
+    };
+    const onMove = (e) => {
+      if (!isDragging) return;
+      const pt = e.touches ? e.touches[0] : e;
+      currentX = pt.clientX - startX;
+      const rotate = currentX * 0.08;
+      card.style.transform = `translateX(${currentX}px) rotate(${rotate}deg)`;
+      const likeEl = document.getElementById(`like-${card.dataset.id}`);
+      const nopeEl = document.getElementById(`nope-${card.dataset.id}`);
+      if (currentX > 30) { likeEl.style.opacity = Math.min((currentX - 30) / 80, 1); nopeEl.style.opacity = 0; }
+      else if (currentX < -30) { nopeEl.style.opacity = Math.min((-currentX - 30) / 80, 1); likeEl.style.opacity = 0; }
+      else { likeEl.style.opacity = 0; nopeEl.style.opacity = 0; }
+    };
+    const onEnd = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      card.style.transition = 'transform 0.3s ease';
+      if (currentX > 80) animateSwipe(card, 'like');
+      else if (currentX < -80) animateSwipe(card, 'nope');
+      else { card.style.transform = ''; document.getElementById(`like-${card.dataset.id}`).style.opacity = 0; document.getElementById(`nope-${card.dataset.id}`).style.opacity = 0; }
+    };
+    // Photo tap to cycle
+    card.addEventListener('click', (e) => {
+      if (Math.abs(currentX) > 5) return;
+      const rect = card.getBoundingClientRect();
+      const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+      const photos = JSON.parse(card.dataset.photos || '[]');
+      if (photos.length <= 1) return;
+      let idx = parseInt(card.dataset.photoIdx || 0);
+      idx = x > rect.width / 2 ? Math.min(idx + 1, photos.length - 1) : Math.max(idx - 1, 0);
+      card.dataset.photoIdx = idx;
+      const img = card.querySelector('img');
+      if (img) img.src = `/photo/${photos[idx]}`;
+      const dots = document.querySelectorAll(`#dots-${card.dataset.id} .photo-dot`);
+      dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+    });
+    card.addEventListener('mousedown', onStart);
+    card.addEventListener('mousemove', onMove);
+    card.addEventListener('mouseup', onEnd);
+    card.addEventListener('mouseleave', onEnd);
+    card.addEventListener('touchstart', onStart, { passive: true });
+    card.addEventListener('touchmove', onMove, { passive: true });
+    card.addEventListener('touchend', onEnd);
   }
-}
 
-const cards = document.querySelectorAll('.profile-card');
-let currentIndex = 0;
+  cards.forEach(initDrag);
 
-function getCurrentCard() {
-  return cards[currentIndex];
-}
-
-let currentMatchId = null;
-
-async function swipeAction(action) {
-  const card = getCurrentCard();
-  if (!card) return;
-  const id = card.dataset.id;
-  currentMatchId = id;
-
-  if (action === 'like' || action === 'super') {
-    card.querySelector('.like-indicator').style.opacity = '1';
-    card.style.transform = 'translateX(150%) rotate(20deg)';
-  } else {
-    card.querySelector('.nope-indicator').style.opacity = '1';
-    card.style.transform = 'translateX(-150%) rotate(-20deg)';
+  function swipeAction(type) {
+    const card = getTopCard();
+    if (!card) return;
+    animateSwipe(card, type);
   }
-  card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
-  card.style.opacity = '0';
 
-  if (action !== 'nope') {
-    try {
+  async function animateSwipe(card, type) {
+    const id = parseInt(card.dataset.id);
+    const dir = type === 'nope' ? -1 : 1;
+    card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
+    card.style.transform = `translateX(${dir * 120}%) rotate(${dir * 20}deg)`;
+    card.style.opacity = '0';
+    currentIdx--;
+
+    if (type === 'like' || type === 'super') {
+      if (swipesLeft <= 0) { showToast('Daily limit reached! Come back tomorrow.'); return; }
+      swipesLeft--;
+      document.getElementById('swipeCount').textContent = swipesLeft;
       const res = await fetch(`/like/${id}`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({super: action === 'super'})
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ super: type === 'super' }),
       });
       const data = await res.json();
-      if (data.limit) {
-        card.style.transition = 'none';
-        card.style.transform = '';
-        card.style.opacity = '1';
-        document.getElementById('limit-modal').classList.remove('hidden');
-        return;
-      }
-      if (data.matched) {
-        const name = card.querySelector('h2').textContent.split(',')[0];
-        document.getElementById('match-name').textContent = name;
-        setTimeout(() => document.getElementById('match-modal').classList.remove('hidden'), 500);
-      }
-    } catch(e) {}
-  } else {
-    try { await fetch(`/skip/${id}`, {method: 'POST'}); } catch(e) {}
+      if (data.matched) showMatch(card);
+      if (data.limit) showToast('Daily swipe limit reached!');
+    } else {
+      await fetch(`/skip/${id}`, { method: 'POST' });
+    }
+
+    setTimeout(() => card.remove(), 400);
+    if (currentIdx < 0) showEmpty();
   }
-  setTimeout(() => { card.style.display = 'none'; currentIndex++; }, 400);
-}
 
-function closeModal() {
-  document.getElementById('match-modal').classList.add('hidden');
-}
+  function showMatch(card) {
+    const modal = document.getElementById('matchModal');
+    const img = card.querySelector('img');
+    if (img) document.getElementById('matchAvatar').src = img.src;
+    const name = card.querySelector('.card-name')?.textContent?.trim()?.split(',')[0] || '';
+    document.getElementById('matchSub').textContent = `You and ${name} liked each other!`;
+    modal.classList.add('show');
+  }
 
-function reportMatch() {
-  document.getElementById('match-modal').classList.add('hidden');
-  document.getElementById('report-modal').classList.remove('hidden');
-}
+  function closeMatch() {
+    document.getElementById('matchModal').classList.remove('show');
+  }
 
-async function submitReport(reason) {
-  document.getElementById('report-modal').classList.add('hidden');
-  if (!currentMatchId) return;
-  await fetch(`/report/${currentMatchId}`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({reason})
-  });
-}
-
-function applyAgeFilter() {
-  const min = document.getElementById('age-min').value || 18;
-  const max = document.getElementById('age-max').value || 99;
-  window.location.href = `/?age_min=${min}&age_max=${max}`;
-}
-
-async function boostProfile() {
-  const btn = document.getElementById('boost-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Boosting...';
-  try {
-    await fetch('/boost', {method: 'POST'});
-    btn.innerHTML = '<i class="fas fa-rocket"></i> Boosted! 🔥';
-    btn.classList.add('text-green-400', 'border-green-400/30');
-  } catch(e) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rocket"></i> Boost Profile (30 min)'; }
-}
-
-async function reportUser(id, e) {
-  e.stopPropagation();
-  if (!confirm('Report this profile as inappropriate?')) return;
-  await fetch(`/report/${id}`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({reason: 'inappropriate'})
-  });
-  swipeAction('nope');
-}
-
-// Touch/swipe support
-let startX = 0, startY = 0;
-const stack = document.getElementById('card-stack');
-if (stack) {
-  stack.addEventListener('touchstart', e => { startX = e.touches[0].clientX; startY = e.touches[0].clientY; }, {passive: true});
-  stack.addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - startX;
-    const dy = e.changedTouches[0].clientY - startY;
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) swipeAction(dx > 0 ? 'like' : 'nope');
-  }, {passive: true});
-}
+  function showEmpty() {
+    document.getElementById('cardStack')?.remove();
+    document.querySelector('.action-btns')?.remove();
+    const wrap = document.querySelector('.home-wrap');
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.innerHTML = '<div class="emoji">😔</div><p>No more profiles right now. Check back later!</p>';
+    wrap.appendChild(empty);
+  }
 </script>
 {% endblock %}

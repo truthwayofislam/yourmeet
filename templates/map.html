@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  .map-wrap { height: calc(100vh - 64px); display: flex; flex-direction: column; position: relative; }
+  #map { flex: 1; z-index: 1; }
+
+  /* Override leaflet for dark theme */
+  .leaflet-tile { filter: brightness(0.7) saturate(0.8); }
+  .leaflet-control-zoom { display: none; }
+  .leaflet-control-attribution { display: none; }
+
+  /* Find button */
+  .find-btn-wrap {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    z-index: 10; width: calc(100% - 40px); max-width: 320px;
+  }
+  .find-btn {
+    width: 100%; padding: 16px; border-radius: 14px; border: none;
+    background: var(--gradient); color: #fff; font-size: 16px; font-weight: 700;
+    cursor: pointer; box-shadow: 0 4px 20px rgba(233,30,140,0.4);
+    transition: opacity 0.2s, transform 0.1s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .find-btn:active { transform: scale(0.97); }
+  .find-btn:disabled { opacity: 0.5; }
+
+  /* Profile card */
+  .profile-card {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
+    background: var(--card); border-radius: 24px 24px 0 0;
+    border-top: 1px solid var(--border);
+    padding: 20px 20px 90px;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .profile-card.show { transform: translateY(0); }
+
+  .card-drag-handle {
+    width: 40px; height: 4px; background: var(--border);
+    border-radius: 2px; margin: 0 auto 16px;
+  }
+  .card-top { display: flex; gap: 14px; margin-bottom: 14px; }
+  .card-photo { width: 80px; height: 80px; border-radius: 14px; object-fit: cover; flex-shrink: 0; }
+  .card-photo-placeholder { width: 80px; height: 80px; border-radius: 14px; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 36px; flex-shrink: 0; }
+  .card-info { flex: 1; }
+  .card-info h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .card-info .meta { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+  .card-bio-text { font-size: 14px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5; }
+  .card-interests { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .card-actions { display: flex; gap: 12px; }
+
+  /* Marker pulse */
+  .pulse-marker {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 0 rgba(233,30,140,0.6);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(233,30,140,0.6); }
+    70% { box-shadow: 0 0 0 12px rgba(233,30,140,0); }
+    100% { box-shadow: 0 0 0 0 rgba(233,30,140,0); }
+  }
+
+  /* Loading overlay */
+  .map-loading {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    z-index: 15; background: rgba(15,15,26,0.9);
+    padding: 20px 28px; border-radius: 14px; border: 1px solid var(--border);
+    text-align: center; display: none;
+  }
+  .map-loading.show { display: block; }
+  .map-loading p { margin-top: 10px; font-size: 14px; color: var(--text-muted); }
+</style>
+
+<div class="map-wrap">
+  <div id="map"></div>
+
+  <div class="map-loading" id="mapLoading">
+    <div class="spinner"></div>
+    <p data-i18n="finding">Finding someone for you...</p>
+  </div>
+
+  <div class="find-btn-wrap" id="findBtnWrap">
+    <button class="find-btn" id="findBtn" onclick="findMatch()">
+      🗺 <span data-i18n="btn_find_match">Find My Match</span>
+    </button>
+  </div>
+
+  <!-- Profile card -->
+  <div class="profile-card" id="profileCard">
+    <div class="card-drag-handle"></div>
+    <div class="card-top">
+      <div id="cardPhotoWrap"></div>
+      <div class="card-info">
+        <h2 id="cardName"></h2>
+        <div class="meta" id="cardMeta"></div>
+      </div>
+    </div>
+    <div class="card-bio-text" id="cardBio"></div>
+    <div class="card-interests" id="cardInterests"></div>
+    <div class="card-actions">
+      <button class="btn btn-secondary" style="flex:1" onclick="skipMatch()">
+        <span data-i18n="btn_skip">Skip 👎</span>
+      </button>
+      <button class="btn btn-primary" style="flex:1" onclick="likeMatch()">
+        <span data-i18n="btn_like">Like ❤️</span>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let map, marker;
+  let currentUserId = null;
+  let currentUserPhoto = null;
+
+  // Init map
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+
+  async function findMatch() {
+    const btn = document.getElementById('findBtn');
+    btn.disabled = true;
+    closeCard();
+    document.getElementById('mapLoading').classList.add('show');
+
+    try {
+      const res = await fetch('/api/map/match');
+      const data = await res.json();
+      document.getElementById('mapLoading').classList.remove('show');
+
+      if (data.error) {
+        showToast(data.error === 'no_users' ? 'No users found. Try again later!' : data.error);
+        btn.disabled = false;
+        return;
+      }
+
+      currentUserId = data.id;
+      currentUserPhoto = data.photo;
+
+      // Fly to location
+      const lat = data.lat || 20;
+      const lng = data.lng || 0;
+      map.flyTo([lat, lng], 10, { duration: 1.8 });
+
+      // Add pulse marker
+      if (marker) map.removeLayer(marker);
+      const icon = L.divIcon({ className: '', html: '<div class="pulse-marker"></div>', iconSize: [16, 16] });
+      marker = L.marker([lat, lng], { icon }).addTo(map);
+
+      // Show card after fly
+      setTimeout(() => showCard(data), 2000);
+    } catch {
+      document.getElementById('mapLoading').classList.remove('show');
+      showToast('Something went wrong. Try again.');
+      btn.disabled = false;
+    }
+  }
+
+  function showCard(data) {
+    // Photo
+    const photoWrap = document.getElementById('cardPhotoWrap');
+    if (data.photo) {
+      photoWrap.innerHTML = `<img class="card-photo" src="${data.photo}" alt="${data.name}" />`;
+    } else {
+      photoWrap.innerHTML = `<div class="card-photo-placeholder">👤</div>`;
+    }
+
+    // Info
+    document.getElementById('cardName').innerHTML =
+      `${data.name}, ${data.age}${data.is_verified ? ' ⭐' : ''}`;
+    document.getElementById('cardMeta').textContent =
+      [data.city, data.age ? `${data.age} yrs` : ''].filter(Boolean).join(' · ');
+    document.getElementById('cardBio').textContent = data.bio || '';
+
+    // Interests
+    const interestsEl = document.getElementById('cardInterests');
+    interestsEl.innerHTML = (data.interests || []).slice(0, 6)
+      .map(t => `<span class="tag">${t}</span>`).join('');
+
+    document.getElementById('profileCard').classList.add('show');
+    document.getElementById('findBtnWrap').style.display = 'none';
+  }
+
+  function closeCard() {
+    document.getElementById('profileCard').classList.remove('show');
+    document.getElementById('findBtnWrap').style.display = 'block';
+    document.getElementById('findBtn').disabled = false;
+    if (marker) { map.removeLayer(marker); marker = null; }
+    map.flyTo([20, 0], 2, { duration: 1.2 });
+  }
+
+  async function likeMatch() {
+    if (!currentUserId) return;
+    const res = await fetch(`/like/${currentUserId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ super: false }),
+    });
+    const data = await res.json();
+    if (data.matched) {
+      showToast("💕 It's a Match!");
+      setTimeout(() => window.location.href = '/matches', 1500);
+    } else {
+      showToast('❤️ Liked!');
+    }
+    closeCard();
+  }
+
+  async function skipMatch() {
+    if (!currentUserId) return;
+    await fetch(`/skip/${currentUserId}`, { method: 'POST' });
+    closeCard();
+  }
+</script>
+{% endblock %}

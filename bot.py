@@ -1,1256 +1,325 @@
 import os
-import warnings
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, PreCheckoutQueryHandler, ConversationHandler, filters, ContextTypes, Application
-from telegram.warnings import PTBUserWarning
-import secrets
-import libsql_experimental as libsql
-
-warnings.filterwarnings("ignore", category=PTBUserWarning)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, PreCheckoutQueryHandler, filters, ContextTypes,
+)
+from strings import get as s
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
 APP_URL = os.getenv("APP_URL", "")
-TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
-TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "")
 
-_conn = None
 
-def get_conn():
-    global _conn
-    if _conn is not None:
-        return _conn
-    if TURSO_URL and TURSO_TOKEN:
-        _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-    else:
-        _conn = libsql.connect("yourmeet.db")
-    return _conn
+def build_bot() -> Application:
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("profile", cmd_profile))
+    app.add_handler(CommandHandler("matches", cmd_matches))
+    app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("premium", cmd_premium))
+    app.add_handler(CommandHandler("share", cmd_share))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("about", cmd_about))
+    app.add_handler(CommandHandler("delete", cmd_delete))
+    app.add_handler(CommandHandler("confirmdelete", cmd_confirm_delete))
+    app.add_handler(CommandHandler("language", cmd_language))
+    app.add_handler(CommandHandler("boost", cmd_boost))
+    app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
+    app.add_handler(PreCheckoutQueryHandler(pre_checkout))
+    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    return app
 
-class _NoClose:
-    """Wraps connection so .close() is a no-op — connection stays alive for reuse."""
-    def __init__(self, conn): self._c = conn
-    def execute(self, *a, **kw):
-        global _conn
-        try:
-            self._c.sync()
-        except Exception:
-            if TURSO_URL and TURSO_TOKEN:
-                _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-            else:
-                _conn = libsql.connect("yourmeet.db")
-            self._c = _conn
-        try:
-            return self._c.execute(*a, **kw)
-        except Exception:
-            # Second failure — force full reconnect
-            if TURSO_URL and TURSO_TOKEN:
-                _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-            else:
-                _conn = libsql.connect("yourmeet.db")
-            self._c = _conn
-            return self._c.execute(*a, **kw)
-    def executescript(self, *a, **kw): return self._c.executescript(*a, **kw)
-    def commit(self): return self._c.commit()
-    def close(self): pass  # no-op
 
-def get_conn():
-    global _conn
-    if _conn is None:
-        if TURSO_URL and TURSO_TOKEN:
-            _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-        else:
-            _conn = libsql.connect("yourmeet.db")
-    return _NoClose(_conn)
+def _lang(update: Update) -> str:
+    return (update.effective_user.language_code or "en")[:2]
 
-def get_user_by_tg(tg_id: str):
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT id,name,email,phone,password,age,gender,bio,city,photo,is_premium,super_likes_left,"
-        "created_at,telegram_id,is_admin,is_blocked,daily_swipes,swipes_reset_date,referral_count,"
-        "social_handle,is_verified,boosted_until,is_approved,premium_until,is_rejected,language,interested_in "
-        "FROM users WHERE telegram_id=?", (tg_id,)
-    ).fetchone()
-    conn.close()
-    return row
 
-BLOCKED_MSG = (
-    "🚫 *Your profile was rejected.*\n\n"
-    "Please re-register with a clear photo and genuine bio."
-)
+def _get_user(tg_id: str):
+    from database import get_conn, row_to_user, USER_COLS
+    db = get_conn()
+    cols = ", ".join(USER_COLS)
+    row = db.execute(f"SELECT {cols} FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    return row_to_user(row)
 
-BANNED_MSG = (
-    "🚫 *Your account has been permanently banned.*\n\n"
-    "You can no longer use this service."
-)
 
-async def _check_blocked(update: Update, tg_id: str) -> bool:
-    conn = get_conn()
-    row = conn.execute("SELECT is_blocked, is_rejected FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    if row and row[0]:  # is_blocked
-        msg = update.message or (update.callback_query.message if update.callback_query else None)
-        if msg:
-            await msg.reply_text(BANNED_MSG, parse_mode="Markdown")
-        return True
-    if row and row[1]:  # is_rejected
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Re-register", web_app=WebAppInfo(url=f"{APP_URL}/register"))]])
-        msg = update.message or (update.callback_query.message if update.callback_query else None)
-        if msg:
-            await msg.reply_text(BLOCKED_MSG, parse_mode="Markdown", reply_markup=kb)
-        return True
-    return False
-
-def open_app_keyboard(path=""):
+def _open_app_keyboard(lang: str):
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=f"{APP_URL}{path}"))
+        InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))
     ]])
 
-async def _show_language_select(update: Update):
-    from strings import LANGUAGES
-    # Build 3-column keyboard
-    items = list(LANGUAGES.items())
-    rows = []
-    for i in range(0, len(items), 3):
-        row = [InlineKeyboardButton(label, callback_data=f"setlang:{code}") for code, label in items[i:i+3]]
-        rows.append(row)
-    kb = InlineKeyboardMarkup(rows)
-    await update.message.reply_text("🌍 Please select your language:", reply_markup=kb)
 
-async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_user = update.effective_user
+    lang = _lang(update)
+    tg_id = str(tg_user.id)
+
+    # Handle referral
+    if ctx.args:
+        ref_code = ctx.args[0]
+        if ref_code.startswith("ref_"):
+            referrer_id = ref_code[4:]
+            _handle_referral(tg_id, referrer_id)
+
+    user = _get_user(tg_id)
+    if user:
+        lang = user.language or lang
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))],
+    ])
+    await update.message.reply_text(s(lang, "welcome"), parse_mode="Markdown", reply_markup=keyboard)
+
+
+async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if not user or not user.photo:
+        await update.message.reply_text(s(lang, "no_profile"), parse_mode="Markdown",
+                                        reply_markup=_open_app_keyboard(lang))
+        return
+    premium = "✅" if user.is_premium else "❌"
+    status = "Approved ✅" if user.is_approved else ("Rejected ❌" if user.is_rejected else "Pending ⏳")
+    text = s(lang, "your_profile", name=user.name, age=user.age,
+             gender=user.gender or "-", city=user.city or "-",
+             premium=premium, status=status)
+    await update.message.reply_text(text, parse_mode="Markdown",
+                                    reply_markup=_open_app_keyboard(lang))
+
+
+async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if not user:
+        await update.message.reply_text(s(lang, "no_profile"), parse_mode="Markdown")
+        return
+    from database import get_conn
+    db = get_conn()
+    count = db.execute(
+        "SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?",
+        (user.id, user.id)
+    ).fetchone()[0]
+    await update.message.reply_text(s(lang, "your_matches", count=count), parse_mode="Markdown",
+                                    reply_markup=_open_app_keyboard(lang))
+
+
+async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if not user:
+        await update.message.reply_text(s(lang, "no_profile"), parse_mode="Markdown")
+        return
+    from database import get_conn
+    db = get_conn()
+    given = db.execute("SELECT COUNT(*) FROM likes WHERE from_user=?", (user.id,)).fetchone()[0]
+    received = db.execute("SELECT COUNT(*) FROM likes WHERE to_user=?", (user.id,)).fetchone()[0]
+    matches = db.execute(
+        "SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?", (user.id, user.id)
+    ).fetchone()[0]
+    await update.message.reply_text(
+        s(lang, "your_stats", given=given, received=received,
+          matches=matches, swipes=user.daily_swipes),
+        parse_mode="Markdown"
+    )
+
+
+async def cmd_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("1 Month — 150 ⭐", callback_data="buy:monthly")],
+        [InlineKeyboardButton("3 Months — 350 ⭐", callback_data="buy:quarterly")],
+        [InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=f"{APP_URL}/premium"))],
+    ])
+    await update.message.reply_text(s(lang, "premium_info"), parse_mode="Markdown",
+                                    reply_markup=keyboard)
+
+
+async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    link = f"https://t.me/{BOT_USERNAME}?start=ref_{tg_id}"
+    await update.message.reply_text(s(lang, "referral_msg", link=link), parse_mode="Markdown")
+
+
+async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    lang = _lang(update)
+    user = _get_user(str(update.effective_user.id))
+    if user:
+        lang = user.language or lang
+    await update.message.reply_text(s(lang, "help_msg"), parse_mode="Markdown")
+
+
+async def cmd_about(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    lang = _lang(update)
+    user = _get_user(str(update.effective_user.id))
+    if user:
+        lang = user.language or lang
+    await update.message.reply_text(s(lang, "about_msg"), parse_mode="Markdown")
+
+
+async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    await update.message.reply_text(s(lang, "delete_confirm"), parse_mode="Markdown")
+
+
+async def cmd_confirm_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if user:
+        from database import get_conn
+        db = get_conn()
+        from routers.auth import _delete_user_data
+        _delete_user_data(db, user.id)
+    await update.message.reply_text(s(lang, "account_deleted"), parse_mode="Markdown")
+
+
+async def cmd_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    langs = [
+        ("🇬🇧 English", "en"), ("🇪🇸 Español", "es"), ("🇷🇺 Русский", "ru"),
+        ("🇰🇷 한국어", "ko"), ("🇨🇳 中文", "zh"), ("🇮🇩 Indonesia", "id"),
+        ("🇸🇦 العربية", "ar"), ("🇧🇷 Português", "pt"), ("🇫🇷 Français", "fr"),
+        ("🇩🇪 Deutsch", "de"), ("🇹🇷 Türkçe", "tr"), ("🇮🇹 Italiano", "it"),
+        ("🇯🇵 日本語", "ja"), ("🇮🇳 हिंदी", "hi"),
+    ]
+    buttons = [[InlineKeyboardButton(name, callback_data=f"lang:{code}")] for name, code in langs]
+    await update.message.reply_text(
+        "🌐 Choose your language / Выберите язык / 언어 선택:",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+
+async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if not user or not user.is_premium:
+        await update.message.reply_text(s(lang, "btn_upgrade"), parse_mode="Markdown",
+                                        reply_markup=_open_app_keyboard(lang))
+        return
+    from datetime import datetime, timedelta
+    from database import get_conn
+    db = get_conn()
+    until = (datetime.utcnow() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("UPDATE users SET boosted_until=? WHERE id=?", (until, user.id))
+    db.commit()
+    await update.message.reply_text(s(lang, "boost_active"), parse_mode="Markdown")
+
+
+# ── Callbacks ─────────────────────────────────────────────────────────────────
+
+async def cb_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     lang = query.data.split(":")[1]
-    tg_id = str(query.from_user.id)
-    conn = get_conn()
-    conn.execute("UPDATE users SET language=? WHERE telegram_id=?", (lang, tg_id))
-    conn.commit()
-    conn.close()
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except: pass
-    # Send welcome in selected language
-    from strings import get
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton(get(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))],
-        [InlineKeyboardButton(get(lang, "get_premium"), web_app=WebAppInfo(url=f"{APP_URL}/premium"))]
-    ])
-    await query.message.reply_text(
-        get(lang, "welcome", name=query.from_user.first_name),
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-    await query.message.reply_text(get(lang, "quick_actions"), reply_markup=MAIN_KB)
-
-async def language_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _show_language_select(update)
-
-MAIN_KB = ReplyKeyboardMarkup([
-    [KeyboardButton("🔥 Swipe"), KeyboardButton("💕 Matches")],
-    [KeyboardButton("👤 Profile"), KeyboardButton("📊 Stats")],
-    [KeyboardButton("🔗 Share"), KeyboardButton("👑 Premium")],
-    [KeyboardButton("🚀 Boost"), KeyboardButton("❓ Help")],
-], resize_keyboard=True)
-
-# ConversationHandler states
-SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_PHONE, SETUP_CITY, SETUP_PHOTO, SETUP_SOCIAL = range(7)
-EDIT_CHOOSE, EDIT_VALUE, EDIT_PHOTO = range(7, 10)
-
-# /setup - create profile in chat
-async def setup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    conn = get_conn()
-    blocked_row = conn.execute("SELECT id, is_blocked, is_rejected FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    if blocked_row and blocked_row[1]:  # is_blocked
-        await update.message.reply_text("🚫 *Your account has been permanently banned.*", parse_mode="Markdown")
-        return ConversationHandler.END
-    if blocked_row and blocked_row[2]:  # is_rejected
-        conn = get_conn()
-        old_id = blocked_row[0]
-        conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (old_id, old_id))
-        conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (old_id, old_id))
-        conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (old_id, old_id))
-        conn.execute("DELETE FROM referrals WHERE referrer_id=? OR referred_id=?", (old_id, old_id))
-        conn.execute("DELETE FROM reports WHERE reporter_id=? OR reported_id=?", (old_id, old_id))
-        conn.execute("DELETE FROM users WHERE id=?", (old_id,))
-        conn.commit()
-        conn.close()
-    elif blocked_row:
-        await update.message.reply_text("✅ You already have a profile! Use /profile to view it.")
-        return ConversationHandler.END
-    await update.message.reply_text(
-        "👋 Welcome to *YourMeet*! Let's create your profile.\n\n"
-        "Please enter your *full name*:",
-        parse_mode="Markdown"
-    )
-    return SETUP_NAME
+    user = _get_user(tg_id)
+    if user:
+        from database import get_conn
+        db = get_conn()
+        db.execute("UPDATE users SET language=? WHERE telegram_id=?", (lang, tg_id))
+        db.commit()
+    await query.edit_message_text(s(lang, "language_changed"), parse_mode="Markdown")
 
-async def setup_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = update.message.text.strip()
-    if len(name) < 2:
-        await update.message.reply_text("❌ Name must be at least 2 characters. Try again:")
-        return SETUP_NAME
-    context.user_data["name"] = name
-    await update.message.reply_text("🎂 How old are you? *(18-60)*", parse_mode="Markdown")
-    return SETUP_AGE
 
-async def setup_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        age = int(update.message.text.strip())
-        if age < 18 or age > 60:
-            await update.message.reply_text("❌ Age must be between 18 and 60. Try again:")
-            return SETUP_AGE
-    except ValueError:
-        await update.message.reply_text("❌ Please enter a valid number:")
-        return SETUP_AGE
-    context.user_data["age"] = age
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("👨 I am Male", callback_data="gender:male"),
-        InlineKeyboardButton("👩 I am Female", callback_data="gender:female"),
-    ]])
-    await update.message.reply_text(
-        "👥 *Select your gender:*\n\nTap the button that matches you 👇",
-        parse_mode="Markdown", reply_markup=kb
-    )
-    return SETUP_GENDER
+# ── Payments ──────────────────────────────────────────────────────────────────
 
-async def setup_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    context.user_data["gender"] = query.data.split(":")[1]
-    gender_label = "👨 Male" if context.user_data["gender"] == "male" else "👩 Female"
-    try:
-        await query.edit_message_text(f"Gender: *{gender_label}* ✅", parse_mode="Markdown")
-    except: pass
-    from telegram import KeyboardButton, ReplyKeyboardMarkup
-    phone_kb = ReplyKeyboardMarkup(
-        [[KeyboardButton("📱 Share my phone number", request_contact=True)]],
-        resize_keyboard=True, one_time_keyboard=True
-    )
-    await query.message.reply_text(
-        "📱 *Share your phone number*\n\n"
-        "Tap the button below to share, or type it manually with country code:\n"
-        "Example: +34612345678",
-        parse_mode="Markdown",
-        reply_markup=phone_kb
-    )
-    return SETUP_PHONE
-
-async def setup_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    import re
-    # Handle contact share button
-    if update.message.contact:
-        phone = update.message.contact.phone_number
-        if not phone.startswith('+'):
-            phone = '+' + phone
-        context.user_data["phone"] = phone
-        await update.message.reply_text(
-            f"✅ Phone saved: *{phone}*",
-            parse_mode="Markdown",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        await update.message.reply_text(
-            "📍 Which *city* are you from? *(optional)*\n\nType your city or type *skip*:",
-            parse_mode="Markdown"
-        )
-        return SETUP_CITY
-    # Handle manual text input
-    phone = update.message.text.strip()
-    digits = re.sub(r'\D', '', phone)
-    if len(digits) < 7:
-        await update.message.reply_text("❌ Please share your phone number using the button below, or type it manually with country code.")
-        return SETUP_PHONE
-    if not phone.startswith('+'):
-        phone = '+' + phone
-    context.user_data["phone"] = phone
-    await update.message.reply_text(
-        "📍 Which *city* are you from? *(optional)*\n\nType your city or type *skip*:",
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return SETUP_CITY
-
-async def setup_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    context.user_data["city"] = "" if text.lower() == "skip" else text
-    await update.message.reply_text("📸 Send your *profile photo* (required):", parse_mode="Markdown")
-    return SETUP_PHOTO
-
-async def setup_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
-        await update.message.reply_text("❌ Please send a *photo*, not text!\n\nTap the 📎 attachment icon and select a photo.", parse_mode="Markdown")
-        return SETUP_PHOTO
-    file = await update.message.photo[-1].get_file()
-    # Save file_id — never expires, Telegram serves it directly
-    photo_file_id = update.message.photo[-1].file_id
-    context.user_data["photo"] = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
-    context.user_data["photo_file_id"] = photo_file_id
-    await update.message.reply_text(
-        "📱 *Instagram or Telegram username* \u2014 required so your matches can contact you!\n\n"
-        "Example: @username or instagram.com/username",
-        parse_mode="Markdown"
-    )
-    return SETUP_SOCIAL
-
-async def setup_social(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    text = update.message.text.strip()
-    if len(text) < 2:
-        await update.message.reply_text(
-            "❌ Please enter your Instagram or Telegram username.\n"
-            "Example: @username or instagram.com/username"
-        )
-        return SETUP_SOCIAL
-    social = text
-    name = context.user_data["name"]
-    age = context.user_data["age"]
-    gender = context.user_data["gender"]
-    phone = context.user_data["phone"]
-    city = context.user_data.get("city", "")
-    photo = context.user_data["photo_file_id"]  # use file_id — never expires
-    conn = get_conn()
-    email = f"tg_{tg_id}@yourmeet.app"
-    password = secrets.token_hex(16)
-    # Update existing minimal record created on /start, or insert new
-    existing = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    if existing:
-        conn.execute(
-            "UPDATE users SET name=?,password=?,age=?,gender=?,phone=?,city=?,photo=?,social_handle=?,email=?,is_approved=0 WHERE telegram_id=?",
-            (name, password, age, gender, phone, city, photo, social, email, tg_id)
-        )
-    else:
-        conn.execute(
-            "INSERT INTO users (name,email,password,age,gender,phone,city,photo,social_handle,telegram_id,is_approved,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,datetime('now'))",
-            (name, email, password, age, gender, phone, city, photo, social, tg_id)
-        )
-    conn.commit()
-    new_user = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    context.user_data.clear()
-    try:
-        from admin_bot import send_for_review
-        if new_user:
-            await send_for_review(new_user[0], name, age, gender, "", photo, f"via:bot_setup", phone)
-    except Exception as e:
-        print(f"[ADMIN NOTIFY] Failed: {e}")
-    await update.message.reply_text(
-        f"🎉 *Profile created successfully!*\n\n"
-        f"⏳ Your profile is under review. You'll be notified once approved!\n\n"
-        f"This usually takes less than 24 hours.",
-        parse_mode="Markdown"
-    )
-    return ConversationHandler.END
-
-async def setup_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    await update.message.reply_text("❌ Profile setup cancelled.")
-    return ConversationHandler.END
-
-# /edit
-async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if not get_user_by_tg(tg_id):
-        await update.message.reply_text("❌ No profile found! Use /setup first.")
-        return ConversationHandler.END
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📛 Name", callback_data="edit:name"), InlineKeyboardButton("🎂 Age", callback_data="edit:age")],
-        [InlineKeyboardButton("📍 City", callback_data="edit:city"), InlineKeyboardButton("💬 Bio", callback_data="edit:bio")],
-        [InlineKeyboardButton("📸 Photo", callback_data="edit:photo"), InlineKeyboardButton("📱 Social", callback_data="edit:social_handle")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="edit:cancel")],
-    ])
-    await update.message.reply_text("✏️ *What do you want to edit?*", parse_mode="Markdown", reply_markup=kb)
-    return EDIT_CHOOSE
-
-async def edit_choose(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    field = query.data.split(":")[1]
-    if field == "cancel":
-        try:
-            await query.edit_message_text("❌ Edit cancelled.")
-        except: pass
-        return ConversationHandler.END
-    if field == "photo":
-        try:
-            await query.edit_message_text("📸 Send your new profile photo:")
-        except: pass
-        context.user_data["edit_field"] = "photo"
-        return EDIT_PHOTO
-    prompts = {
-        "name": "📛 Enter your new name:",
-        "age": "🎂 Enter your new age:",
-        "city": "📍 Enter your new city:",
-        "bio": "💬 Enter your new bio:",
-        "social_handle": "📱 Enter your Instagram or Telegram username:\nTelegram: @rahul_tg\nInstagram: @rahul_ig or instagram.com/rahul",
-    }
-    context.user_data["edit_field"] = field
-    try:
-        await query.edit_message_text(prompts[field])
-    except: pass
-    return EDIT_VALUE
-
-async def edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    field = context.user_data.get("edit_field")
-    value = update.message.text.strip()
-    if field == "age":
-        try:
-            value = int(value)
-            if value < 18 or value > 100:
-                await update.message.reply_text("❌ Age must be between 18 and 100. Try again:")
-                return EDIT_VALUE
-        except ValueError:
-            await update.message.reply_text("❌ Please enter a valid number:")
-            return EDIT_VALUE
-    conn = get_conn()
-    allowed = {"name", "age", "city", "bio", "social_handle"}
-    if field not in allowed:
-        await update.message.reply_text("❌ Invalid field.")
-        return ConversationHandler.END
-    conn.execute(f"UPDATE users SET {field}=?, is_approved=0 WHERE telegram_id=?", (value, tg_id))
-    conn.commit()
-    conn.close()
-    context.user_data.clear()
-    # Notify admin for re-approval
-    try:
-        row = get_user_by_tg(tg_id)
-        if row:
-            from admin_bot import send_for_review
-            await send_for_review(row[0], row[1], row[5], row[6], row[8], row[9], '', '')
-    except: pass
-    await update.message.reply_text(f"✅ *{field.capitalize()}* updated! Your profile is under review again.", parse_mode="Markdown")
-    return ConversationHandler.END
-
-async def edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if not update.message.photo:
-        await update.message.reply_text("❌ Please send a photo:")
-        return EDIT_PHOTO
-    # Save file_id — never expires
-    photo_file_id = update.message.photo[-1].file_id
-    conn = get_conn()
-    conn.execute("UPDATE users SET photo=?, is_approved=0 WHERE telegram_id=?", (photo_file_id, tg_id))
-    conn.commit()
-    conn.close()
-    context.user_data.clear()
-    # Notify admin for re-approval — use URL for admin preview
-    try:
-        file = await update.message.photo[-1].get_file()
-        photo_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file.file_path}"
-        row = get_user_by_tg(tg_id)
-        if row:
-            from admin_bot import send_for_review
-            await send_for_review(row[0], row[1], row[5], row[6], row[8], photo_url, '', '')
-    except: pass
-    await update.message.reply_text("✅ *Photo* updated! Your profile is under review again.", parse_mode="Markdown")
-    return ConversationHandler.END
-
-def _check_swipe_limit(tg_id: str):
-    """Returns (user_id, swipes_left, is_premium). Resets daily if needed."""
-    from datetime import date
-    today = str(date.today())
-    conn = get_conn()
-    row = conn.execute("SELECT id, is_premium, daily_swipes, swipes_reset_date FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    if not row:
-        conn.close()
-        return None, 0, False
-    user_id, is_premium, daily_swipes, reset_date = row
-    if reset_date != today:
-        daily_swipes = 3
-        conn.execute("UPDATE users SET daily_swipes=3, swipes_reset_date=? WHERE id=?", (today, user_id))
-        conn.commit()
-    conn.close()
-    return user_id, daily_swipes, bool(is_premium)
-
-def _deduct_swipe(user_id: int):
-    conn = get_conn()
-    conn.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (user_id,))
-    conn.commit()
-    conn.close()
-
-# /start - handles referral too
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    tg_id = str(user.id)
-
-    # Save telegram_id immediately on /start so broadcast reaches them
-    conn = get_conn()
-    existing = conn.execute("SELECT id, language FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    if not existing:
-        import secrets as _secrets
-        conn.execute(
-            "INSERT OR IGNORE INTO users (name,email,password,telegram_id,is_approved,created_at) VALUES (?,?,?,?,1,datetime('now'))",
-            (user.first_name, f"tg_{tg_id}@yourmeet.app", _secrets.token_hex(8), tg_id)
-        )
-        conn.commit()
-        # New user — show language selection
-        conn.close()
-        await _show_language_select(update)
-        return
-    conn.close()
-
-    # Handle referral
-    if context.args and context.args[0].startswith("ref_"):
-        try:
-            referrer_id = int(context.args[0][4:])
-            conn = get_conn()
-            me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-            referrer_exists = conn.execute("SELECT id FROM users WHERE id=?", (referrer_id,)).fetchone()
-            already = me and conn.execute("SELECT id FROM referrals WHERE referred_id=?", (me[0],)).fetchone()
-            if me and referrer_exists and not already and me[0] != referrer_id:
-                conn.execute("INSERT INTO referrals (referrer_id,referred_id,created_at) VALUES (?,?,datetime('now'))", (referrer_id, me[0]))
-                conn.execute("UPDATE users SET referral_count=referral_count+1 WHERE id=?", (referrer_id,))
-                ref_count = conn.execute("SELECT referral_count FROM users WHERE id=?", (referrer_id,)).fetchone()[0]
-                conn.commit()
-                if ref_count % 3 == 0:
-                    conn.execute("UPDATE users SET daily_swipes=daily_swipes+10 WHERE id=?", (referrer_id,))
-                    conn.commit()
-                    ref_tg = conn.execute("SELECT telegram_id FROM users WHERE id=?", (referrer_id,)).fetchone()
-                    if ref_tg and ref_tg[0]:
-                        try:
-                            await context.bot.send_message(ref_tg[0], "🎉 *+10 Swipes!* 3 friends joined using your link. Keep sharing!", parse_mode="Markdown")
-                        except: pass
-            conn.close()
-        except: pass
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=APP_URL))],
-        [InlineKeyboardButton("👑 Get Premium", web_app=WebAppInfo(url=f"{APP_URL}/premium"))]
-    ])
-    from strings import get as _get
-    lang = existing[1] if existing and existing[1] else "en"
-    await update.message.reply_text(
-        _get(lang, "welcome", name=user.first_name),
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-    await update.message.reply_text(_get(lang, "quick_actions"), reply_markup=MAIN_KB)
-
-# /profile
-async def profile_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if await _check_blocked(update, tg_id): return
-    conn = get_conn()
-    row = conn.execute("SELECT id, name, age, city, bio, is_premium, gender FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    if not row:
-        await update.message.reply_text("❌ Account not found. Please register first!", reply_markup=open_app_keyboard("/register"))
-        return
-    uid, name, age, city, bio, is_premium, gender = row
-    plan = "👑 Premium" if is_premium else "🆓 Free"
-    gender_emoji = "👨" if gender == "male" else "👩" if gender == "female" else "👤"
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✏️ Edit Profile", web_app=WebAppInfo(url=f"{APP_URL}/profile")),
-         InlineKeyboardButton("💕 Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches"))],
-        [InlineKeyboardButton("🔥 Start Swiping", callback_data="swipe_now")],
-    ])
-    await update.message.reply_text(
-        f"{gender_emoji} *Your Profile*\n\n"
-        f"📛 Name: *{name}*\n"
-        f"🎂 Age: *{age}*\n"
-        f"📍 City: *{city or 'Not set'}*\n"
-        f"💬 Bio: _{bio or 'Not set'}_\n"
-        f"💎 Plan: *{plan}*",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-# /matches
-async def matches_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if await _check_blocked(update, tg_id): return
-    row = get_user_by_tg(tg_id)
-    if not row:
-        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
-        return
-    user_id = row[0]
-    conn = get_conn()
-    count = conn.execute(
-        "SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id)
-    ).fetchone()[0]
-    conn.close()
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💕 View Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches")),
-         InlineKeyboardButton("🔥 Swipe More", callback_data="swipe_now")],
-    ])
-    await update.message.reply_text(
-        f"💕 *Your Matches*\n\n"
-        f"You have *{count}* match{'es' if count != 1 else ''}!\n\n"
-        f"{'Start chatting now 👇' if count > 0 else 'Keep swiping to get matches! 🔥'}",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-def _swipe_keyboard(target_id: int):
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("👎 Nope", callback_data=f"nope:{target_id}"),
-        InlineKeyboardButton("❤️ Like", callback_data=f"like:{target_id}"),
-        InlineKeyboardButton("⭐ Super", callback_data=f"super:{target_id}"),
-    ]])
-
-def _record_skip(user_id: int, target_id: int):
-    conn = get_conn()
-    try:
-        conn.execute("INSERT OR IGNORE INTO skips (user_id, skipped_id) VALUES (?,?)", (user_id, target_id))
-        conn.commit()
-    except: pass
-    conn.close()
-
-def _next_profile(tg_id: str):
-    conn = get_conn()
-    me = conn.execute("SELECT id, gender FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    if not me:
-        conn.close()
-        return None, None
-    user_id, gender = me
-    interested_in_row = conn.execute("SELECT interested_in FROM users WHERE id=?", (user_id,)).fetchone()
-    interested_in = (interested_in_row[0] if interested_in_row and interested_in_row[0] else 'both')
-    liked = [r[0] for r in conn.execute("SELECT to_user FROM likes WHERE from_user=?", (user_id,)).fetchall()]
-    skipped = [r[0] for r in conn.execute("SELECT skipped_id FROM skips WHERE user_id=?", (user_id,)).fetchall()]
-    excluded = list(set(liked + skipped + [user_id]))
-    placeholders = ",".join("?" * len(excluded))
-    if interested_in == 'both':
-        gender_filter = "gender IN ('male','female')"
-        gender_params = ()
-    else:
-        gender_filter = "gender=?"
-        gender_params = (interested_in,)
-    row = conn.execute(
-        f"SELECT id, name, age, city, bio, photo, gender, is_verified FROM users WHERE id NOT IN ({placeholders}) AND {gender_filter} AND age>=18 AND is_blocked=0 AND is_rejected=0 AND is_approved=1 LIMIT 1",
-        (*excluded, *gender_params)
-    ).fetchone()
-    conn.close()
-    return user_id, row
-
-PROMO_MSG = (
-    "💡 *Did you know?*\n\n"
-    "All profiles on YourMeet are *real verified users* 🔒\n"
-    "No bots, no fake accounts — just genuine people looking to connect 💕\n\n"
-    "👉 Create your profile on the app for *better matches & more visibility!*"
-)
-
-async def _send_profile(send_fn, tg_id: str):
-    me_id, row = _next_profile(tg_id)
-    if not row:
-        await send_fn("😔 No one left to swipe! Check back later.")
-        return
-    pid, name, age, city, bio, photo, gender, is_verified = row
-
-    # Show promo every 3 swipes
-    conn = get_conn()
-    swipe_count = (conn.execute("SELECT COUNT(*) FROM likes WHERE from_user=?", (me_id,)).fetchone()[0] +
-                   conn.execute("SELECT COUNT(*) FROM skips WHERE user_id=?", (me_id,)).fetchone()[0])
-    conn.close()
-    if swipe_count > 0 and swipe_count % 3 == 0:
-        await send_fn(PROMO_MSG, parse_mode="Markdown", reply_markup=open_app_keyboard("/register"))
-
-    gender_emoji = "👨" if gender == "male" else "👩"
-    verified_badge = " ⭐" if is_verified else ""
-    caption = (
-        f"{gender_emoji} *{name}*{verified_badge}, {age}"
-        + (f" — 📍 {city}" if city else "")
-        + (f"\n👤 {gender.capitalize()}" if gender else "")
-        + (f"\n\n_{bio}_" if bio else "")
-    )
-    kb = _swipe_keyboard(pid)
-    if photo:
-        try:
-            if photo.startswith("https://"):
-                # URL — download bytes first
-                import httpx as _httpx
-                async with _httpx.AsyncClient(timeout=15) as cl:
-                    r = await cl.get(photo)
-                if r.status_code == 200:
-                    await send_fn(r.content, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
-                else:
-                    await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
-            else:
-                # file_id — send directly, never expires
-                await send_fn(photo, caption=caption, parse_mode="Markdown", reply_markup=kb, is_photo=True)
-        except:
-            await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
-    else:
-        await send_fn(f"👤 {caption}", parse_mode="Markdown", reply_markup=kb)
-
-# /swipe
-async def swipe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if await _check_blocked(update, tg_id): return ConversationHandler.END
-    row = get_user_by_tg(tg_id)
-    if not row:
-        await update.message.reply_text("👋 No profile found! Let's create one.\n\nUse /setup to create your profile.", parse_mode="Markdown")
-        return ConversationHandler.END
-    # Check approval using named query instead of index
-    conn = get_conn()
-    approved_row = conn.execute("SELECT is_approved, is_blocked FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    if approved_row and approved_row[1]:  # is_blocked
-        return ConversationHandler.END
-    if not approved_row or not approved_row[0]:  # is_approved=0
-        await update.message.reply_text(
-            "⏳ *Profile under review!*\n\nAdmin will approve your profile soon. You'll get a notification once approved!",
-            parse_mode="Markdown"
-        )
-        return ConversationHandler.END
-    user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
-    if not is_premium and swipes_left <= 0:
-        await update.message.reply_text(
-            "😔 *Daily limit reached!*\n\n"
-            "You've used all 3 free swipes today.\n\n"
-            "🔗 Share with 3 friends → get *+10 swipes*\nUse /share to get your link\n\n"
-            "👑 Or go *Premium* for unlimited swipes!",
-            parse_mode="Markdown", reply_markup=open_app_keyboard("/premium")
-        )
-        return ConversationHandler.END
-    async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
-        if is_photo:
-            await update.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
-        else:
-            await update.message.reply_text(content, parse_mode=parse_mode, reply_markup=reply_markup)
-    await _send_profile(send_fn, tg_id)
-
-# callback: like / nope / super
-async def swipe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    tg_id = str(query.from_user.id)
-    if await _check_blocked(update, tg_id): return
-    action, target_id = query.data.split(":")
-    target_id = int(target_id)
-
-    conn = get_conn()
-    me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    if not me:
-        conn.close()
-        await query.edit_message_caption(caption="❌ Account not found.")
-        return
-    user_id = me[0]
-
-    if action in ("like", "super"):
-        is_super = action == "super"
-        user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
-        if not is_premium and swipes_left <= 0:
-            conn.close()
-            try:
-                await query.edit_message_caption(
-                    caption="😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
-                    parse_mode="Markdown"
-                )
-            except:
-                try:
-                    await query.edit_message_text(
-                        text="😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
-                        parse_mode="Markdown"
-                    )
-                except: pass
-            return
-        # Super like check for free users
-        if is_super and not is_premium:
-            sl_row = conn.execute("SELECT super_likes_left FROM users WHERE id=?", (user_id,)).fetchone()
-            if sl_row and sl_row[0] <= 0:
-                conn.close()
-                try:
-                    await query.edit_message_caption(caption="⭐ *No super likes left today!*\n\nYou get 1 free super like per day. Come back tomorrow or go Premium!", parse_mode="Markdown")
-                except:
-                    try:
-                        await query.edit_message_text(text="⭐ *No super likes left today!*\n\nYou get 1 free super like per day. Come back tomorrow or go Premium!", parse_mode="Markdown")
-                    except: pass
-                return
-            conn.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (user_id,))
-            conn.commit()
-        if not conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (user_id, target_id)).fetchone():
-            conn.execute("INSERT INTO likes (from_user,to_user,is_super,created_at) VALUES (?,?,?,datetime('now'))", (user_id, target_id, int(is_super)))
-            conn.commit()
-            if not is_premium:
-                _deduct_swipe(user_id)
-        mutual = conn.execute("SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, user_id)).fetchone()
-        if mutual:
-            existing = conn.execute(
-                "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
-                (user_id, target_id, target_id, user_id)
-            ).fetchone()
-            if not existing:
-                conn.execute("INSERT INTO matches (user1_id,user2_id,matched_at) VALUES (?,?,datetime('now'))", (user_id, target_id))
-                conn.commit()
-                target_row = conn.execute("SELECT telegram_id, name, social_handle FROM users WHERE id=?", (target_id,)).fetchone()
-                me_row = conn.execute("SELECT name, social_handle, is_premium FROM users WHERE id=?", (user_id,)).fetchone()
-                me_name, me_social, me_premium = me_row
-                # fetch target's premium status too
-                target_premium_row = conn.execute("SELECT is_premium FROM users WHERE id=?", (target_id,)).fetchone()
-                target_is_premium = bool(target_premium_row[0]) if target_premium_row else False
-                conn.close()
-                try:
-                    await query.edit_message_caption(caption="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
-                except:
-                    try:
-                        await query.edit_message_text(text="💕 *It's a Match!* Keep swiping 🔥", parse_mode="Markdown")
-                    except: pass
-                if target_row and target_row[0]:
-                    try:
-                        await notify_match(query.get_bot(), target_row[0], me_name, me_social, target_is_premium)
-                    except: pass
-                # also notify me about the target
-                me_tg = conn if False else None  # already closed
-                try:
-                    me_tg_row = get_user_by_tg(tg_id)
-                    if me_tg_row:
-                        await notify_match(query.get_bot(), tg_id, target_row[1], target_row[2], bool(me_premium))
-                except: pass
-                return
-        conn.close()
-        emoji = "⭐" if is_super else "❤️"
-        try:
-            await query.edit_message_caption(caption=f"{emoji} Liked! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
-        except:
-            try:
-                await query.edit_message_text(text=f"{emoji} Liked! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
-            except: pass
-    elif action == "nope":
-        _record_skip(user_id, target_id)
-        conn.close()
-        try:
-            await query.edit_message_caption(caption="👎 Skipped! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
-        except:
-            try:
-                await query.edit_message_text(text="👎 Skipped! Next 👇", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➡️ Next", callback_data="next")]]))
-            except: pass
-
-# callback: next
-async def next_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    tg_id = str(query.from_user.id)
-    async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
-        if is_photo:
-            await query.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
-        else:
-            await query.message.reply_text(content, parse_mode=parse_mode, reply_markup=reply_markup)
-    await _send_profile(send_fn, tg_id)
-
-# /like - open discover page
-async def like_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🔥 *Discover People*\n\n"
-        "Swipe right to like, left to pass!\n"
-        "⭐ Super like to stand out!\n\n"
-        "Open the app to start swiping 👇",
-        parse_mode="Markdown",
-        reply_markup=open_app_keyboard("/")
-    )
-
-# /friends - same as discover but framed as friends
-async def friends_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👫 *Meet New Friends*\n\n"
-        "Discover amazing people near you!\n"
-        "Connect, chat and make new friends 🌟\n\n"
-        "Open the app 👇",
-        parse_mode="Markdown",
-        reply_markup=open_app_keyboard("/")
-    )
-
-# /premium
-async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    conn = get_conn()
-    row = conn.execute("SELECT is_premium FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    if row and row[0]:
-        await update.message.reply_text("👑 *You are already Premium!*\n\nEnjoy unlimited access 🎉", parse_mode="Markdown")
-        return
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💫 1 Month — 150 ⭐", callback_data="buy:monthly")],
-        [InlineKeyboardButton("🌟 3 Months — 350 ⭐", callback_data="buy:quarterly")],
-    ])
-    await update.message.reply_text(
-        "👑 *YourMeet Premium*\n\n"
-        "✅ Unlimited likes\n"
-        "✅ Unlimited super likes\n"
-        "✅ See who liked you\n"
-        "✅ Profile boost\n"
-        "✅ Priority in discover\n\n"
-        "💫 *150 Stars/month* or *350 Stars/3 months*\n\n"
-        "Choose a plan 👇",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-async def buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    tg_id = str(query.from_user.id)
-    plan = query.data.split(":")[1]
-    try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except: pass
-    await send_stars_invoice(context.bot, tg_id, plan)
-
-async def quick_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    action = query.data
-    if action == "swipe_now":
-        tg_id = str(query.from_user.id)
-        user_id, swipes_left, is_premium = _check_swipe_limit(tg_id)
-        if not is_premium and swipes_left <= 0:
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("👑 Go Premium", callback_data="buy:monthly")]])
-            try:
-                await query.edit_message_reply_markup(reply_markup=None)
-            except: pass
-            await query.message.reply_text(
-                "😔 *Daily limit reached!*\n\nUse /share to get +10 swipes or go Premium!",
-                parse_mode="Markdown", reply_markup=kb
-            )
-            return
-        async def send_fn(content, caption=None, parse_mode=None, reply_markup=None, is_photo=False):
-            if is_photo:
-                await query.message.reply_photo(content, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
-            else:
-                await query.message.reply_text(content, parse_mode=parse_mode, reply_markup=reply_markup)
-        await _send_profile(send_fn, tg_id)
-    elif action == "share_link":
-        await share_cmd(update, context)
-    elif action == "matches_now":
-        await matches_cmd(update, context)
-    elif action == "profile_now":
-        await profile_cmd(update, context)
-    elif action == "stats_now":
-        await stats_cmd(update, context)
-    elif action == "boost_now":
-        await boost_cmd(update, context)
-
-# /boost
-async def boost_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if await _check_blocked(update, tg_id): return
-    conn = get_conn()
-    row = conn.execute("SELECT id, is_premium FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    if not row:
-        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
-        return
-    if not row[1]:  # is_premium
-        await update.message.reply_text(
-            "👑 *Boost is a Premium feature!*\n\nUpgrade to put your profile at the top of everyone's discover feed for 30 mins 🚀",
-            parse_mode="Markdown", reply_markup=open_app_keyboard("/premium")
-        )
-        return
-    from datetime import datetime, timedelta
-    until = (datetime.utcnow() + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_conn()
-    conn.execute("UPDATE users SET boosted_until=? WHERE telegram_id=?", (until, tg_id))
-    conn.commit()
-    conn.close()
-    await update.message.reply_text(
-        "🚀 *Profile Boosted!*\n\nYour profile is now at the top of discover for *30 minutes* 🔥\n\nGo get those matches!",
-        parse_mode="Markdown"
-    )
-
-# /stats
-async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if await _check_blocked(update, tg_id): return
-    row = get_user_by_tg(tg_id)
-    if not row:
-        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
-        return
-    user_id = row[0]
-    conn = get_conn()
-    likes_given = conn.execute("SELECT COUNT(*) FROM likes WHERE from_user=?", (user_id,)).fetchone()[0]
-    likes_received = conn.execute("SELECT COUNT(*) FROM likes WHERE to_user=?", (user_id,)).fetchone()[0]
-    matches = conn.execute("SELECT COUNT(*) FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id)).fetchone()[0]
-    conn.close()
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔥 Keep Swiping", callback_data="swipe_now"),
-         InlineKeyboardButton("👑 Go Premium", callback_data="buy:monthly")],
-        [InlineKeyboardButton("🔗 Share & Get Swipes", callback_data="share_link")],
-    ])
-    await update.message.reply_text(
-        f"📊 *Your Stats*\n\n"
-        f"❤️ Likes Given: *{likes_given}*\n"
-        f"💌 Likes Received: *{likes_received}*\n"
-        f"💕 Matches: *{matches}*",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-# /delete
-async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if not get_user_by_tg(tg_id):
-        await update.message.reply_text("❌ Account not found.")
-        return
-    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⚠️ Yes, Delete", callback_data="confirm_delete"),
-        InlineKeyboardButton("❌ Cancel", callback_data="cancel_delete")
-    ]])
-    await update.message.reply_text(
-        "⚠️ *Account Delete*\n\n"
-        "Are you sure? This cannot be undone.\n"
-        "All your matches and messages will be lost.",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    tg_id = str(query.from_user.id)
-    if query.data == "cancel_delete":
-        try:
-            await query.edit_message_text("✅ Cancelled. Your account is safe!")
-        except: pass
-        return
-    conn = get_conn()
-    me = conn.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    if not me:
-        conn.close()
-        try:
-            await query.edit_message_text("❌ Account not found.")
-        except: pass
-        return
-    user_id = me[0]
-    conn.execute("DELETE FROM matches WHERE user1_id=? OR user2_id=?", (user_id, user_id))
-    conn.execute("DELETE FROM likes WHERE from_user=? OR to_user=?", (user_id, user_id))
-    conn.execute("DELETE FROM skips WHERE user_id=? OR skipped_id=?", (user_id, user_id))
-    conn.execute("DELETE FROM referrals WHERE referrer_id=? OR referred_id=?", (user_id, user_id))
-    conn.execute("DELETE FROM reports WHERE reporter_id=? OR reported_id=?", (user_id, user_id))
-    conn.execute("DELETE FROM users WHERE id=?", (user_id,))
-    conn.commit()
-    conn.close()
-    try:
-        await query.edit_message_text("🗑️ Account deleted. Goodbye! 👋")
-    except: pass
-
-# /share
-async def share_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tg_id = str(update.effective_user.id)
-    if await _check_blocked(update, tg_id): return
-    conn = get_conn()
-    row = conn.execute("SELECT id, referral_count FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
-    conn.close()
-    if not row:
-        await update.message.reply_text("❌ Please register first!", reply_markup=open_app_keyboard("/register"))
-        return
-    user_id, referral_count = row[0], row[1] or 0
-    bot_name = os.getenv("TELEGRAM_BOT_NAME", "Yoursmeetbot")
-    link = f"https://t.me/{bot_name}?start=ref_{user_id}"
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔗 Share Link", url=f"https://t.me/share/url?url={link}&text=Join%20me%20on%20YourMeet%20💕")],
-        [InlineKeyboardButton("🔥 Start Swiping", callback_data="swipe_now")],
-    ])
-    await update.message.reply_text(
-        f"🔗 *Your Referral Link*\n\n"
-        f"`{link}`\n\n"
-        f"Share this with friends!\n"
-        f"Every *3 friends* who join = *+10 swipes* for you 🎉\n\n"
-        f"👥 Friends joined so far: *{referral_count}*",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-# /about
-async def about_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📸 Instagram", url="https://instagram.com/who_is_the-black_hat"),
-         InlineKeyboardButton("✈️ Telegram", url="https://t.me/who_is_the-black_hat")],
-        [InlineKeyboardButton("💕 Open YourMeet", web_app=WebAppInfo(url=APP_URL))],
-    ])
-    await update.message.reply_text(
-        "*About YourMeet & Its Creator* 🌹\n\n"
-        "*👨‍💻 Developer*\n"
-        "YourMeet is built and maintained by *@who_is_the_black_hat* \u2014 a passionate "
-        "Cybersecurity Expert, Web & Software Developer with a deep interest in building "
-        "real-world applications that connect people.\n\n"
-        "*🔐 Expertise*\n"
-        "• Cybersecurity & Ethical Hacking\n"
-        "• Web & Software Development\n"
-        "• Telegram Bot Development\n"
-        "• Backend Systems & APIs\n\n"
-        "*💕 About YourMeet*\n"
-        "YourMeet is a privacy-first dating & social discovery app built inside Telegram. "
-        "Every profile is manually reviewed and approved by admin to ensure a safe, "
-        "genuine experience. No bots, no fake accounts — just real people.\n\n"
-        "*✨ Features*\n"
-        "• Swipe & match with real verified users\n"
-        "• Super likes to stand out\n"
-        "• Premium for unlimited access\n"
-        "• Profile boost to get more visibility\n"
-        "• Referral system — invite friends, earn swipes\n\n"
-        "📬 *Connect with the developer:*",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-# /help
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔥 Swipe", callback_data="swipe_now"),
-         InlineKeyboardButton("💕 Matches", callback_data="matches_now")],
-        [InlineKeyboardButton("👤 Profile", callback_data="profile_now"),
-         InlineKeyboardButton("🔗 Share", callback_data="share_link")],
-        [InlineKeyboardButton("👑 Premium", callback_data="buy:monthly"),
-         InlineKeyboardButton("🚀 Boost", callback_data="boost_now")],
-        [InlineKeyboardButton("📊 Stats", callback_data="stats_now"),
-         InlineKeyboardButton("📱 Open App", web_app=WebAppInfo(url=APP_URL))],
-    ])
-    await update.message.reply_text(
-        "🌹 *YourMeet Commands*\n\n"
-        "/start - Open the app\n"
-        "/setup - Create your profile in chat\n"
-        "/edit - Edit your profile\n"
-        "/profile - View your profile\n"
-        "/matches - See your matches\n"
-        "/swipe - Swipe in chat (no app needed)\n"
-        "/share - Get referral link (+10 swipes per 3 friends)\n"
-        "/boost - Boost your profile to top (Premium)\n"
-        "/stats - Your activity stats\n"
-        "/premium - Get Premium\n"
-        "/delete - Delete account\n"
-        "/about - About YourMeet & developer\n"
-        "/language - Change language\n"
-        "/help - Show this message",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-STARS_PLANS = {
-    "monthly":   {"stars": 150, "title": "YourMeet Premium — 1 Month",  "description": "Unlimited likes, super likes & more for 30 days"},
-    "quarterly": {"stars": 350, "title": "YourMeet Premium — 3 Months", "description": "Unlimited likes, super likes & more for 90 days"},
-}
-
-async def send_stars_invoice(bot, tg_id: str, plan: str) -> str:
-    """Send a Telegram Stars invoice and return the invoice link."""
-    p = STARS_PLANS.get(plan, STARS_PLANS["monthly"])
-    msg = await bot.send_invoice(
-        chat_id=tg_id,
-        title=p["title"],
-        description=p["description"],
-        payload=f"premium:{plan}:{tg_id}",
-        currency="XTR",
-        prices=[LabeledPrice(label=p["title"], amount=p["stars"])],
-        provider_token="",
-    )
-    return msg.invoice.start_parameter if hasattr(msg, 'invoice') else ""
-
-async def handle_pre_checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def pre_checkout(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.pre_checkout_query.answer(ok=True)
 
-async def handle_successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def successful_payment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     payload = update.message.successful_payment.invoice_payload
-    plan = payload.split(":")[1] if ":" in payload else "monthly"
-    from datetime import datetime, timedelta
-    days = 90 if plan == "quarterly" else 30
-    premium_until = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_conn()
-    conn.execute("UPDATE users SET is_premium=1, super_likes_left=999, premium_until=? WHERE telegram_id=?", (premium_until, tg_id))
-    conn.commit()
-    conn.close()
+    from database import get_conn
+    db = get_conn()
+    from routers.payment import handle_successful_payment
+    await handle_successful_payment(tg_id, payload, db)
+    user = _get_user(tg_id)
+    lang = (user.language if user else "en") or "en"
+    premium_until = user.premium_until[:10] if user and user.premium_until else "-"
     await update.message.reply_text(
-        "🎉 *Welcome to Premium!* 👑\n\n"
-        "✅ Unlimited likes\n"
-        "✅ Unlimited super likes\n"
-        "✅ See who liked you\n\n"
-        "Enjoy! 💕",
-        parse_mode="Markdown",
-        reply_markup=open_app_keyboard("/")
+        s(lang, "premium_activated", date=premium_until), parse_mode="Markdown"
     )
 
-async def notify_match(bot, tg_id: str, matched_name: str, social_handle: str = "", is_premium: bool = False):
-    if not tg_id:
+
+# ── Message forwarding (chat sessions) ───────────────────────────────────────
+
+async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    text = update.message.text or ""
+    from database import get_conn
+    db = get_conn()
+    from routers.chat import forward_message
+    forwarded = await forward_message(tg_id, text, db)
+    if not forwarded:
+        user = _get_user(tg_id)
+        lang = (user.language if user else "en") or "en"
+        keyboard = _open_app_keyboard(lang)
+        await update.message.reply_text(
+            s(lang, "open_app"), reply_markup=keyboard
+        )
+
+
+# ── Notify helpers ────────────────────────────────────────────────────────────
+
+async def notify_match(bot, user, matched_with):
+    """Notify user about a new match."""
+    if not user.telegram_id:
+        return
+    lang = user.language or "en"
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=f"{APP_URL}/matches"))
+    ]])
+    try:
+        await bot.send_message(
+            chat_id=user.telegram_id,
+            text=s(lang, "match_notify", name=matched_with.name),
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+    except Exception as e:
+        print(f"[BOT] notify_match failed: {e}")
+
+
+# ── Referral helper ───────────────────────────────────────────────────────────
+
+def _handle_referral(new_tg_id: str, referrer_tg_id: str):
+    if new_tg_id == referrer_tg_id:
         return
     try:
-        if is_premium and social_handle:
-            contact_line = f"\n\n📱 Contact: *{social_handle}*"
-        else:
-            contact_line = "\n\n🔒 *Upgrade to Premium* to see contact details!"
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💕 View Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches"))],
-        ]) if is_premium else InlineKeyboardMarkup([
-            [InlineKeyboardButton("💕 View Matches", web_app=WebAppInfo(url=f"{APP_URL}/matches"))],
-            [InlineKeyboardButton("👑 Unlock Contact — Premium", callback_data="buy:monthly")],
-        ])
-        await bot.send_message(
-            chat_id=tg_id,
-            text=f"💕 *It's a Match!*\n\nYou and *{matched_name}* liked each other!{contact_line}",
-            parse_mode="Markdown",
-            reply_markup=kb
+        from database import get_conn
+        db = get_conn()
+        new_user = _get_user(new_tg_id)
+        referrer = _get_user(referrer_tg_id)
+        if not new_user or not referrer:
+            return
+        existing = db.execute(
+            "SELECT id FROM referrals WHERE referred_id=?", (new_user.id,)
+        ).fetchone()
+        if existing:
+            return
+        db.execute(
+            "INSERT INTO referrals (referrer_id, referred_id) VALUES (?,?)",
+            (referrer.id, new_user.id)
         )
-    except:
-        pass
-
-async def keyboard_btn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("edit_field"):  # edit conversation active
-        return
-    text = update.message.text
-    if text == "🔥 Swipe":
-        await swipe_cmd(update, context)
-    elif text == "💕 Matches":
-        await matches_cmd(update, context)
-    elif text == "👤 Profile":
-        await profile_cmd(update, context)
-    elif text == "📊 Stats":
-        await stats_cmd(update, context)
-    elif text == "🔗 Share":
-        await share_cmd(update, context)
-    elif text == "👑 Premium":
-        await premium_cmd(update, context)
-    elif text == "🚀 Boost":
-        await boost_cmd(update, context)
-    elif text == "❓ Help":
-        await help_cmd(update, context)
-
-from telegram.request import HTTPXRequest
-
-def build_app() -> Application:
-    request = HTTPXRequest(connect_timeout=20, read_timeout=20, write_timeout=20)
-    app = ApplicationBuilder().token(BOT_TOKEN).request(request).updater(None).build()
-    setup_conv = ConversationHandler(
-        entry_points=[CommandHandler("setup", setup_cmd), CommandHandler("swipe", swipe_cmd)],
-        states={
-            SETUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
-            SETUP_AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_age)],
-            SETUP_GENDER: [CallbackQueryHandler(setup_gender, pattern="^gender:")],
-            SETUP_PHONE: [MessageHandler(filters.CONTACT, setup_phone), MessageHandler(filters.TEXT & ~filters.COMMAND, setup_phone)],
-            SETUP_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
-            SETUP_PHOTO: [MessageHandler(filters.PHOTO, setup_photo), MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo)],
-            SETUP_SOCIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
-        },
-        fallbacks=[CommandHandler("cancel", setup_cancel), CommandHandler("setup", setup_cmd)],
-        per_message=False,
-        allow_reentry=True,
-    )
-    edit_conv = ConversationHandler(
-        entry_points=[CommandHandler("edit", edit_cmd)],
-        states={
-            EDIT_CHOOSE: [CallbackQueryHandler(edit_choose, pattern="^edit:")],
-            EDIT_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_value)],
-            EDIT_PHOTO: [MessageHandler(filters.PHOTO, edit_photo)],
-        },
-        fallbacks=[CommandHandler("cancel", setup_cancel)],
-        per_message=False,
-    )
-    app.add_handler(edit_conv)
-    app.add_handler(setup_conv)
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("profile", profile_cmd))
-    app.add_handler(CommandHandler("matches", matches_cmd))
-    app.add_handler(CommandHandler("like", like_cmd))
-    app.add_handler(CallbackQueryHandler(swipe_callback, pattern="^(like|nope|super):"))
-    app.add_handler(CallbackQueryHandler(next_callback, pattern="^next$"))
-    app.add_handler(CallbackQueryHandler(delete_callback, pattern="^(confirm_delete|cancel_delete)$"))
-    app.add_handler(CallbackQueryHandler(buy_callback, pattern="^buy:"))
-    app.add_handler(CallbackQueryHandler(quick_action_callback, pattern="^(swipe_now|share_link|matches_now|profile_now|stats_now|boost_now)$"))
-    app.add_handler(CommandHandler("friends", friends_cmd))
-    app.add_handler(CommandHandler("boost", boost_cmd))
-    app.add_handler(CommandHandler("premium", premium_cmd))
-    app.add_handler(CommandHandler("stats", stats_cmd))
-    app.add_handler(CommandHandler("share", share_cmd))
-    app.add_handler(CommandHandler("delete", delete_cmd))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("about", about_cmd))
-    app.add_handler(CommandHandler("language", language_cmd))
-    app.add_handler(CallbackQueryHandler(language_callback, pattern="^setlang:"))
-    app.add_handler(PreCheckoutQueryHandler(handle_pre_checkout))
-    app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, handle_successful_payment))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, keyboard_btn_handler))
-    return app
+        count = db.execute(
+            "SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (referrer.id,)
+        ).fetchone()[0] + 1
+        db.execute("UPDATE users SET referral_count=? WHERE id=?", (count, referrer.id))
+        if count % 3 == 0:
+            db.execute("UPDATE users SET daily_swipes=daily_swipes+10 WHERE id=?", (referrer.id,))
+        db.commit()
+    except Exception as e:
+        print(f"[BOT] referral failed: {e}")

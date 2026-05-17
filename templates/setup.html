@@ -1,411 +1,399 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Setup Profile — YourMeet</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    :root{--primary:#E91E8C;--secondary:#9C27B0;--bg:#0f0f1a;--card:#1a1a2e;--surface:#16213e;--text:#fff;--gray:#9ca3af}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--tg-theme-bg-color,var(--bg));color:var(--tg-theme-text-color,var(--text));min-height:100vh;display:flex;flex-direction:column}
-    .progress-bar{height:4px;background:rgba(255,255,255,0.1);position:fixed;top:0;left:0;right:0;z-index:100}
-    .progress-fill{height:100%;background:linear-gradient(90deg,var(--primary),var(--secondary));transition:width 0.4s ease}
-    .step{display:none;flex-direction:column;flex:1;padding:24px 20px;animation:fadeIn 0.3s ease}
-    .step.active{display:flex}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-    .step-header{margin-bottom:28px}
-    .step-num{font-size:12px;color:var(--primary);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
-    .step-title{font-size:24px;font-weight:700;margin-bottom:6px}
-    .step-sub{font-size:14px;color:var(--gray)}
-    input,textarea,select{width:100%;background:var(--surface,#16213e);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:14px 16px;color:var(--text,#fff);font-size:16px;outline:none;transition:border-color 0.2s;-webkit-appearance:none}
-    input:focus,textarea:focus,select:focus{border-color:var(--primary)}
-    textarea{resize:none;min-height:100px}
-    select option{background:#1a1a2e}
-    .btn{width:100%;padding:16px;border-radius:14px;font-size:16px;font-weight:600;border:none;cursor:pointer;transition:opacity 0.2s}
-    .btn-primary{background:linear-gradient(135deg,var(--primary),var(--secondary));color:#fff}
-    .btn-primary:disabled{opacity:0.5;cursor:not-allowed}
-    .btn-back{background:rgba(255,255,255,0.07);color:var(--gray);margin-bottom:12px}
-    .gender-grid,.interest-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
-    .interest-grid{grid-template-columns:1fr 1fr 1fr}
-    .choice-btn{padding:16px 12px;border-radius:14px;border:1.5px solid rgba(255,255,255,0.1);background:var(--surface,#16213e);color:var(--text,#fff);font-size:15px;cursor:pointer;text-align:center;transition:all 0.2s}
-    .choice-btn.selected{border-color:var(--primary);background:rgba(233,30,140,0.15);color:var(--primary)}
-    .interest-btn{padding:10px 8px;border-radius:12px;border:1.5px solid rgba(255,255,255,0.1);background:var(--surface,#16213e);color:var(--text,#fff);font-size:13px;cursor:pointer;text-align:center;transition:all 0.2s}
-    .interest-btn.selected{border-color:var(--primary);background:rgba(233,30,140,0.15);color:var(--primary)}
-    .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
-    .photo-slot{aspect-ratio:1;border-radius:14px;border:1.5px dashed rgba(255,255,255,0.2);background:var(--surface,#16213e);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;transition:border-color 0.2s}
-    .photo-slot:hover{border-color:var(--primary)}
-    .photo-slot img{width:100%;height:100%;object-fit:cover}
-    .photo-slot .remove-btn{position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,0.7);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;cursor:pointer;z-index:2}
-    .photo-slot .add-icon{color:rgba(255,255,255,0.3);font-size:24px}
-    .char-count{font-size:12px;color:var(--gray);text-align:right;margin-top:4px}
-    .error-msg{color:#f87171;font-size:13px;margin-top:8px;display:none}
-    .bottom{margin-top:auto;padding-top:20px}
-    .hint{font-size:12px;color:var(--gray);text-align:center;margin-top:10px}
-  </style>
-</head>
-<body>
-  <div class="progress-bar"><div class="progress-fill" id="progress" style="width:10%"></div></div>
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .setup-wrap { min-height: 100vh; padding: 0; display: flex; flex-direction: column; }
+  .setup-header { padding: 20px 20px 0; }
+  .progress-bar-wrap { height: 4px; background: var(--surface); border-radius: 2px; margin-bottom: 6px; }
+  .progress-bar-fill { height: 100%; background: var(--gradient); border-radius: 2px; transition: width 0.4s ease; }
+  .progress-label { font-size: 12px; color: var(--text-muted); text-align: right; }
+
+  .step-page { display: none; flex-direction: column; flex: 1; padding: 24px 20px 100px; animation: fadeIn 0.3s ease; }
+  .step-page.active { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  .step-emoji { font-size: 52px; margin-bottom: 16px; }
+  .step-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .step-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 28px; }
+
+  .input-field {
+    width: 100%; padding: 14px 16px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 16px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-field:focus { border-color: var(--primary); }
+  .input-field::placeholder { color: var(--text-muted); }
+
+  .gender-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+  .gender-btn {
+    padding: 20px 12px; border-radius: 14px; border: 2px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 15px; font-weight: 600;
+    cursor: pointer; text-align: center; transition: all 0.2s;
+  }
+  .gender-btn .emoji { font-size: 32px; display: block; margin-bottom: 8px; }
+  .gender-btn.selected { border-color: var(--primary); background: rgba(233,30,140,0.1); color: var(--primary); }
+
+  .interest-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .interest-chip {
+    padding: 10px 16px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-muted); font-size: 14px;
+    cursor: pointer; transition: all 0.2s; user-select: none;
+  }
+  .interest-chip.selected { border-color: var(--primary); background: rgba(233,30,140,0.1); color: var(--primary); }
+
+  .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .photo-slot {
+    aspect-ratio: 1; border-radius: 12px; border: 2px dashed var(--border);
+    background: var(--surface); display: flex; align-items: center; justify-content: center;
+    cursor: pointer; overflow: hidden; position: relative; transition: border-color 0.2s;
+  }
+  .photo-slot:hover { border-color: var(--primary); }
+  .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-slot .add-icon { font-size: 28px; color: var(--text-muted); }
+  .photo-slot .remove-btn {
+    position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+    background: rgba(244,67,54,0.9); border-radius: 50%; border: none;
+    color: #fff; font-size: 14px; cursor: pointer; display: flex;
+    align-items: center; justify-content: center; line-height: 1;
+  }
+
+  .bottom-actions {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 16px 20px; background: rgba(15,15,26,0.95);
+    backdrop-filter: blur(12px); border-top: 1px solid var(--border);
+    display: flex; gap: 12px;
+  }
+  .error-msg { color: #f44336; font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .char-count { font-size: 12px; color: var(--text-muted); text-align: right; margin-top: 4px; }
+</style>
+
+<div class="setup-wrap">
+  <div class="setup-header">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressBar" style="width:10%"></div>
+    </div>
+    <div class="progress-label" id="progressLabel">Step 1 of 10</div>
+  </div>
 
   <!-- Step 1: Name -->
-  <div class="step active" id="step-1">
-    <div class="step-header">
-      <div class="step-num">Step 1 of 10</div>
-      <div class="step-title">What's your name? 👋</div>
-      <div class="step-sub">This is how others will see you</div>
-    </div>
-    <input type="text" id="inp-name" placeholder="Your full name" maxlength="40" autocomplete="off"/>
-    <div class="error-msg" id="err-name">Name must be at least 2 characters</div>
-    <div class="bottom">
-      <button class="btn btn-primary" onclick="nextStep(1)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+  <div class="step-page active" id="step-1">
+    <div class="step-emoji">👋</div>
+    <div class="step-title" data-i18n="step_name">What's your name?</div>
+    <div class="step-subtitle">This is how others will see you.</div>
+    <input class="input-field" id="inp-name" type="text" placeholder="Your name" maxlength="30" />
+    <div class="error-msg" id="err-1"></div>
   </div>
 
   <!-- Step 2: Age -->
-  <div class="step" id="step-2">
-    <div class="step-header">
-      <div class="step-num">Step 2 of 10</div>
-      <div class="step-title">How old are you? 🎂</div>
-      <div class="step-sub">You must be 18 or older</div>
-    </div>
-    <input type="number" id="inp-age" placeholder="Your age" min="18" max="60"/>
-    <div class="error-msg" id="err-age">Age must be between 18 and 60</div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(2)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(2)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+  <div class="step-page" id="step-2">
+    <div class="step-emoji">🎂</div>
+    <div class="step-title" data-i18n="step_age">How old are you?</div>
+    <div class="step-subtitle">You must be 18 or older.</div>
+    <input class="input-field" id="inp-age" type="number" placeholder="Your age" min="18" max="60" />
+    <div class="error-msg" id="err-2"></div>
   </div>
 
   <!-- Step 3: Gender -->
-  <div class="step" id="step-3">
-    <div class="step-header">
-      <div class="step-num">Step 3 of 10</div>
-      <div class="step-title">I am... 👤</div>
-      <div class="step-sub">Select your gender</div>
-    </div>
+  <div class="step-page" id="step-3">
+    <div class="step-emoji">⚡</div>
+    <div class="step-title" data-i18n="step_gender">Your gender</div>
+    <div class="step-subtitle">Select one.</div>
     <div class="gender-grid">
-      <button class="choice-btn" id="g-male" onclick="selectGender('male')">👨 Male</button>
-      <button class="choice-btn" id="g-female" onclick="selectGender('female')">👩 Female</button>
+      <button class="gender-btn" data-val="male" onclick="selectGender(this)">
+        <span class="emoji">👨</span><span data-i18n="male">Male</span>
+      </button>
+      <button class="gender-btn" data-val="female" onclick="selectGender(this)">
+        <span class="emoji">👩</span><span data-i18n="female">Female</span>
+      </button>
     </div>
-    <div class="error-msg" id="err-gender">Please select your gender</div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(3)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(3)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+    <div class="error-msg" id="err-3"></div>
   </div>
 
   <!-- Step 4: Interested In -->
-  <div class="step" id="step-4">
-    <div class="step-header">
-      <div class="step-num">Step 4 of 10</div>
-      <div class="step-title">Interested in... 💕</div>
-      <div class="step-sub">Who do you want to meet?</div>
+  <div class="step-page" id="step-4">
+    <div class="step-emoji">💕</div>
+    <div class="step-title" data-i18n="step_interested">Interested in</div>
+    <div class="step-subtitle">Who do you want to meet?</div>
+    <div class="gender-grid" style="grid-template-columns:1fr 1fr 1fr;">
+      <button class="gender-btn" data-val="male" onclick="selectInterested(this)">
+        <span class="emoji">👨</span><span data-i18n="male">Male</span>
+      </button>
+      <button class="gender-btn" data-val="female" onclick="selectInterested(this)">
+        <span class="emoji">👩</span><span data-i18n="female">Female</span>
+      </button>
+      <button class="gender-btn" data-val="both" onclick="selectInterested(this)">
+        <span class="emoji">💑</span><span data-i18n="both">Both</span>
+      </button>
     </div>
-    <div class="gender-grid">
-      <button class="choice-btn" id="i-male" onclick="selectInterest('male')">👨 Men</button>
-      <button class="choice-btn" id="i-female" onclick="selectInterest('female')">👩 Women</button>
-    </div>
-    <button class="choice-btn" style="width:100%;margin-top:12px" id="i-both" onclick="selectInterest('both')">💑 Both</button>
-    <div class="error-msg" id="err-interest">Please make a selection</div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(4)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(4)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+    <div class="error-msg" id="err-4"></div>
   </div>
 
   <!-- Step 5: Photos -->
-  <div class="step" id="step-5">
-    <div class="step-header">
-      <div class="step-num">Step 5 of 10</div>
-      <div class="step-title">Add your photos 📸</div>
-      <div class="step-sub">At least 1 photo required, up to 6</div>
+  <div class="step-page" id="step-5">
+    <div class="step-emoji">📸</div>
+    <div class="step-title" data-i18n="step_photos">Add your photos</div>
+    <div class="step-subtitle">Min 1, max 6. First photo is your main photo.</div>
+    <div class="photo-grid" id="photoGrid">
+      {% for i in range(6) %}
+      <div class="photo-slot" id="slot-{{ i }}" onclick="triggerPhoto({{ i }})">
+        <span class="add-icon">+</span>
+      </div>
+      {% endfor %}
     </div>
-    <div class="photo-grid" id="photo-grid">
-      <!-- slots rendered by JS -->
-    </div>
-    <input type="file" id="photo-file-input" accept="image/*" style="display:none" onchange="handlePhotoSelect(event)"/>
-    <div class="error-msg" id="err-photos">Please add at least 1 photo</div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(5)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(5)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+    <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="handlePhoto(event)" />
+    <div class="error-msg" id="err-5"></div>
   </div>
 
   <!-- Step 6: Bio -->
-  <div class="step" id="step-6">
-    <div class="step-header">
-      <div class="step-num">Step 6 of 10</div>
-      <div class="step-title">About you 💬</div>
-      <div class="step-sub">Write a short bio (min 10 characters)</div>
-    </div>
-    <textarea id="inp-bio" placeholder="Tell something about yourself..." maxlength="300" oninput="document.getElementById('bio-count').textContent=this.value.length+'/300'"></textarea>
-    <div class="char-count" id="bio-count">0/300</div>
-    <div class="error-msg" id="err-bio">Bio must be at least 10 characters</div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(6)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(6)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+  <div class="step-page" id="step-6">
+    <div class="step-emoji">✍️</div>
+    <div class="step-title" data-i18n="step_bio">About you</div>
+    <div class="step-subtitle">Write something interesting. Min 10 characters.</div>
+    <textarea class="input-field" id="inp-bio" rows="5" placeholder="Tell others about yourself..." maxlength="300" oninput="updateCharCount(this,'bio-count',300)"></textarea>
+    <div class="char-count" id="bio-count">0 / 300</div>
+    <div class="error-msg" id="err-6"></div>
   </div>
 
   <!-- Step 7: Interests -->
-  <div class="step" id="step-7">
-    <div class="step-header">
-      <div class="step-num">Step 7 of 10</div>
-      <div class="step-title">Your interests 🎯</div>
-      <div class="step-sub">Pick up to 6 that match you</div>
+  <div class="step-page" id="step-7">
+    <div class="step-emoji">🎯</div>
+    <div class="step-title" data-i18n="step_interests">Your interests</div>
+    <div class="step-subtitle">Pick up to 8 that describe you.</div>
+    <div class="interest-grid" id="interestGrid">
+      {% for tag in ["Music 🎵","Travel ✈️","Fitness 💪","Gaming 🎮","Cooking 🍳","Art 🎨","Movies 🎬","Books 📚","Sports ⚽","Photography 📷","Dancing 💃","Yoga 🧘","Hiking 🥾","Coffee ☕","Fashion 👗","Tech 💻","Pets 🐾","Nature 🌿"] %}
+      <div class="interest-chip" onclick="toggleInterest(this)">{{ tag }}</div>
+      {% endfor %}
     </div>
-    <div class="interest-grid" id="interest-grid"></div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(7)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(7)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+    <div class="error-msg" id="err-7"></div>
   </div>
 
-  <!-- Step 8: Social Handle -->
-  <div class="step" id="step-8">
-    <div class="step-header">
-      <div class="step-num">Step 8 of 10</div>
-      <div class="step-title">Contact handle 📱</div>
-      <div class="step-sub">Instagram or Telegram — your matches will use this</div>
-    </div>
-    <input type="text" id="inp-social" placeholder="@your_username" maxlength="60" autocomplete="off"/>
-    <div class="error-msg" id="err-social">Please enter your Instagram or Telegram username</div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(8)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(8)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+  <!-- Step 8: Phone -->
+  <div class="step-page" id="step-8">
+    <div class="step-emoji">📱</div>
+    <div class="step-title" data-i18n="step_phone">Your phone number</div>
+    <div class="step-subtitle">Include country code. e.g. +1234567890</div>
+    <input class="input-field" id="inp-phone" type="tel" placeholder="+1234567890" />
+    <div class="error-msg" id="err-8"></div>
   </div>
 
-  <!-- Step 9: Phone -->
-  <div class="step" id="step-9">
-    <div class="step-header">
-      <div class="step-num">Step 9 of 10</div>
-      <div class="step-title">Phone number 📞</div>
-      <div class="step-sub">Required — for account verification</div>
-    </div>
-    <input type="tel" id="inp-phone" placeholder="+1 234 567 8900" maxlength="20" autocomplete="tel"/>
-    <div class="error-msg" id="err-phone">Please enter a valid phone number with country code</div>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(9)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" onclick="nextStep(9)">Continue <i class="fas fa-arrow-right ml-1"></i></button>
-    </div>
+  <!-- Step 9: City -->
+  <div class="step-page" id="step-9">
+    <div class="step-emoji">🏙</div>
+    <div class="step-title" data-i18n="step_city">Your city</div>
+    <div class="step-subtitle">This helps with map discovery.</div>
+    <input class="input-field" id="inp-city" type="text" placeholder="e.g. New York, London, Tokyo" />
+    <div class="error-msg" id="err-9"></div>
   </div>
 
-  <!-- Step 10: City -->
-  <div class="step" id="step-10">
-    <div class="step-header">
-      <div class="step-num">Step 10 of 10</div>
-      <div class="step-title">Your city 📍</div>
-      <div class="step-sub">Optional — helps find people near you</div>
-    </div>
-    <input type="text" id="inp-city" placeholder="e.g. Mumbai, Madrid, Tokyo..." maxlength="60" autocomplete="off"/>
-    <div class="bottom">
-      <button class="btn btn-back" onclick="prevStep(10)"><i class="fas fa-arrow-left mr-1"></i> Back</button>
-      <button class="btn btn-primary" id="submit-btn" onclick="submitProfile()">
-        <i class="fas fa-heart mr-1"></i> Create Profile
-      </button>
-      <p class="hint">Your profile will be reviewed by admin before going live</p>
-    </div>
+  <!-- Step 10: Social -->
+  <div class="step-page" id="step-10">
+    <div class="step-emoji">🔗</div>
+    <div class="step-title" data-i18n="step_social">Your social handle</div>
+    <div class="step-subtitle">Instagram or Telegram username. Shared on match.</div>
+    <input class="input-field" id="inp-social" type="text" placeholder="@yourusername" />
+    <div class="error-msg" id="err-10"></div>
   </div>
 
+  <!-- Bottom actions -->
+  <div class="bottom-actions">
+    <button class="btn btn-secondary" id="btnBack" onclick="prevStep()" style="display:none;width:80px;flex-shrink:0;" data-i18n="btn_back">Back</button>
+    <button class="btn btn-primary" id="btnNext" onclick="nextStep()" data-i18n="btn_next">Next</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-const TOTAL_STEPS = 10;
-let currentStep = 1;
-const data = { name:'', age:0, gender:'', interested_in:'', photos:[], bio:'', interests:[], social:'', phone:'', city:'' };
-
-const INTERESTS = ['🎵 Music','✈️ Travel','💪 Fitness','📚 Books','🎮 Gaming','🍕 Food','📸 Photography','🎨 Art','🎬 Movies','🏋️ Sports','🐾 Pets','🌿 Nature','💃 Dancing','🧘 Yoga','🎤 Singing'];
-
-function renderInterests() {
-  const grid = document.getElementById('interest-grid');
-  grid.innerHTML = INTERESTS.map(i => `<button class="interest-btn${data.interests.includes(i)?' selected':''}" onclick="toggleInterest('${i}')">${i}</button>`).join('');
-}
-
-function toggleInterest(tag) {
-  if (data.interests.includes(tag)) {
-    data.interests = data.interests.filter(i => i !== tag);
-  } else if (data.interests.length < 6) {
-    data.interests.push(tag);
-  }
-  renderInterests();
-}
-
-function renderPhotoGrid() {
-  const grid = document.getElementById('photo-grid');
-  let html = '';
-  for (let i = 0; i < 6; i++) {
-    if (data.photos[i]) {
-      html += `<div class="photo-slot"><img src="${data.photos[i].preview}"/><div class="remove-btn" onclick="removePhoto(${i})"><i class="fas fa-times"></i></div></div>`;
-    } else if (i === data.photos.length) {
-      html += `<div class="photo-slot" onclick="document.getElementById('photo-file-input').click()"><i class="fas fa-plus add-icon"></i></div>`;
-    } else {
-      html += `<div class="photo-slot" style="opacity:0.3"><i class="fas fa-image add-icon"></i></div>`;
-    }
-  }
-  grid.innerHTML = html;
-}
-
-function handlePhotoSelect(e) {
-  const files = Array.from(e.target.files);
-  files.forEach(file => {
-    if (data.photos.length >= 6) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      data.photos.push({ file, preview: ev.target.result });
-      renderPhotoGrid();
-    };
-    reader.readAsDataURL(file);
-  });
-  e.target.value = '';
-}
-
-function removePhoto(idx) {
-  data.photos.splice(idx, 1);
-  renderPhotoGrid();
-}
-
-function selectGender(g) {
-  data.gender = g;
-  document.getElementById('g-male').classList.toggle('selected', g === 'male');
-  document.getElementById('g-female').classList.toggle('selected', g === 'female');
-}
-
-function selectInterest(v) {
-  data.interested_in = v;
-  ['male','female','both'].forEach(x => document.getElementById('i-'+x).classList.toggle('selected', x === v));
-}
-
-function showError(id, show) {
-  document.getElementById(id).style.display = show ? 'block' : 'none';
-}
-
-function nextStep(step) {
-  if (step === 1) {
-    const v = document.getElementById('inp-name').value.trim();
-    if (v.length < 2) { showError('err-name', true); return; }
-    showError('err-name', false); data.name = v;
-  } else if (step === 2) {
-    const v = parseInt(document.getElementById('inp-age').value);
-    if (!v || v < 18 || v > 60) { showError('err-age', true); return; }
-    showError('err-age', false); data.age = v;
-  } else if (step === 3) {
-    if (!data.gender) { showError('err-gender', true); return; }
-    showError('err-gender', false);
-  } else if (step === 4) {
-    if (!data.interested_in) { showError('err-interest', true); return; }
-    showError('err-interest', false);
-  } else if (step === 5) {
-    if (data.photos.length === 0) { showError('err-photos', true); return; }
-    showError('err-photos', false);
-  } else if (step === 6) {
-    const v = document.getElementById('inp-bio').value.trim();
-    if (v.length < 10) { showError('err-bio', true); return; }
-    showError('err-bio', false); data.bio = v;
-  } else if (step === 7) {
-    // interests optional
-  } else if (step === 8) {
-    const v = document.getElementById('inp-social').value.trim();
-    if (v.length < 2) { showError('err-social', true); return; }
-    showError('err-social', false); data.social = v;
-  } else if (step === 9) {
-    const v = document.getElementById('inp-phone').value.trim().replace(/\s/g,'');
-    const digits = v.replace(/\D/g,'');
-    if (digits.length < 7) { showError('err-phone', true); return; }
-    showError('err-phone', false); data.phone = v.startsWith('+') ? v : '+' + v;
-  }
-  goToStep(step + 1);
-}
-
-function prevStep(step) { goToStep(step - 1); }
-
-function goToStep(n) {
-  // Auto-save current data to localStorage
-  localStorage.setItem('ym_setup', JSON.stringify({
-    name: data.name, age: data.age, gender: data.gender,
-    interested_in: data.interested_in, bio: data.bio,
-    interests: data.interests, social: data.social,
-    phone: data.phone, city: data.city, step: n
-  }));
-  document.getElementById(`step-${currentStep}`).classList.remove('active');
-  currentStep = n;
-  document.getElementById(`step-${currentStep}`).classList.add('active');
-  document.getElementById('progress').style.width = (currentStep / TOTAL_STEPS * 100) + '%';
-  if (currentStep === 5) renderPhotoGrid();
-  if (currentStep === 7) renderInterests();
-  window.scrollTo(0, 0);
-}
-
-// Restore saved data on load
-(function restoreSaved() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('ym_setup') || '{}');
-    if (saved.name) { data.name = saved.name; document.getElementById('inp-name').value = saved.name; }
-    if (saved.age) { data.age = saved.age; document.getElementById('inp-age').value = saved.age; }
-    if (saved.gender) { data.gender = saved.gender; selectGender(saved.gender); }
-    if (saved.interested_in) { data.interested_in = saved.interested_in; selectInterest(saved.interested_in); }
-    if (saved.bio) { data.bio = saved.bio; document.getElementById('inp-bio').value = saved.bio; document.getElementById('bio-count').textContent = saved.bio.length + '/300'; }
-    if (saved.interests) { data.interests = saved.interests; }
-    if (saved.social) { data.social = saved.social; document.getElementById('inp-social').value = saved.social; }
-    if (saved.phone) { data.phone = saved.phone; document.getElementById('inp-phone').value = saved.phone; }
-    if (saved.city) { data.city = saved.city; document.getElementById('inp-city').value = saved.city; }
-  } catch(e) {}
-})();
-
-async function submitProfile() {
-  data.city = document.getElementById('inp-city').value.trim();
-  const btn = document.getElementById('submit-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Creating...';
+  const TOTAL = 10;
+  let current = 1;
+  let selectedGender = '';
+  let selectedInterested = 'both';
+  let selectedInterests = [];
+  let photoFiles = new Array(6).fill(null);
+  let activeSlot = 0;
 
   const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-  const fd = new FormData();
-  fd.append('name', data.name);
-  fd.append('age', data.age);
-  fd.append('gender', data.gender);
-  fd.append('interested_in', data.interested_in);
-  fd.append('bio', data.bio);
-  fd.append('social_handle', data.social);
-  fd.append('city', data.city);
-  fd.append('phone', data.phone);
-  fd.append('interests', JSON.stringify(data.interests));
-  if (tgUser) {
-    fd.append('telegram_id', tgUser.id);
-    fd.append('name', tgUser.first_name || data.name);
-  }
-  // Upload photos
-  for (let i = 0; i < data.photos.length; i++) {
-    fd.append('photos', data.photos[i].file);
+
+  function updateProgress() {
+    const pct = (current / TOTAL) * 100;
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressLabel').textContent = `Step ${current} of ${TOTAL}`;
+    document.getElementById('btnBack').style.display = current > 1 ? 'block' : 'none';
+    const isLast = current === TOTAL;
+    const btn = document.getElementById('btnNext');
+    btn.textContent = isLast ? 'Submit Profile 🚀' : 'Next →';
   }
 
-  try {
-    const res = await fetch('/setup/submit', { method: 'POST', body: fd });
-    const json = await res.json();
-    if (json.ok) {
-      localStorage.removeItem('ym_setup');
-      if (window.Telegram?.WebApp) {
-        Telegram.WebApp.showAlert('🎉 Profile created! Wait for admin approval.', () => {
-          Telegram.WebApp.close();
-        });
-      } else {
-        window.location.href = '/';
-      }
-    } else {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-heart mr-1"></i> Create Profile';
-      alert(json.error || 'Something went wrong');
+  function showStep(n) {
+    document.querySelectorAll('.step-page').forEach(p => p.classList.remove('active'));
+    document.getElementById(`step-${n}`).classList.add('active');
+    current = n;
+    updateProgress();
+    // Restore from localStorage
+    const saved = JSON.parse(localStorage.getItem('ym_setup') || '{}');
+    if (n === 1 && saved.name) document.getElementById('inp-name').value = saved.name;
+    if (n === 2 && saved.age) document.getElementById('inp-age').value = saved.age;
+    if (n === 6 && saved.bio) { document.getElementById('inp-bio').value = saved.bio; updateCharCount(document.getElementById('inp-bio'),'bio-count',300); }
+    if (n === 8 && saved.phone) document.getElementById('inp-phone').value = saved.phone;
+    if (n === 9 && saved.city) document.getElementById('inp-city').value = saved.city;
+    if (n === 10 && saved.social) document.getElementById('inp-social').value = saved.social;
+  }
+
+  function save(key, val) {
+    const d = JSON.parse(localStorage.getItem('ym_setup') || '{}');
+    d[key] = val;
+    localStorage.setItem('ym_setup', JSON.stringify(d));
+  }
+
+  function clearErr(id) { document.getElementById(id).textContent = ''; }
+  function setErr(id, msg) { document.getElementById(id).textContent = msg; }
+
+  function nextStep() {
+    clearErr(`err-${current}`);
+    if (!validate(current)) return;
+    if (current === TOTAL) { submitForm(); return; }
+    showStep(current + 1);
+  }
+
+  function prevStep() {
+    if (current > 1) showStep(current - 1);
+  }
+
+  function validate(step) {
+    if (step === 1) {
+      const v = document.getElementById('inp-name').value.trim();
+      if (v.length < 2) { setErr('err-1', 'Name must be at least 2 characters.'); return false; }
+      save('name', v); return true;
     }
-  } catch(e) {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-heart mr-1"></i> Create Profile';
-    alert('Network error. Please try again.');
+    if (step === 2) {
+      const v = parseInt(document.getElementById('inp-age').value);
+      if (!v || v < 18 || v > 60) { setErr('err-2', 'Age must be between 18 and 60.'); return false; }
+      save('age', v); return true;
+    }
+    if (step === 3) {
+      if (!selectedGender) { setErr('err-3', 'Please select your gender.'); return false; }
+      return true;
+    }
+    if (step === 4) { return true; }
+    if (step === 5) {
+      if (!photoFiles.some(f => f)) { setErr('err-5', 'Please add at least 1 photo.'); return false; }
+      return true;
+    }
+    if (step === 6) {
+      const v = document.getElementById('inp-bio').value.trim();
+      if (v.length < 10) { setErr('err-6', 'Bio must be at least 10 characters.'); return false; }
+      save('bio', v); return true;
+    }
+    if (step === 7) { return true; }
+    if (step === 8) {
+      const v = document.getElementById('inp-phone').value.trim();
+      if (!v) { setErr('err-8', 'Phone number is required.'); return false; }
+      save('phone', v); return true;
+    }
+    if (step === 9) {
+      const v = document.getElementById('inp-city').value.trim();
+      if (!v) { setErr('err-9', 'City is required.'); return false; }
+      save('city', v); return true;
+    }
+    if (step === 10) {
+      const v = document.getElementById('inp-social').value.trim();
+      if (!v) { setErr('err-10', 'Social handle is required.'); return false; }
+      save('social', v); return true;
+    }
+    return true;
   }
-}
 
-// Init Telegram WebApp
-if (window.Telegram?.WebApp) {
-  Telegram.WebApp.ready();
-  Telegram.WebApp.expand();
-}
+  function selectGender(btn) {
+    document.querySelectorAll('#step-3 .gender-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedGender = btn.dataset.val;
+  }
+
+  function selectInterested(btn) {
+    document.querySelectorAll('#step-4 .gender-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    selectedInterested = btn.dataset.val;
+  }
+
+  function toggleInterest(chip) {
+    const val = chip.textContent.trim();
+    if (chip.classList.contains('selected')) {
+      chip.classList.remove('selected');
+      selectedInterests = selectedInterests.filter(i => i !== val);
+    } else {
+      if (selectedInterests.length >= 8) { showToast('Max 8 interests'); return; }
+      chip.classList.add('selected');
+      selectedInterests.push(val);
+    }
+  }
+
+  function triggerPhoto(slot) {
+    activeSlot = slot;
+    document.getElementById('photoInput').click();
+  }
+
+  function handlePhoto(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    photoFiles[activeSlot] = file;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const slot = document.getElementById(`slot-${activeSlot}`);
+      slot.innerHTML = `<img src="${ev.target.result}" /><button class="remove-btn" onclick="removePhoto(event,${activeSlot})">×</button>`;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+
+  function removePhoto(e, slot) {
+    e.stopPropagation();
+    photoFiles[slot] = null;
+    const el = document.getElementById(`slot-${slot}`);
+    el.innerHTML = '<span class="add-icon">+</span>';
+  }
+
+  function updateCharCount(el, countId, max) {
+    document.getElementById(countId).textContent = `${el.value.length} / ${max}`;
+  }
+
+  async function submitForm() {
+    const btn = document.getElementById('btnNext');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    const fd = new FormData();
+    fd.append('name', document.getElementById('inp-name').value.trim());
+    fd.append('age', document.getElementById('inp-age').value);
+    fd.append('gender', selectedGender);
+    fd.append('interested_in', selectedInterested);
+    fd.append('bio', document.getElementById('inp-bio').value.trim());
+    fd.append('city', document.getElementById('inp-city').value.trim());
+    fd.append('phone', document.getElementById('inp-phone').value.trim());
+    fd.append('social_handle', document.getElementById('inp-social').value.trim());
+    fd.append('interests', JSON.stringify(selectedInterests));
+    if (tgUser) fd.append('telegram_id', String(tgUser.id));
+
+    photoFiles.filter(Boolean).forEach(f => fd.append('photos', f));
+
+    try {
+      const res = await fetch('/setup/submit', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.token) document.cookie = `token=${data.token};path=/;max-age=2592000`;
+        localStorage.removeItem('ym_setup');
+        window.location.href = '/';
+      } else {
+        setErr(`err-${current}`, data.error || 'Submission failed.');
+        btn.disabled = false;
+        btn.textContent = 'Submit Profile 🚀';
+      }
+    } catch {
+      setErr(`err-${current}`, 'Network error. Please try again.');
+      btn.disabled = false;
+      btn.textContent = 'Submit Profile 🚀';
+    }
+  }
+
+  updateProgress();
 </script>
-</body>
-</html>
+{% endblock %}

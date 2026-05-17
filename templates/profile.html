@@ -1,153 +1,292 @@
 {% extends "base.html" %}
-{% block title %}Profile{% endblock %}
 {% block content %}
-<div class="max-w-md mx-auto px-4 pt-6">
+<style>
+  .profile-wrap { padding: 0 0 32px; }
 
-  <!-- Profile Header -->
-  <div class="relative mb-6">
-    <div class="h-32 rounded-2xl bg-gradient-to-r from-primary/30 to-secondary/30 border border-white/5"></div>
-    <div class="absolute -bottom-8 left-4">
-      <div class="relative">
-        {% if user.photo %}
-        <img src="{{ user.photo | photo_url }}" class="w-20 h-20 rounded-2xl object-cover border-4 border-dark"/>
-        {% else %}
-        <div class="w-20 h-20 rounded-2xl bg-surface flex items-center justify-center border-4 border-dark">
-          <i class="fas fa-user text-3xl text-gray-500"></i>
-        </div>
-        {% endif %}
+  /* Hero */
+  .profile-hero {
+    position: relative; height: 280px; overflow: hidden;
+  }
+  .profile-hero img { width: 100%; height: 100%; object-fit: cover; }
+  .profile-hero-placeholder { width: 100%; height: 100%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 80px; }
+  .profile-hero-overlay {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 40px 20px 20px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.85));
+  }
+  .profile-name { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+  .profile-meta { font-size: 14px; color: rgba(255,255,255,0.8); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* Badges */
+  .badges-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 14px 20px 0; }
+
+  /* Stats */
+  .stats-row {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; padding: 16px 20px;
+  }
+  .stat-card { text-align: center; padding: 14px 8px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); }
+  .stat-val { font-size: 24px; font-weight: 800; color: var(--primary); }
+  .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  /* Sections */
+  .section { padding: 0 20px 20px; }
+  .section-title { font-size: 14px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+
+  /* Edit form */
+  .edit-form { display: none; }
+  .edit-form.show { display: block; }
+  .view-mode { }
+  .view-mode.hide { display: none; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; display: block; }
+  .input-field {
+    width: 100%; padding: 13px 16px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 15px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-field:focus { border-color: var(--primary); }
+  textarea.input-field { resize: none; }
+
+  .select-field {
+    width: 100%; padding: 13px 16px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px;
+    color: var(--text); font-size: 15px; outline: none; appearance: none;
+  }
+
+  /* Info rows */
+  .info-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .info-row:last-child { border-bottom: none; }
+  .info-icon { font-size: 20px; width: 28px; text-align: center; }
+  .info-val { font-size: 15px; }
+  .info-key { font-size: 12px; color: var(--text-muted); }
+
+  /* Photo grid */
+  .photos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .photo-thumb { aspect-ratio: 1; border-radius: 10px; overflow: hidden; }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* Action buttons */
+  .action-row { display: flex; gap: 10px; padding: 0 20px; margin-bottom: 12px; }
+
+  .danger-zone { padding: 0 20px; }
+</style>
+
+<div class="profile-wrap">
+  <!-- Hero photo -->
+  <div class="profile-hero">
+    {% if user.photo %}
+    <img src="{{ user.photo | photo_url }}" alt="{{ user.name }}" id="heroPhoto" />
+    {% else %}
+    <div class="profile-hero-placeholder">👤</div>
+    {% endif %}
+    <div class="profile-hero-overlay">
+      <div class="profile-name">
+        {{ user.name }}, {{ user.age }}
+        {% if user.is_verified %} ⭐{% endif %}
+      </div>
+      <div class="profile-meta">
+        {% if user.city %}📍 {{ user.city }}{% endif %}
+        {% if user.gender %} · {{ user.gender | capitalize }}{% endif %}
       </div>
     </div>
+  </div>
+
+  <!-- Badges -->
+  <div class="badges-row">
     {% if user.is_premium %}
-    <div class="absolute top-3 right-3">
-      <span class="bg-yellow-500/20 text-yellow-400 text-xs px-3 py-1 rounded-full border border-yellow-500/30">
-        <i class="fas fa-crown mr-1"></i>Premium
-      </span>
+    <span class="badge badge-premium">👑 Premium</span>
+    {% endif %}
+    {% if user.is_verified %}
+    <span class="badge badge-verified">⭐ Verified</span>
+    {% endif %}
+    {% if user.is_approved %}
+    <span class="badge badge-approved">✅ Approved</span>
+    {% else %}
+    <span class="badge" style="background:rgba(255,152,0,0.1);color:#ffb74d;border:1px solid rgba(255,152,0,0.3);">⏳ Pending</span>
+    {% endif %}
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-val">{{ likes_given }}</div>
+      <div class="stat-label" data-i18n="likes_given">Likes Given</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ likes_received }}</div>
+      <div class="stat-label" data-i18n="likes_received">Likes Received</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ match_count }}</div>
+      <div class="stat-label" data-i18n="total_matches">Matches</div>
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="action-row">
+    <button class="btn btn-primary" onclick="toggleEdit()" id="editBtn" data-i18n="btn_edit">Edit Profile</button>
+    {% if user.is_premium %}
+    <button class="btn btn-secondary" onclick="boostProfile()" style="flex-shrink:0;width:auto;padding:14px 18px;">🚀</button>
+    {% endif %}
+  </div>
+
+  <!-- View mode -->
+  <div class="view-mode" id="viewMode">
+    <div class="section">
+      <div class="section-title">About</div>
+      <div class="glass" style="padding:16px;">
+        <div class="info-row">
+          <span class="info-icon">✍️</span>
+          <div><div class="info-val">{{ user.bio or 'No bio yet.' }}</div><div class="info-key">Bio</div></div>
+        </div>
+        <div class="info-row">
+          <span class="info-icon">🔗</span>
+          <div><div class="info-val">{{ user.social_handle or '-' }}</div><div class="info-key">Social Handle</div></div>
+        </div>
+        <div class="info-row">
+          <span class="info-icon">💕</span>
+          <div><div class="info-val">{{ user.interested_in | capitalize }}</div><div class="info-key">Interested In</div></div>
+        </div>
+        <div class="info-row">
+          <span class="info-icon">🔥</span>
+          <div><div class="info-val">{{ user.daily_swipes }}</div><div class="info-key">Swipes left today</div></div>
+        </div>
+      </div>
+    </div>
+
+    {% set interests = user.interests | from_json %}
+    {% if interests %}
+    <div class="section">
+      <div class="section-title">Interests</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        {% for tag in interests %}
+        <span class="tag">{{ tag }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% set photos = user.photos | from_json %}
+    {% if photos | length > 1 %}
+    <div class="section">
+      <div class="section-title">Photos</div>
+      <div class="photos-grid">
+        {% for ph in photos %}
+        <div class="photo-thumb">
+          <img src="{{ ph | photo_url }}" alt="photo" loading="lazy" />
+        </div>
+        {% endfor %}
+      </div>
     </div>
     {% endif %}
   </div>
 
-  <div class="mt-10 mb-6">
-    <h1 class="text-xl font-bold text-white">{{ user.name }}</h1>
-    <p class="text-gray-400 text-sm flex items-center gap-2 mt-1">
-      <i class="fas fa-map-marker-alt text-primary text-xs"></i> {{ user.city or "India" }}
-      <span class="text-gray-600">•</span>
-      <i class="fas fa-birthday-cake text-primary text-xs"></i> {{ user.age }} years
-    </p>
-  </div>
-
-  <!-- Stats -->
-  <div class="grid grid-cols-3 gap-3 mb-6" id="stats-grid">
-    <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
-      <div class="text-2xl font-bold gradient-text" id="stat-given">...</div>
-      <div class="text-gray-500 text-xs mt-1">Likes Given</div>
-    </div>
-    <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
-      <div class="text-2xl font-bold gradient-text" id="stat-received">...</div>
-      <div class="text-gray-500 text-xs mt-1">Likes Received</div>
-    </div>
-    <div class="bg-card rounded-2xl p-4 text-center border border-white/5">
-      <div class="text-2xl font-bold gradient-text" id="stat-matches">...</div>
-      <div class="text-gray-500 text-xs mt-1">Matches</div>
-    </div>
-  </div>
-
-  <!-- Edit Form -->
-  <div class="bg-card rounded-2xl p-5 border border-white/5 mb-4">
-    <h2 class="font-semibold text-white mb-4 flex items-center gap-2">
-      <i class="fas fa-edit text-primary text-sm"></i> Edit Profile
-    </h2>
-    <form method="POST" action="/profile/update" enctype="multipart/form-data" class="space-y-4">
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Age</label>
-          <input type="number" name="age" value="{{ user.age or '' }}" min="18" max="100" placeholder="Your age"
-            class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1"/>
+  <!-- Edit mode -->
+  <div class="edit-form" id="editForm">
+    <div class="section">
+      <div class="section-title">Edit Profile</div>
+      <form id="profileForm" onsubmit="saveProfile(event)" enctype="multipart/form-data">
+        <div class="form-group">
+          <label class="form-label">Bio</label>
+          <textarea class="input-field" name="bio" rows="4" maxlength="300">{{ user.bio or '' }}</textarea>
         </div>
-        <div>
-          <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Gender</label>
-          <select name="gender"
-            class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1 bg-surface">
+        <div class="form-group">
+          <label class="form-label">City</label>
+          <input class="input-field" name="city" type="text" value="{{ user.city or '' }}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Social Handle</label>
+          <input class="input-field" name="social_handle" type="text" value="{{ user.social_handle or '' }}" placeholder="@username" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Age</label>
+          <input class="input-field" name="age" type="number" value="{{ user.age }}" min="18" max="100" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Gender</label>
+          <select class="select-field" name="gender">
             <option value="male" {% if user.gender == 'male' %}selected{% endif %}>Male</option>
             <option value="female" {% if user.gender == 'female' %}selected{% endif %}>Female</option>
           </select>
         </div>
-      </div>
-      <div>
-        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Bio</label>
-        <textarea name="bio" rows="3" placeholder="Tell something about yourself..."
-          class="w-full bg-surface border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition mt-1 resize-none">{{ user.bio or '' }}</textarea>
-      </div>
-      <div>
-        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">City</label>
-        <div class="relative mt-1">
-          <i class="fas fa-map-marker-alt absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
-          <input type="text" name="city" value="{{ user.city or '' }}" placeholder="Your city"
-            class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+        <div class="form-group">
+          <label class="form-label">Interested In</label>
+          <select class="select-field" name="interested_in">
+            <option value="male" {% if user.interested_in == 'male' %}selected{% endif %}>Male</option>
+            <option value="female" {% if user.interested_in == 'female' %}selected{% endif %}>Female</option>
+            <option value="both" {% if user.interested_in == 'both' or not user.interested_in %}selected{% endif %}>Both</option>
+          </select>
         </div>
-      </div>
-      <div>
-        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Instagram / Telegram Username <span class="text-red-400">*</span></label>
-        <div class="relative mt-1">
-          <i class="fas fa-at absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
-          <input type="text" name="social_handle" value="{{ user.social_handle or '' }}" placeholder="@your_username" required
-            class="w-full bg-surface border border-white/10 rounded-xl pl-10 pr-4 py-3 text-white text-sm focus:outline-none focus:border-primary transition"/>
+        <div class="form-group">
+          <label class="form-label">Update Main Photo</label>
+          <input class="input-field" name="photo" type="file" accept="image/*" style="padding:10px;" />
         </div>
-        <p class="text-gray-500 text-xs mt-1">Required — your matches will use this to contact you</p>
-      </div>
-      <div>
-        <label class="text-gray-400 text-xs font-medium uppercase tracking-wider">Photos (up to 6)</label>
-        {% set photo_list = [] %}
-        {% if user.photos %}{% set photo_list = user.photos | from_json %}{% endif %}
-        {% if not photo_list and user.photo %}{% set photo_list = [user.photo] %}{% endif %}
-        <div class="grid grid-cols-3 gap-2 mt-2" id="profile-photo-grid">
-          {% for p in photo_list %}
-          <div class="relative aspect-square rounded-xl overflow-hidden border border-white/10">
-            <img src="{{ p | photo_url }}" class="w-full h-full object-cover"/>
-          </div>
-          {% endfor %}
-          {% if photo_list|length < 6 %}
-          <label class="aspect-square rounded-xl border border-dashed border-white/20 flex items-center justify-center cursor-pointer hover:border-primary transition">
-            <i class="fas fa-plus text-gray-500"></i>
-            <input type="file" name="photo" accept="image/*" class="hidden" onchange="document.getElementById('photo-label2').textContent = this.files[0]?.name || 'Add photo'"/>
-          </label>
-          {% endif %}
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="submit" class="btn btn-primary" id="saveBtn" data-i18n="btn_save">Save Changes</button>
+          <button type="button" class="btn btn-secondary" onclick="toggleEdit()">Cancel</button>
         </div>
-        <p class="text-gray-600 text-xs mt-1" id="photo-label2">Add a new photo</p>
-      </div>
-      <button type="submit" class="w-full gradient-btn text-white font-semibold py-3 rounded-xl transition text-sm">
-        Save Changes <i class="fas fa-check ml-2"></i>
-      </button>
-    </form>
-  </div>
-
-  <!-- Premium Banner -->
-  {% if not user.is_premium %}
-  <div class="bg-gradient-to-r from-primary/20 to-secondary/20 rounded-2xl p-5 border border-primary/20 mb-4">
-    <div class="flex items-center gap-3 mb-3">
-      <i class="fas fa-crown text-yellow-400 text-xl"></i>
-      <h3 class="font-semibold text-white">Go Premium</h3>
+      </form>
     </div>
-    <ul class="space-y-2 text-sm text-gray-300 mb-4">
-      <li class="flex items-center gap-2"><i class="fas fa-check text-green-400 text-xs"></i> Unlimited likes & super likes</li>
-      <li class="flex items-center gap-2"><i class="fas fa-check text-green-400 text-xs"></i> See who liked you</li>
-      <li class="flex items-center gap-2"><i class="fas fa-check text-green-400 text-xs"></i> Profile boost</li>
-    </ul>
-    <button onclick="window.location.href='/premium'" class="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-xl text-sm transition">
-      Upgrade — 150 ⭐ / month
-    </button>
   </div>
-  {% endif %}
 
-  <a href="/logout" class="flex items-center justify-center gap-2 text-gray-500 hover:text-red-400 transition text-sm py-3">
-    <i class="fas fa-sign-out-alt"></i> Logout
-  </a>
-
+  <!-- Danger zone -->
+  <div class="danger-zone">
+    <button class="btn btn-danger btn-sm" onclick="deleteAccount()">🗑 Delete Account</button>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-fetch('/profile/stats').then(r=>r.json()).then(d=>{
-  document.getElementById('stat-given').textContent = d.likes_given ?? '0';
-  document.getElementById('stat-received').textContent = d.likes_received ?? '0';
-  document.getElementById('stat-matches').textContent = d.matches ?? '0';
-}).catch(()=>{});
+  function toggleEdit() {
+    const form = document.getElementById('editForm');
+    const view = document.getElementById('viewMode');
+    const btn = document.getElementById('editBtn');
+    const isEditing = form.classList.contains('show');
+    form.classList.toggle('show', !isEditing);
+    view.classList.toggle('hide', !isEditing);
+    btn.textContent = isEditing ? 'Edit Profile' : 'Cancel';
+  }
+
+  async function saveProfile(e) {
+    e.preventDefault();
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    const fd = new FormData(e.target);
+    try {
+      const res = await fetch('/profile/update', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('✅ Profile updated! Pending re-approval.');
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        showToast(data.error || 'Update failed.');
+      }
+    } catch { showToast('Network error.'); }
+    btn.disabled = false; btn.textContent = 'Save Changes';
+  }
+
+  async function boostProfile() {
+    const res = await fetch('/boost', { method: 'POST' });
+    const data = await res.json();
+    showToast(data.ok ? '🚀 Profile boosted for 30 minutes!' : (data.error || 'Boost failed.'));
+  }
+
+  async function deleteAccount() {
+    if (!confirm('Are you sure? This cannot be undone.')) return;
+    const tg = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if (tg) {
+      await fetch('/auth/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tg.id, first_name: tg.first_name }),
+      });
+    }
+    showToast('Account deleted.');
+    setTimeout(() => { document.cookie = 'token=;max-age=0;path=/'; window.location.href = '/setup'; }, 1500);
+  }
 </script>
 {% endblock %}

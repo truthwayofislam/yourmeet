@@ -1,50 +1,33 @@
 import os
 import httpx
-from fastapi import UploadFile
 
-def _get_telegram_api():
-    token = os.getenv("TELEGRAM_BOTS_KEY", "") or os.getenv("TELEGRAM_BOT_KEY", "")
-    return f"https://api.telegram.org/bot{token}", token
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
+STORAGE_CHAT_ID = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "")
 
-async def upload_photo_to_telegram(file: UploadFile) -> str:
-    telegram_api, token = _get_telegram_api()
-    storage_chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "")
 
-    print(f"[STORAGE] token={'SET' if token else 'MISSING'}, chat_id={storage_chat_id or 'MISSING'}")
-
-    if not token or not storage_chat_id:
-        print("[STORAGE] Missing token or chat_id, skipping upload")
+async def upload_photo(file) -> str:
+    """Upload photo to Telegram storage chat, return file_id."""
+    if not TELEGRAM_BOT_TOKEN or not STORAGE_CHAT_ID:
         return ""
+    try:
+        content = await file.read()
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+                data={"chat_id": STORAGE_CHAT_ID},
+                files={"photo": ("photo.jpg", content, "image/jpeg")},
+            )
+            if resp.status_code == 200:
+                return resp.json()["result"]["photo"][-1]["file_id"]
+    except Exception as e:
+        print(f"[STORAGE] upload failed: {e}")
+    return ""
 
-    contents = await file.read()
-    await file.seek(0)
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"{telegram_api}/sendPhoto",
-            data={"chat_id": storage_chat_id},
-            files={"photo": (file.filename, contents, file.content_type or "image/jpeg")}
-        )
-        print(f"[STORAGE] Telegram response: {resp.status_code} - {resp.text[:200]}")
-        if not resp.is_success:
-            return ""
-        result = resp.json()
-        if not result.get("ok"):
-            return ""
-
-        file_id = result["result"]["photo"][-1]["file_id"]
+def photo_url(file_id: str) -> str:
+    """Convert file_id or path to displayable URL."""
+    if not file_id:
+        return ""
+    if file_id.startswith("http") or file_id.startswith("/static"):
         return file_id
-
-
-def get_photo_url(photo: str) -> str:
-    """
-    Convert stored photo value to displayable URL.
-    Handles: Telegram URL, old local path, empty
-    """
-    if not photo:
-        return ""
-    if photo.startswith("http"):
-        return photo
-    if photo.startswith("static/"):
-        return f"/{photo}"
-    return f"/photo/{photo}"
+    return f"/photo/{file_id}"

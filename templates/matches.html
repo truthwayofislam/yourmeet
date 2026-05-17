@@ -1,86 +1,124 @@
 {% extends "base.html" %}
-{% block title %}Matches{% endblock %}
 {% block content %}
-<div class="max-w-md mx-auto px-4 pt-6">
+<style>
+  .matches-wrap { padding: 0 0 20px; }
+  .matches-header { padding: 20px 20px 16px; }
+  .matches-header h1 { font-size: 22px; font-weight: 700; }
+  .matches-header p { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
 
-  <div class="mb-6">
-    <h1 class="text-2xl font-bold gradient-text">Your Matches</h1>
-    <p class="text-gray-400 text-sm">{{ matches|length }} people liked you back</p>
+  .match-list { padding: 0 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  .match-card {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px; border-radius: 16px;
+    background: var(--card); border: 1px solid var(--border);
+    text-decoration: none; color: var(--text);
+    transition: background 0.2s;
+  }
+  .match-card:active { background: var(--surface); }
+
+  .match-photo { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 2px solid var(--primary); }
+  .match-photo-placeholder { width: 64px; height: 64px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; border: 2px solid var(--border); }
+
+  .match-info { flex: 1; min-width: 0; }
+  .match-name { font-size: 16px; font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .match-meta { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+  .match-contact {
+    font-size: 13px; padding: 5px 10px; border-radius: 8px;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .match-contact.unlocked { background: rgba(76,175,80,0.1); color: #81c784; border: 1px solid rgba(76,175,80,0.2); }
+  .match-contact.locked { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border); }
+
+  .match-actions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+  .btn-unmatch {
+    padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(244,67,54,0.3);
+    background: rgba(244,67,54,0.08); color: #f44336; font-size: 12px; cursor: pointer;
+  }
+
+  .empty-matches {
+    text-align: center; padding: 60px 32px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .empty-matches .emoji { font-size: 64px; }
+  .empty-matches p { color: var(--text-muted); font-size: 15px; }
+</style>
+
+<div class="matches-wrap">
+  <div class="matches-header">
+    <h1 data-i18n="matches_title">Your Matches 💕</h1>
+    <p>{{ matches | length }} match{% if matches | length != 1 %}es{% endif %}</p>
   </div>
 
   {% if matches %}
-  <div class="space-y-3">
-    {% for match in matches %}
-    <div class="flex items-center gap-4 bg-card rounded-2xl p-4 border border-white/5 card-glow">
-      <div class="relative">
-        {% if match.photo %}
-        <img src="{{ match.photo | photo_url }}" class="w-14 h-14 rounded-full object-cover border-2 border-primary/30"/>
-        {% else %}
-        <div class="w-14 h-14 rounded-full bg-surface flex items-center justify-center border-2 border-primary/30">
-          <i class="fas fa-user text-gray-500 text-xl"></i>
+  <div class="match-list">
+    {% for m in matches %}
+    {% set interests = m.interests | from_json %}
+    <div class="match-card">
+      {% if m.photo %}
+      <img class="match-photo" src="{{ m.photo | photo_url }}" alt="{{ m.name }}" />
+      {% else %}
+      <div class="match-photo-placeholder">👤</div>
+      {% endif %}
+
+      <div class="match-info">
+        <div class="match-name">
+          {{ m.name }}, {{ m.age }}
+          {% if m.is_verified %} ⭐{% endif %}
+        </div>
+        <div class="match-meta">
+          {% if m.city %}📍 {{ m.city }} · {% endif %}
+          <span data-i18n="matched_on">Matched on</span> {{ m.matched_at }}
+        </div>
+        {% if user.is_premium and m.social_handle %}
+        <div class="match-contact unlocked">🔗 {{ m.social_handle }}</div>
+        {% elif m.social_handle %}
+        <div class="match-contact locked" onclick="showUpgradePrompt()">
+          🔒 <span data-i18n="contact_locked">Upgrade to see contact</span>
         </div>
         {% endif %}
       </div>
-      <div class="flex-1 min-w-0">
-        <h3 class="font-semibold text-white">{{ match.name }}{% if match.is_verified %} <span class="text-green-400 text-sm">✅</span>{% endif %}, {{ match.age }}</h3>
-        <p class="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
-          <i class="fas fa-map-marker-alt text-primary"></i> {{ match.city or "India" }}
-          {% if match.matched_at %}<span class="text-gray-700">•</span> <i class="fas fa-calendar text-gray-600"></i> {{ match.matched_at }}{% endif %}
-        </p>
-        {% if match.social_handle %}
-        {% if user.is_premium %}
-        {% set handle = match.social_handle | replace('@','') %}
-        {% if 'instagram' in match.social_handle.lower() or 'insta' in match.social_handle.lower() %}
-          {% set contact_url = 'https://instagram.com/' + handle %}
-          {% set contact_icon = 'fab fa-instagram' %}
-        {% elif 't.me' in match.social_handle.lower() %}
-          {% set contact_url = 'https://t.me/' + handle %}
-          {% set contact_icon = 'fab fa-telegram' %}
-        {% else %}
-          {% set contact_url = 'https://t.me/' + handle %}
-          {% set contact_icon = 'fab fa-telegram' %}
-        {% endif %}
-        <a href="{{ contact_url }}" target="_blank"
-           class="inline-flex items-center gap-1 mt-2 bg-primary/20 text-primary text-xs px-3 py-1 rounded-full border border-primary/30 hover:bg-primary/30 transition">
-          <i class="{{ contact_icon }} text-xs"></i> @{{ handle }}
-        </a>
-        {% else %}
-        <a href="/premium"
-           class="inline-flex items-center gap-1 mt-2 bg-white/5 text-gray-500 text-xs px-3 py-1 rounded-full border border-white/10 hover:bg-primary/10 hover:text-primary transition">
-          <i class="fas fa-lock text-xs"></i> Unlock Contact — Premium
-        </a>
-        {% endif %}
-        {% else %}
-        <p class="text-gray-600 text-xs mt-2">No contact added yet</p>
-        {% endif %}
-        <button onclick="unmatch({{ match.match_id }}, this)" class="text-gray-700 hover:text-red-400 text-xs mt-2 transition">
-          <i class="fas fa-times mr-1"></i>Unmatch
-        </button>
+
+      <div class="match-actions">
+        <button class="btn-unmatch" onclick="unmatch({{ m.match_id }}, this)">Unmatch</button>
       </div>
     </div>
     {% endfor %}
   </div>
 
   {% else %}
-  <div class="flex flex-col items-center justify-center py-20">
-    <div class="w-24 h-24 rounded-full bg-card flex items-center justify-center mb-4 border border-white/5">
-      <i class="fas fa-heart text-4xl text-gray-700"></i>
-    </div>
-    <p class="text-gray-400 font-medium">No matches yet</p>
-    <p class="text-gray-600 text-sm mt-1">Keep swiping to find your match!</p>
-    <a href="/" class="gradient-btn text-white px-6 py-3 rounded-xl text-sm font-medium mt-6">
-      <i class="fas fa-fire mr-2"></i>Start Discovering
-    </a>
+  <div class="empty-matches">
+    <div class="emoji">💔</div>
+    <p data-i18n="no_matches">No matches yet. Keep swiping!</p>
+    <a href="/" class="btn btn-primary" style="margin-top:8px;max-width:200px;">Start Swiping 🔥</a>
   </div>
   {% endif %}
-
 </div>
+
+<!-- Upgrade modal -->
+<div id="upgradeModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.8);align-items:flex-end;">
+  <div class="glass" style="width:100%;padding:28px 24px 40px;border-radius:24px 24px 0 0;text-align:center;">
+    <div style="font-size:48px;margin-bottom:12px;">👑</div>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:8px;">Upgrade to Premium</h2>
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:24px;">See contact details of all your matches and unlock unlimited features!</p>
+    <a href="/premium" class="btn btn-primary" style="margin-bottom:12px;">View Premium Plans</a>
+    <button class="btn btn-secondary" onclick="document.getElementById('upgradeModal').style.display='none'">Maybe Later</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script>
-async function unmatch(matchId, btn) {
-  if (!confirm('Unmatch this person?')) return;
-  const card = btn.closest('.flex.items-center');
-  await fetch(`/unmatch/${matchId}`, {method:'POST'});
-  if (card) card.remove();
-}
+  async function unmatch(matchId, btn) {
+    if (!confirm('Unmatch this person?')) return;
+    btn.disabled = true;
+    const res = await fetch(`/unmatch/${matchId}`, { method: 'POST' });
+    if ((await res.json()).ok) btn.closest('.match-card').remove();
+  }
+
+  function showUpgradePrompt() {
+    const m = document.getElementById('upgradeModal');
+    m.style.display = 'flex';
+  }
 </script>
 {% endblock %}

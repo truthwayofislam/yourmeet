@@ -1,50 +1,53 @@
+import os
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from templating import templates
+from fastapi.responses import JSONResponse
 from database import get_db
 from routers.auth import get_current_user
 
 router = APIRouter()
 
 PLANS = {
-    "monthly":   {"stars": 150, "label": "150 ⭐", "days": 30},
-    "quarterly": {"stars": 350, "label": "350 ⭐", "days": 90},
+    "monthly":   {"stars": 150, "days": 30,  "title": "YourMeet Premium — 1 Month",  "desc": "Unlimited likes, super likes, chat & more for 30 days"},
+    "quarterly": {"stars": 350, "days": 90,  "title": "YourMeet Premium — 3 Months", "desc": "Unlimited likes, super likes, chat & more for 90 days"},
 }
 
-@router.get("/premium", response_class=HTMLResponse)
-async def premium_page(request: Request, current_user=Depends(get_current_user)):
-    if not current_user:
-        return RedirectResponse("/login")
-    return templates.TemplateResponse(request, "premium.html", context={"user": current_user, "active": "premium"})
 
-@router.post("/payment/stars/invoice")
-async def create_stars_invoice(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
+@router.post("/payment/invoice/{plan}")
+async def create_invoice(plan: str, request: Request, current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    if not current_user.telegram_id:
-        return JSONResponse({"error": "Telegram account required for Stars payment"}, status_code=400)
-    body = await request.json()
-    plan = body.get("plan", "monthly")
     if plan not in PLANS:
-        return JSONResponse({"error": "invalid plan"}, status_code=400)
+        return JSONResponse({"error": "invalid_plan"}, status_code=400)
+    p = PLANS[plan]
     try:
         from main import bot_app
-        from bot import send_stars_invoice
-        await send_stars_invoice(bot_app.bot, current_user.telegram_id, plan)
+        msg = await bot_app.bot.send_invoice(
+            chat_id=current_user.telegram_id,
+            title=p["title"],
+            description=p["desc"],
+            payload=f"premium:{plan}:{current_user.id}",
+            currency="XTR",
+            prices=[{"label": p["title"], "amount": p["stars"]}],
+            provider_token="",
+        )
         return JSONResponse({"ok": True})
     except Exception as e:
-        print(f"[STARS] Invoice error: {e}")
-        return JSONResponse({"error": "Failed to send invoice"}, status_code=500)
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-@router.post("/payment/stars/activate")
-async def activate_stars(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
-    """Called after successful Telegram Stars payment from bot."""
-    if not current_user:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-    body = await request.json()
-    plan = body.get("plan", "monthly")
+
+async def handle_successful_payment(tg_id: str, payload: str, db):
+    """Called from bot on successful Stars payment."""
+    parts = payload.split(":")
+    if len(parts) < 3 or parts[0] != "premium":
+        return
+    plan = parts[1]
     if plan not in PLANS:
-        return JSONResponse({"error": "invalid plan"}, status_code=400)
-    
-    # Do nothing - Actual activation happens via bot.py handle_successful_payment
-    return JSONResponse({"success": True})
+        return
+    days = PLANS[plan]["days"]
+    premium_until = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999 WHERE telegram_id=?",
+        (premium_until, tg_id),
+    )
+    db.commit()

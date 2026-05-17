@@ -1,587 +1,344 @@
 import os
-import httpx
-import libsql_experimental as libsql
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, Application
-from telegram.request import HTTPXRequest
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters, ContextTypes,
+)
 
-TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
-TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
-
-_conn = None
-
-class _NoClose:
-    def __init__(self, conn): self._c = conn
-    def execute(self, *a, **kw):
-        global _conn
-        try:
-            self._c.sync()
-        except Exception:
-            if TURSO_URL and TURSO_TOKEN:
-                _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-            else:
-                _conn = libsql.connect("yourmeet.db")
-            self._c = _conn
-        try:
-            return self._c.execute(*a, **kw)
-        except Exception:
-            if TURSO_URL and TURSO_TOKEN:
-                _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-            else:
-                _conn = libsql.connect("yourmeet.db")
-            self._c = _conn
-            return self._c.execute(*a, **kw)
-    def executescript(self, *a, **kw): return self._c.executescript(*a, **kw)
-    def commit(self): return self._c.commit()
-    def close(self): pass
-
-def get_conn():
-    global _conn
-    if _conn is None:
-        if TURSO_URL and TURSO_TOKEN:
-            _conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
-        else:
-            _conn = libsql.connect("yourmeet.db")
-    return _NoClose(_conn)
-
-def _verify_keyboard(user_id: int):
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Approve", callback_data=f"approve:{user_id}"),
-        InlineKeyboardButton("✅⭐ Approve+Verify", callback_data=f"verify:{user_id}"),
-        InlineKeyboardButton("🚫 Block", callback_data=f"block:{user_id}"),
-    ]])
-
-async def send_for_review(user_id: int, name: str, age: int, gender: str, city: str, photo: str, email: str = "", phone: str = ""):
-    """Send new profile to admin via direct HTTP — no bot instance needed."""
-    token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
-    admin_tg_id = os.getenv("ADMIN_TG_ID", "").strip()
-    print(f"[ADMIN BOT] send_for_review called — token={'SET' if token else 'MISSING'}, admin_id={admin_tg_id or 'MISSING'}")
-    if not token or not admin_tg_id:
-        return
-    # Fetch language from DB
-    try:
-        conn = get_conn()
-        lang_row = conn.execute("SELECT language FROM users WHERE id=?", (user_id,)).fetchone()
-        lang = (lang_row[0] if lang_row and lang_row[0] else "en").upper()
-    except:
-        lang = "EN"
-    api = f"https://api.telegram.org/bot{token}"
-    caption = (
-        f"🆕 *New Profile*\n\n"
-        f"👤 *{name}*, {age} • {gender.capitalize() if gender else '?'}\n"
-        f"📍 {city or 'No city'}\n"
-        f"📧 {email if email and not email.startswith('via:') else 'N/A'}\n"
-        f"📞 {phone if phone and phone != '' else 'N/A'}\n"
-        f"🌍 Language: {lang}\n"
-        f"📲 Source: {'🌐 Web Form' if email and not email.startswith('via:') else ('🤖 Bot Setup' if email == 'via:bot_setup' else '📱 Telegram Login')}\n"
-        f"🆔 DB ID: `{user_id}`"
-    )
-    keyboard = {"inline_keyboard": [[
-        {"text": "✅ Approve", "callback_data": f"approve:{user_id}"},
-        {"text": "✅⭐ Approve+Verify", "callback_data": f"verify:{user_id}"},
-        {"text": "🚫 Block", "callback_data": f"block:{user_id}"}
-    ]]}
-    try:
-        import json
-        async with httpx.AsyncClient(timeout=30) as client:
-            if photo and photo.startswith("https://"):
-                # URL-based photo (old style) — download and upload
-                photo_resp = await client.get(photo)
-                if photo_resp.status_code == 200:
-                    resp = await client.post(f"{api}/sendPhoto", data={
-                        "chat_id": admin_tg_id,
-                        "caption": caption,
-                        "parse_mode": "Markdown",
-                        "reply_markup": json.dumps(keyboard)
-                    }, files={"photo": ("photo.jpg", photo_resp.content, "image/jpeg")})
-                    print(f"[ADMIN BOT] sendPhoto(url): {resp.status_code}")
-                else:
-                    caption_with_link = caption + f"\n\n🖼 [View Photo]({photo})"
-                    resp = await client.post(f"{api}/sendMessage", json={
-                        "chat_id": admin_tg_id,
-                        "text": caption_with_link,
-                        "parse_mode": "Markdown",
-                        "reply_markup": keyboard,
-                        "disable_web_page_preview": False
-                    })
-            elif photo:
-                # file_id — send directly, fastest method, never expires
-                resp = await client.post(f"{api}/sendPhoto", data={
-                    "chat_id": admin_tg_id,
-                    "photo": photo,
-                    "caption": caption,
-                    "parse_mode": "Markdown",
-                    "reply_markup": json.dumps(keyboard)
-                })
-                print(f"[ADMIN BOT] sendPhoto(file_id): {resp.status_code}")
-            else:
-                resp = await client.post(f"{api}/sendMessage", json={
-                    "chat_id": admin_tg_id,
-                    "text": caption + "\n\n⚠️ No photo",
-                    "parse_mode": "Markdown",
-                    "reply_markup": keyboard
-                })
-            print(f"[ADMIN BOT] Review sent: {resp.status_code} - {resp.text[:150]}")
-    except Exception as e:
-        print(f"[ADMIN BOT] Failed: {e}")
-
-# /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        await update.message.reply_text("❌ Unauthorized.")
-        return
-    await update.message.reply_text(
-        "👮 YourMeet Admin Bot\n\n"
-        "New user registrations will appear here.\n"
-        "Tap Approve or Block on each profile.\n\n"
-        "/pending - Show pending profiles\n"
-        "/stats - App stats\n"
-        "/find <name> - Search user by name\n"
-        "/user <id> - View user details\n"
-        "/broadcast msg - Send message to all users\n"
-        "/remind - Message incomplete profile users\n"
-        "/remind_blocked - Notify all blocked users\n"
-        "/approve_seed - Approve all fake/seed profiles\n"
-        "/remove_fake - Delete all fake/seed profiles"
-    )
-
-# /pending
-async def pending_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT id, name, age, gender, city, photo FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0 AND is_rejected=0 ORDER BY id DESC LIMIT 20"
-    ).fetchall()
-    conn.close()
-    if not rows:
-        await update.message.reply_text("No profiles found.")
-        return
-    await update.message.reply_text(f"📋 Last {len(rows)} profiles:")
-    for r in rows:
-        uid, name, age, gender, city, photo = r
-        caption = f"👤 *{name}*, {age} • {gender or '?'}\n📍 {city or 'No city'}\n🆔 ID: `{uid}`"
-        try:
-            if photo and photo.startswith("https://"):
-                import httpx as _httpx
-                async with _httpx.AsyncClient(timeout=20) as cl:
-                    pr = await cl.get(photo)
-                if pr.status_code == 200:
-                    await update.message.reply_photo(pr.content, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
-                else:
-                    await update.message.reply_text(caption + "\n⚠️ Photo error", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
-            elif photo:
-                # It's a file_id — send directly, fastest and never expires
-                await update.message.reply_photo(photo, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
-            else:
-                await update.message.reply_text(caption + "\n⚠️ No photo", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
-        except:
-            await update.message.reply_text(caption + "\n⚠️ Photo error", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
-
-# /remind — message incomplete profile users
-async def remind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT telegram_id, name, photo, bio, city, social_handle FROM users "
-        "WHERE is_admin=0 AND is_blocked=0 AND telegram_id IS NOT NULL AND telegram_id != '' "
-        "AND (photo IS NULL OR photo='' OR bio IS NULL OR bio='' OR city IS NULL OR city='' OR social_handle IS NULL OR social_handle='')"
-    ).fetchall()
-    conn.close()
-    if not rows:
-        await update.message.reply_text("\u2705 All users have complete profiles!")
-        return
-    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
-    if not bot_token:
-        await update.message.reply_text("❌ TELEGRAM_BOTS_KEY not set.")
-        return
-    app_url = os.getenv("APP_URL", "")
-    api = f"https://api.telegram.org/bot{bot_token}"
-    sent = 0
-    import json
-    async with httpx.AsyncClient(timeout=20) as client:
-        for tg_id, name, photo, bio, city, social in rows:
-            missing = []
-            if not photo: missing.append("\U0001f4f8 Profile photo")
-            if not bio: missing.append("\U0001f4ac Bio")
-            if not city: missing.append("\U0001f4cd City")
-            if not social: missing.append("\U0001f4f1 Instagram/Telegram handle")
-            if not missing:
-                continue
-            text = (
-                f"\U0001f44b Hey *{name or 'there'}*!\n\n"
-                f"Your YourMeet profile is incomplete. Add these to get *real matches*:\n\n"
-                + "\n".join(f"\u2022 {m}" for m in missing)
-                + "\n\nComplete your profile now \U0001f447"
-            )
-            keyboard = {"inline_keyboard": [[{"text": "\u270f\ufe0f Complete Profile", "url": f"{app_url}/profile"}]]}
-            try:
-                await client.post(f"{api}/sendMessage", json={
-                    "chat_id": tg_id,
-                    "text": text,
-                    "parse_mode": "Markdown",
-                    "reply_markup": keyboard
-                })
-                sent += 1
-            except: pass
-    await update.message.reply_text(f"\u2705 Reminders sent to *{sent}* users.", parse_mode="Markdown")
-
-async def _notify_user(tg_id: str, text: str, keyboard: dict):
-    main_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
-    if not main_token or not tg_id:
-        print(f"[NOTIFY] Skipped — token={'SET' if main_token else 'MISSING'}, tg_id={tg_id!r}")
-        return
-    try:
-        async with httpx.AsyncClient(timeout=10) as cl:
-            resp = await cl.post(f"https://api.telegram.org/bot{main_token}/sendMessage", json={
-                "chat_id": tg_id, "text": text, "parse_mode": "Markdown", "reply_markup": keyboard
-            })
-            print(f"[NOTIFY] tg_id={tg_id} status={resp.status_code} body={resp.text[:200]}")
-    except Exception as e:
-        print(f"[NOTIFY] Exception: {e}")
-
-# /remind_blocked — notify already blocked users
-async def remind_blocked_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT telegram_id, name, photo, bio, city, social_handle, COALESCE(language,'en') FROM users WHERE (is_rejected=1 OR is_blocked=1) AND telegram_id IS NOT NULL AND telegram_id != ''"
-    ).fetchall()
-    conn.close()
-    if not rows:
-        await update.message.reply_text("No blocked users with Telegram ID.")
-        return
-    await update.message.reply_text(f"📤 Sending to *{len(rows)}* blocked users...", parse_mode="Markdown")
-    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
-    app_url = os.getenv('APP_URL', '')
-    bot_username = os.getenv('BOT_USERNAME', 'Yoursmeetbot')
-    api = f"https://api.telegram.org/bot{bot_token}"
-    sent, failed = 0, 0
-    import asyncio
-    keyboard = {"inline_keyboard": [
-        [{"text": "🤖 Re-register via Bot", "url": f"https://t.me/{bot_username}"}],
-        [{"text": "🌐 Re-register via App", "url": f"{app_url}/register"}]
-    ]}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-        for tg_id, name, photo, bio, city, social, lang in rows:
-            from strings import get as _get
-            missing = []
-            if not photo: missing.append("📸 Profile photo")
-            if not bio: missing.append("💬 Bio")
-            if not city: missing.append("📍 City")
-            if not social: missing.append("📱 Instagram/Telegram handle")
-            missing_text = ("\n\n*Missing:*\n" + "\n".join(f"• {m}" for m in missing)) if missing else ""
-            text = (
-                _get(lang or "en", "profile_rejected", name=name)
-                + missing_text
-                + "\n\n1️⃣ Tap below → /setup\n2️⃣ Real photo & bio\n3️⃣ Wait for approval"
-            )
-            msg_keyboard = {"inline_keyboard": [
-                [{"text": _get(lang or "en", "re_register_bot"), "url": f"https://t.me/{bot_username}"}],
-                [{"text": _get(lang or "en", "re_register_app"), "url": f"{app_url}/register"}]
-            ]}
-            try:
-                resp = await client.post(f"{api}/sendMessage", json={
-                    "chat_id": tg_id, "text": text,
-                    "parse_mode": "Markdown", "reply_markup": keyboard
-                })
-                if resp.status_code == 200:
-                    sent += 1
-                elif resp.status_code == 429:
-                    retry_after = resp.json().get("parameters", {}).get("retry_after", 3)
-                    await asyncio.sleep(retry_after)
-                    resp2 = await client.post(f"{api}/sendMessage", json={
-                        "chat_id": tg_id, "text": text,
-                        "parse_mode": "Markdown", "reply_markup": keyboard
-                    })
-                    if resp2.status_code == 200: sent += 1
-                    else: failed += 1
-                else:
-                    failed += 1
-            except:
-                failed += 1
-            await asyncio.sleep(0.05)
-    await update.message.reply_text(
-        f"✅ Done!\n\n✔️ Sent: *{sent}/{len(rows)}*\n❌ Failed: *{failed}* (bot blocked or account deleted)",
-        parse_mode="Markdown"
-    )
-
-# /remove_fake — delete all fake/seed profiles
-async def remove_fake_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    global _conn
-    try:
-        conn = get_conn()
-        count = conn.execute("SELECT COUNT(*) FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchone()[0]
-        if count == 0:
-            await update.message.reply_text("✅ No fake profiles found.")
-            return
-        # Single bulk delete — no loop, no multiple syncs
-        conn._c.execute("DELETE FROM likes WHERE from_user IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app') OR to_user IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app')")
-        conn._c.execute("DELETE FROM matches WHERE user1_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app') OR user2_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app')")
-        conn._c.execute("DELETE FROM skips WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app') OR skipped_id IN (SELECT id FROM users WHERE email LIKE 'fake_%@yourmeet.app')")
-        conn._c.execute("DELETE FROM users WHERE email LIKE 'fake_%@yourmeet.app'")
-        conn._c.commit()
-        # Reset connection so next commands work fresh
-        _conn = None
-        await update.message.reply_text(f"🗑️ *{count}* fake profiles deleted successfully.", parse_mode="Markdown")
-    except Exception as e:
-        _conn = None  # force reconnect on next command
-        await update.message.reply_text(f"❌ Error: {e}")
-
-# /approve_seed — approve all fake/seed profiles
-async def approve_seed_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    conn = get_conn()
-    conn.execute("UPDATE users SET is_approved=1 WHERE email LIKE 'fake_%@yourmeet.app'")
-    conn.commit()
-    count = conn.execute("SELECT COUNT(*) FROM users WHERE email LIKE 'fake_%@yourmeet.app'").fetchone()[0]
-    conn.close()
-    await update.message.reply_text(f"✅ *{count}* seed profiles marked as approved.", parse_mode="Markdown")
-
-# /broadcast — send message to all users
-async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    text = " ".join(context.args) if context.args else ""
-    if not text:
-        await update.message.reply_text("⚠️ Usage: /broadcast Your message here")
-        return
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT telegram_id FROM users WHERE is_admin=0 AND is_blocked=0 AND telegram_id IS NOT NULL AND telegram_id != ''"
-    ).fetchall()
-    conn.close()
-    if not rows:
-        await update.message.reply_text("No users to broadcast to.")
-        return
-    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip()
-    if not bot_token:
-        await update.message.reply_text("❌ TELEGRAM_BOTS_KEY not set.")
-        return
-    await update.message.reply_text(f"📤 Sending to *{len(rows)}* users...", parse_mode="Markdown")
-    print(f"[BROADCAST] Starting — {len(rows)} users")
-    api = f"https://api.telegram.org/bot{bot_token}"
-    sent, failed = 0, 0
-    import asyncio
-    # timeout=None — no client-level timeout, per-request timeout set separately
-    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
-        for (tg_id,) in rows:
-            try:
-                resp = await client.post(f"{api}/sendMessage", json={
-                    "chat_id": tg_id, "text": text, "parse_mode": "Markdown"
-                })
-                if resp.status_code == 200:
-                    sent += 1
-                elif resp.status_code == 429:
-                    retry_after = resp.json().get("parameters", {}).get("retry_after", 3)
-                    await asyncio.sleep(retry_after)
-                    resp2 = await client.post(f"{api}/sendMessage", json={
-                        "chat_id": tg_id, "text": text, "parse_mode": "Markdown"
-                    })
-                    if resp2.status_code == 200:
-                        sent += 1
-                    else:
-                        failed += 1
-                else:
-                    failed += 1
-            except:
-                failed += 1
-                print(f"[BROADCAST] Exception for tg_id={tg_id}")
-            await asyncio.sleep(0.05)
-    print(f"[BROADCAST] Done — sent={sent} failed={failed}")
-    await update.message.reply_text(f"✅ Broadcast done!\n\n✔️ Sent: *{sent}*\n❌ Failed: *{failed}*", parse_mode="Markdown")
-
-# /stats
-async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    try:
-        conn = get_conn()
-        total = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0").fetchone()[0]
-        real = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND email NOT LIKE 'fake_%@yourmeet.app' AND email NOT LIKE '%@telegram.local' AND email NOT LIKE 'tg_%@yourmeet.app'").fetchone()[0]
-        pending = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0 AND is_blocked=0 AND is_rejected=0").fetchone()[0]
-        blocked = conn.execute("SELECT COUNT(*) FROM users WHERE is_blocked=1").fetchone()[0]
-        rejected = conn.execute("SELECT COUNT(*) FROM users WHERE is_rejected=1").fetchone()[0]
-        premium = conn.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
-        matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
-        today_users = conn.execute("SELECT COUNT(*) FROM users WHERE date(created_at)=date('now')").fetchone()[0]
-        conn.close()
-    except Exception as e:
-        print(f"[STATS] DB error: {e}")
-        await update.message.reply_text(f"❌ Stats fetch failed: {e}")
-        return
-    await update.message.reply_text(
-        f"📊 *App Stats*\n\n"
-        f"👥 Total Users: *{total}*\n"
-        f"👤 Real Users: *{real}*\n"
-        f"🆕 Joined Today: *{today_users}*\n"
-        f"⏳ Pending Approval: *{pending}*\n"
-        f"👑 Premium: *{premium}*\n"
-        f"🚫 Rejected (can re-register): *{rejected}*\n"
-        f"⛔ Permanently Banned: *{blocked}*\n"
-        f"💕 Total Matches: *{matches}*",
-        parse_mode="Markdown"
-    )
-
-# Approve / Block callback
-async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if str(query.from_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        await query.answer()
-        return
-    action, uid = query.data.split(":")
-    uid = int(uid)
-    print(f"[ADMIN] verify_callback: action={action}, uid={uid}")
-    conn = get_conn()
-    if action == "approve":
-        conn.execute("UPDATE users SET is_blocked=0, is_rejected=0, is_approved=1 WHERE id=?", (uid,))
-        label = "✅ Approved"
-    elif action == "verify":
-        conn.execute("UPDATE users SET is_blocked=0, is_rejected=0, is_verified=1, is_approved=1 WHERE id=?", (uid,))
-        label = "✅ Approved + Verified ⭐"
-    else:
-        conn.execute("UPDATE users SET is_rejected=1, is_approved=0 WHERE id=?", (uid,))
-        label = "🚫 Blocked/Rejected"
-    conn.commit()
-    tg_row = conn.execute("SELECT telegram_id, name FROM users WHERE id=?", (uid,)).fetchone()
-    conn.close()
-    print(f"[ADMIN] tg_row for uid={uid}: {tg_row}")
-    if not tg_row or not tg_row[0]:
-        await query.answer(f"⚠️ {tg_row[1] if tg_row else 'User'} has no Telegram — message not sent", show_alert=True)
-    else:
-        await query.answer()
-        tg_id, name = tg_row
-        app_url = os.getenv("APP_URL", "")
-        # Get user's language
-        lang_row = conn.execute("SELECT language FROM users WHERE id=?", (uid,)).fetchone()
-        lang = (lang_row[0] if lang_row and lang_row[0] else "en")
-        from strings import get as _get
-        if action in ("approve", "verify"):
-            verified_line = "\n⭐ Your profile is also *Verified* — badge shown on your card!" if action == "verify" else ""
-            await _notify_user(tg_id,
-                _get(lang, "profile_verified" if action == "verify" else "profile_approved", name=name) + verified_line,
-                {"inline_keyboard": [[{"text": _get(lang, "start_swiping"), "url": app_url}]]}
-            )
-        else:
-            await _notify_user(tg_id,
-                _get(lang, "profile_rejected", name=name),
-                {"inline_keyboard": [
-                    [{"text": _get(lang, "re_register_bot"), "url": f"https://t.me/{os.getenv('BOT_USERNAME', 'Yoursmeetbot')}"}],
-                    [{"text": _get(lang, "re_register_app"), "url": f"{app_url}/register"}]
-                ]}
-            )
-    status_line = f"\n\n{label}"
-    try:
-        await query.edit_message_caption(
-            caption=(query.message.caption or "") + status_line,
-            reply_markup=None
-        )
-    except:
-        try:
-            await query.edit_message_text(
-                (query.message.text or "") + status_line,
-                reply_markup=None
-            )
-        except: pass
-
-# /find <name> — search user by name
-async def find_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    query = " ".join(context.args).strip() if context.args else ""
-    if not query:
-        await update.message.reply_text("⚠️ Usage: /find <name>")
-        return
-    conn = get_conn()
-    rows = conn.execute(
-        "SELECT id, name, age, gender, city, telegram_id, is_approved, is_blocked, is_rejected, is_premium "
-        "FROM users WHERE name LIKE ? AND is_admin=0 ORDER BY id DESC LIMIT 10",
-        (f"%{query}%",)
-    ).fetchall()
-    conn.close()
-    if not rows:
-        await update.message.reply_text(f"❌ No users found matching *{query}*", parse_mode="Markdown")
-        return
-    lines = []
-    for uid, name, age, gender, city, tg_id, approved, blocked, rejected, premium in rows:
-        status = "✅" if approved else ("⛔" if blocked else ("🚫" if rejected else "⏳"))
-        lines.append(f"{status} *{name}*, {age or '?'} • {gender or '?'} • {city or 'No city'}\n🆔 `/user {uid}`")
-    await update.message.reply_text("\n\n".join(lines), parse_mode="Markdown")
-
-# /user <id> — view user details
-async def user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != os.getenv("ADMIN_TG_ID", "").strip():
-        return
-    if not context.args:
-        await update.message.reply_text("⚠️ Usage: /user <id>")
-        return
-    try:
-        uid = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ Invalid ID")
-        return
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT id,name,age,gender,city,bio,photo,telegram_id,is_approved,is_blocked,is_rejected,"
-        "is_premium,is_verified,social_handle,email,phone,created_at,language,referral_count "
-        "FROM users WHERE id=?", (uid,)
-    ).fetchone()
-    conn.close()
-    if not row:
-        await update.message.reply_text(f"❌ No user with ID {uid}")
-        return
-    uid, name, age, gender, city, bio, photo, tg_id, approved, blocked, rejected, premium, verified, social, email, phone, created_at, lang, refs = row
-    status = "✅ Approved" if approved else ("⛔ Banned" if blocked else ("🚫 Rejected" if rejected else "⏳ Pending"))
-    caption = (
-        f"👤 *{name}*, {age or '?'} • {gender or '?'}\n"
-        f"📍 {city or 'No city'}\n"
-        f"💬 _{bio or 'No bio'}_\n\n"
-        f"📊 Status: {status}\n"
-        f"👑 Premium: {'Yes' if premium else 'No'}\n"
-        f"⭐ Verified: {'Yes' if verified else 'No'}\n"
-        f"📱 Social: {social or 'N/A'}\n"
-        f"📧 Email: {email or 'N/A'}\n"
-        f"📞 Phone: {phone or 'N/A'}\n"
-        f"🌍 Language: {lang or 'en'}\n"
-        f"🔗 Referrals: {refs or 0}\n"
-        f"📅 Joined: {(created_at or '')[:10]}\n"
-        f"🆔 ID: `{uid}` | TG: `{tg_id or 'N/A'}`"
-    )
-    try:
-        if photo and photo.startswith("https://"):
-            import httpx as _httpx
-            async with _httpx.AsyncClient(timeout=15) as cl:
-                pr = await cl.get(photo)
-            if pr.status_code == 200:
-                await update.message.reply_photo(pr.content, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
-                return
-        elif photo:
-            await update.message.reply_photo(photo, caption=caption, parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
-            return
-    except: pass
-    await update.message.reply_text(caption + "\n⚠️ No photo", parse_mode="Markdown", reply_markup=_verify_keyboard(uid))
+ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
+ADMIN_TG_ID = os.getenv("ADMIN_TG_ID", "")
+APP_URL = os.getenv("APP_URL", "")
 
 
-def build_admin_app() -> Application:
-    token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("ADMIN_BOT_TOKEN is not set")
-    request = HTTPXRequest(connect_timeout=20, read_timeout=20, write_timeout=20)
-    app = ApplicationBuilder().token(token).request(request).updater(None).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("pending", pending_cmd))
-    app.add_handler(CommandHandler("remind", remind_cmd))
-    app.add_handler(CommandHandler("remind_blocked", remind_blocked_cmd))
-    app.add_handler(CommandHandler("approve_seed", approve_seed_cmd))
-    app.add_handler(CommandHandler("remove_fake", remove_fake_cmd))
-    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
-    app.add_handler(CommandHandler("stats", stats_cmd))
-    app.add_handler(CommandHandler("find", find_cmd))
-    app.add_handler(CommandHandler("user", user_cmd))
-    app.add_handler(CallbackQueryHandler(verify_callback, pattern="^(approve|verify|block):"))
+def build_admin_bot() -> Application:
+    app = Application.builder().token(ADMIN_BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("pending", cmd_pending))
+    app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("broadcast", cmd_broadcast))
+    app.add_handler(CommandHandler("remind", cmd_remind))
+    app.add_handler(CommandHandler("remind_blocked", cmd_remind_blocked))
+    app.add_handler(CommandHandler("find", cmd_find))
+    app.add_handler(CommandHandler("user", cmd_user))
+    app.add_handler(CallbackQueryHandler(cb_approve, pattern=r"^approve:"))
+    app.add_handler(CallbackQueryHandler(cb_verify, pattern=r"^verify:"))
+    app.add_handler(CallbackQueryHandler(cb_reject, pattern=r"^reject:"))
+    app.add_handler(CallbackQueryHandler(cb_ban, pattern=r"^ban:"))
+    app.add_handler(CallbackQueryHandler(cb_next_pending, pattern=r"^next_pending$"))
     return app
+
+
+def _is_admin(update: Update) -> bool:
+    return str(update.effective_user.id) == ADMIN_TG_ID
+
+
+def _get_db():
+    from database import get_conn
+    return get_conn()
+
+
+def _approval_keyboard(user_id: int):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Approve", callback_data=f"approve:{user_id}"),
+            InlineKeyboardButton("⭐ Approve+Verify", callback_data=f"verify:{user_id}"),
+        ],
+        [
+            InlineKeyboardButton("❌ Reject", callback_data=f"reject:{user_id}"),
+            InlineKeyboardButton("🚫 Ban", callback_data=f"ban:{user_id}"),
+        ],
+        [InlineKeyboardButton("⏭ Next Pending", callback_data="next_pending")],
+    ])
+
+
+async def _send_pending_profile(bot, chat_id: str, user):
+    from storage import photo_url
+    import json
+    photos = json.loads(user.photos or "[]")
+    interests = json.loads(user.interests or "[]")
+    text = (
+        f"👤 *Pending Profile #{user.id}*\n\n"
+        f"📛 Name: {user.name}\n"
+        f"🎂 Age: {user.age}\n"
+        f"⚡ Gender: {user.gender}\n"
+        f"🏙 City: {user.city or '-'}\n"
+        f"📝 Bio: {user.bio or '-'}\n"
+        f"🏷 Interests: {', '.join(interests) or '-'}\n"
+        f"📱 Social: {user.social_handle or '-'}\n"
+        f"📞 Phone: {user.phone or '-'}\n"
+        f"🌐 Lang: {user.language or 'en'}\n"
+        f"📅 Joined: {(user.created_at or '')[:10]}"
+    )
+    keyboard = _approval_keyboard(user.id)
+    if user.photo:
+        try:
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=user.photo,
+                caption=text,
+                parse_mode="Markdown",
+                reply_markup=keyboard,
+            )
+            return
+        except Exception:
+            pass
+    await bot.send_message(chat_id=chat_id, text=text, parse_mode="Markdown",
+                           reply_markup=keyboard)
+
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    await update.message.reply_text("👋 *YourMeet Admin Bot*\n\nUse /pending to review profiles.", parse_mode="Markdown")
+
+
+async def cmd_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    from database import row_to_user, USER_COLS
+    cols = ", ".join(USER_COLS)
+    row = db.execute(
+        f"SELECT {cols} FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0 AND photo!='' ORDER BY created_at ASC LIMIT 1"
+    ).fetchone()
+    if not row:
+        await update.message.reply_text("✅ No pending profiles!")
+        return
+    user = row_to_user(row)
+    await _send_pending_profile(ctx.bot, update.effective_chat.id, user)
+
+
+async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    total = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    approved = db.execute("SELECT COUNT(*) FROM users WHERE is_approved=1").fetchone()[0]
+    pending = db.execute("SELECT COUNT(*) FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0 AND photo!=''").fetchone()[0]
+    premium = db.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
+    matches = db.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+    likes = db.execute("SELECT COUNT(*) FROM likes").fetchone()[0]
+    text = (
+        f"📊 *App Stats*\n\n"
+        f"👥 Total users: {total}\n"
+        f"✅ Approved: {approved}\n"
+        f"⏳ Pending: {pending}\n"
+        f"👑 Premium: {premium}\n"
+        f"💕 Matches: {matches}\n"
+        f"❤️ Total likes: {likes}"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    if not ctx.args:
+        await update.message.reply_text("Usage: /broadcast <message>")
+        return
+    msg = " ".join(ctx.args)
+    db = _get_db()
+    tg_ids = [r[0] for r in db.execute("SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND is_blocked=0").fetchall()]
+    sent, failed = 0, 0
+    for tg_id in tg_ids:
+        try:
+            await ctx.bot.send_message(chat_id=tg_id, text=msg, parse_mode="Markdown")
+            sent += 1
+        except Exception:
+            failed += 1
+    await update.message.reply_text(f"✅ Sent: {sent} | ❌ Failed: {failed}")
+
+
+async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    rows = db.execute(
+        "SELECT telegram_id, language FROM users WHERE photo='' AND is_blocked=0 AND telegram_id IS NOT NULL"
+    ).fetchall()
+    sent = 0
+    for tg_id, lang in rows:
+        lang = lang or "en"
+        try:
+            await ctx.bot.send_message(
+                chat_id=tg_id,
+                text="👋 Hey! You haven't completed your profile yet. Open the app to finish setup and start matching! 💕",
+            )
+            sent += 1
+        except Exception:
+            pass
+    await update.message.reply_text(f"✅ Reminded {sent} incomplete users.")
+
+
+async def cmd_remind_blocked(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    rows = db.execute(
+        "SELECT telegram_id, language FROM users WHERE is_rejected=1 AND telegram_id IS NOT NULL"
+    ).fetchall()
+    sent = 0
+    for tg_id, lang in rows:
+        try:
+            await ctx.bot.send_message(
+                chat_id=tg_id,
+                text="ℹ️ Your profile was previously rejected. You can update your profile and resubmit for review.",
+            )
+            sent += 1
+        except Exception:
+            pass
+    await update.message.reply_text(f"✅ Notified {sent} rejected users.")
+
+
+async def cmd_find(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    if not ctx.args:
+        await update.message.reply_text("Usage: /find <name>")
+        return
+    name = " ".join(ctx.args)
+    db = _get_db()
+    rows = db.execute(
+        "SELECT id, name, age, city, is_approved, is_blocked, telegram_id FROM users WHERE name LIKE ? LIMIT 5",
+        (f"%{name}%",)
+    ).fetchall()
+    if not rows:
+        await update.message.reply_text("No users found.")
+        return
+    text = "\n\n".join(
+        f"ID: {r[0]} | {r[1]}, {r[2]} | {r[3] or '-'} | {'✅' if r[4] else '⏳'} | {'🚫' if r[5] else '✔️'} | tg:{r[6]}"
+        for r in rows
+    )
+    await update.message.reply_text(f"🔍 Results:\n\n{text}")
+
+
+async def cmd_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    if not ctx.args:
+        await update.message.reply_text("Usage: /user <id>")
+        return
+    try:
+        user_id = int(ctx.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid ID.")
+        return
+    db = _get_db()
+    from database import row_to_user, USER_COLS
+    cols = ", ".join(USER_COLS)
+    row = db.execute(f"SELECT {cols} FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        await update.message.reply_text("User not found.")
+        return
+    user = row_to_user(row)
+    await _send_pending_profile(ctx.bot, update.effective_chat.id, user)
+
+
+# ── Callbacks ─────────────────────────────────────────────────────────────────
+
+async def cb_approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = int(query.data.split(":")[1])
+    db = _get_db()
+    db.execute("UPDATE users SET is_approved=1, is_rejected=0 WHERE id=?", (user_id,))
+    db.commit()
+    await _notify_user(ctx.bot, db, user_id, "profile_approved")
+    await query.edit_message_caption(
+        caption=f"✅ User #{user_id} approved.", reply_markup=None
+    ) if query.message.photo else await query.edit_message_text(f"✅ User #{user_id} approved.")
+
+
+async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = int(query.data.split(":")[1])
+    db = _get_db()
+    db.execute("UPDATE users SET is_approved=1, is_verified=1, is_rejected=0 WHERE id=?", (user_id,))
+    db.commit()
+    await _notify_user(ctx.bot, db, user_id, "profile_approved_verified")
+    await query.edit_message_caption(
+        caption=f"⭐ User #{user_id} approved + verified.", reply_markup=None
+    ) if query.message.photo else await query.edit_message_text(f"⭐ User #{user_id} approved + verified.")
+
+
+async def cb_reject(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = int(query.data.split(":")[1])
+    db = _get_db()
+    db.execute("UPDATE users SET is_rejected=1, is_approved=0 WHERE id=?", (user_id,))
+    db.commit()
+    await _notify_user(ctx.bot, db, user_id, "profile_rejected")
+    await query.edit_message_caption(
+        caption=f"❌ User #{user_id} rejected.", reply_markup=None
+    ) if query.message.photo else await query.edit_message_text(f"❌ User #{user_id} rejected.")
+
+
+async def cb_ban(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = int(query.data.split(":")[1])
+    db = _get_db()
+    db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (user_id,))
+    db.commit()
+    await _notify_user(ctx.bot, db, user_id, "profile_banned")
+    await query.edit_message_caption(
+        caption=f"🚫 User #{user_id} banned.", reply_markup=None
+    ) if query.message.photo else await query.edit_message_text(f"🚫 User #{user_id} banned.")
+
+
+async def cb_next_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    db = _get_db()
+    from database import row_to_user, USER_COLS
+    cols = ", ".join(USER_COLS)
+    row = db.execute(
+        f"SELECT {cols} FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0 AND photo!='' ORDER BY created_at ASC LIMIT 1"
+    ).fetchone()
+    if not row:
+        await ctx.bot.send_message(chat_id=query.message.chat_id, text="✅ No more pending profiles!")
+        return
+    user = row_to_user(row)
+    await _send_pending_profile(ctx.bot, query.message.chat_id, user)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+async def _notify_user(bot, db, user_id: int, string_key: str):
+    from strings import get as s
+    row = db.execute("SELECT telegram_id, language FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row or not row[0]:
+        return
+    tg_id, lang = row
+    lang = lang or "en"
+    try:
+        await bot.send_message(chat_id=tg_id, text=s(lang, string_key), parse_mode="Markdown")
+    except Exception as e:
+        print(f"[ADMIN BOT] notify failed: {e}")
+
+
+async def send_for_review(user_id: int, name: str, age: int, gender: str, city: str, photo: str):
+    """Called from setup router when new profile is submitted."""
+    if not ADMIN_TG_ID or not ADMIN_BOT_TOKEN:
+        return
+    text = (
+        f"🔔 *New Profile Submitted*\n\n"
+        f"ID: {user_id} | {name}, {age} | {gender} | {city or '-'}\n\n"
+        f"Use /pending to review."
+    )
+    try:
+        from telegram import Bot
+        bot = Bot(token=ADMIN_BOT_TOKEN)
+        if photo:
+            await bot.send_photo(
+                chat_id=ADMIN_TG_ID, photo=photo,
+                caption=text, parse_mode="Markdown"
+            )
+        else:
+            await bot.send_message(chat_id=ADMIN_TG_ID, text=text, parse_mode="Markdown")
+    except Exception as e:
+        print(f"[ADMIN BOT] send_for_review failed: {e}")
