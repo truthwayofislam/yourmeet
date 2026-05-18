@@ -143,5 +143,7 @@ def _delete_user_data(db, user_id: int):
         ("reports", "reporter_id", "reported_id"),
     ]:
         db.execute(f"DELETE FROM {tbl} WHERE {c1}=? OR {c2}=?", (user_id, user_id))
+    db.execute("DELETE FROM chat_sessions WHERE user1_id=? OR user2_id=?", (user_id, user_id))
+    db.execute("DELETE FROM vibe_answers WHERE user_id=?", (user_id,))
     db.execute("DELETE FROM users WHERE id=?", (user_id,))
     db.commit()

@@ -320,12 +320,21 @@ async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not rows:
         await update.message.reply_text("✅ Nothing to clean up!")
         return
-    from routers.auth import _delete_user_data
-    count = 0
-    for (uid,) in rows:
-        _delete_user_data(db, uid)
-        count += 1
-    await update.message.reply_text(f"✅ Deleted {count} incomplete users. Database is clean!")
+    ids = [r[0] for r in rows]
+    placeholders = ",".join("?" * len(ids))
+    for tbl, c1, c2 in [
+        ("likes", "from_user", "to_user"),
+        ("matches", "user1_id", "user2_id"),
+        ("skips", "user_id", "skipped_id"),
+        ("referrals", "referrer_id", "referred_id"),
+        ("reports", "reporter_id", "reported_id"),
+        ("chat_sessions", "user1_id", "user2_id"),
+    ]:
+        db.execute(f"DELETE FROM {tbl} WHERE {c1} IN ({placeholders}) OR {c2} IN ({placeholders})", ids + ids)
+    db.execute(f"DELETE FROM vibe_answers WHERE user_id IN ({placeholders})", ids)
+    db.execute(f"DELETE FROM users WHERE id IN ({placeholders})", ids)
+    db.commit()
+    await update.message.reply_text(f"✅ Deleted {len(ids)} incomplete users. Database is clean!")
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
