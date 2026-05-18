@@ -299,29 +299,19 @@ async def cmd_delete_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("Invalid ID.")
         return
-    db = _get_db()
-    row = db.execute("SELECT name, telegram_id FROM users WHERE id=?", (user_id,)).fetchone()
+    import libsql_experimental as libsql
+    import os
+    TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
+    TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
+    if TURSO_URL and TURSO_TOKEN:
+        conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
+    else:
+        conn = libsql.connect("yourmeet.db")
+    row = conn.execute("SELECT name FROM users WHERE id=?", (user_id,)).fetchone()
     if not row:
         await update.message.reply_text("User not found.")
         return
-    from routers.auth import _delete_user_data
-    _delete_user_data(db, user_id)
-    await update.message.reply_text(f"✅ User #{user_id} ({row[0]}) deleted permanently.")
-
-
-async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Actually delete all incomplete users."""
-    if not _is_admin(update):
-        return
-    db = _get_db()
-    rows = db.execute(
-        "SELECT id FROM users WHERE (photo='' OR photo IS NULL) AND (age IS NULL OR age=0)"
-    ).fetchall()
-    if not rows:
-        await update.message.reply_text("✅ Nothing to clean up!")
-        return
-    ids = [r[0] for r in rows]
-    placeholders = ",".join("?" * len(ids))
+    name = row[0]
     for tbl, c1, c2 in [
         ("likes", "from_user", "to_user"),
         ("matches", "user1_id", "user2_id"),
@@ -330,10 +320,45 @@ async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ("reports", "reporter_id", "reported_id"),
         ("chat_sessions", "user1_id", "user2_id"),
     ]:
-        db.execute(f"DELETE FROM {tbl} WHERE {c1} IN ({placeholders}) OR {c2} IN ({placeholders})", tuple(ids + ids))
-    db.execute(f"DELETE FROM vibe_answers WHERE user_id IN ({placeholders})", tuple(ids))
-    db.execute(f"DELETE FROM users WHERE id IN ({placeholders})", tuple(ids))
-    db.commit()
+        conn.execute(f"DELETE FROM {tbl} WHERE {c1}=? OR {c2}=?", (user_id, user_id))
+    conn.execute("DELETE FROM vibe_answers WHERE user_id=?", (user_id,))
+    conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+    conn.commit()
+    await update.message.reply_text(f"✅ User #{user_id} ({name}) deleted permanently.")
+
+
+async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Actually delete all incomplete users."""
+    if not _is_admin(update):
+        return
+    import libsql_experimental as libsql
+    import os
+    TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
+    TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
+    if TURSO_URL and TURSO_TOKEN:
+        conn = libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
+    else:
+        conn = libsql.connect("yourmeet.db")
+
+    rows = conn.execute(
+        "SELECT id FROM users WHERE (photo='' OR photo IS NULL) AND (age IS NULL OR age=0)"
+    ).fetchall()
+    if not rows:
+        await update.message.reply_text("✅ Nothing to clean up!")
+        return
+    ids = [r[0] for r in rows]
+    placeholders = ",".join("?" * len(ids))
+    t = tuple(ids)
+    t2 = tuple(ids + ids)
+    conn.execute(f"DELETE FROM likes WHERE from_user IN ({placeholders}) OR to_user IN ({placeholders})", t2)
+    conn.execute(f"DELETE FROM matches WHERE user1_id IN ({placeholders}) OR user2_id IN ({placeholders})", t2)
+    conn.execute(f"DELETE FROM skips WHERE user_id IN ({placeholders}) OR skipped_id IN ({placeholders})", t2)
+    conn.execute(f"DELETE FROM referrals WHERE referrer_id IN ({placeholders}) OR referred_id IN ({placeholders})", t2)
+    conn.execute(f"DELETE FROM reports WHERE reporter_id IN ({placeholders}) OR reported_id IN ({placeholders})", t2)
+    conn.execute(f"DELETE FROM chat_sessions WHERE user1_id IN ({placeholders}) OR user2_id IN ({placeholders})", t2)
+    conn.execute(f"DELETE FROM vibe_answers WHERE user_id IN ({placeholders})", t)
+    conn.execute(f"DELETE FROM users WHERE id IN ({placeholders})", t)
+    conn.commit()
     await update.message.reply_text(f"✅ Deleted {len(ids)} incomplete users. Database is clean!")
 
 
