@@ -2,48 +2,69 @@
 {% block content %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.js"></script>
 <style>
-  .map-wrap { height: calc(100vh - 64px); display: flex; flex-direction: column; position: relative; }
+  .map-wrap { height: calc(100vh - 64px); display: flex; flex-direction: column; position: relative; overflow: hidden; }
   #map { flex: 1; z-index: 1; }
-
-  /* Override leaflet for dark theme */
-  .leaflet-tile { filter: brightness(0.7) saturate(0.8); }
   .leaflet-control-zoom { display: none; }
   .leaflet-control-attribution { display: none; }
 
-  /* Find button */
+  .map-overlay-top {
+    position: absolute; top: 0; left: 0; right: 0; height: 120px;
+    background: linear-gradient(to bottom, rgba(15,15,26,0.7), transparent);
+    z-index: 2; pointer-events: none;
+  }
+  .map-overlay-bottom {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 200px;
+    background: linear-gradient(to top, rgba(15,15,26,0.85), transparent);
+    z-index: 2; pointer-events: none;
+  }
+  .map-title {
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 10; font-size: 13px; font-weight: 600;
+    color: rgba(255,255,255,0.6); letter-spacing: 2px;
+    text-transform: uppercase; pointer-events: none;
+  }
   .find-btn-wrap {
     position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
     z-index: 10; width: calc(100% - 40px); max-width: 320px;
   }
   .find-btn {
-    width: 100%; padding: 16px; border-radius: 14px; border: none;
+    width: 100%; padding: 16px; border-radius: 50px; border: none;
     background: var(--gradient); color: #fff; font-size: 16px; font-weight: 700;
-    cursor: pointer; box-shadow: 0 4px 20px rgba(233,30,140,0.4);
+    cursor: pointer;
+    box-shadow: 0 4px 24px rgba(233,30,140,0.5), 0 0 0 1px rgba(233,30,140,0.2);
     transition: opacity 0.2s, transform 0.1s;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
   }
   .find-btn:active { transform: scale(0.97); }
-  .find-btn:disabled { opacity: 0.5; }
+  .find-btn:disabled { opacity: 0.5; box-shadow: none; }
 
-  /* Profile card */
   .profile-card {
     position: absolute; bottom: 0; left: 0; right: 0; z-index: 20;
-    background: var(--card); border-radius: 24px 24px 0 0;
-    border-top: 1px solid var(--border);
+    background: rgba(15,15,26,0.97);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-radius: 28px 28px 0 0;
+    border-top: 1px solid rgba(233,30,140,0.2);
     padding: 20px 20px 90px;
     transform: translateY(100%);
-    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .profile-card.show { transform: translateY(0); }
-
   .card-drag-handle {
-    width: 40px; height: 4px; background: var(--border);
-    border-radius: 2px; margin: 0 auto 16px;
+    width: 40px; height: 4px; background: rgba(233,30,140,0.4);
+    border-radius: 2px; margin: 0 auto 18px;
   }
   .card-top { display: flex; gap: 14px; margin-bottom: 14px; }
-  .card-photo { width: 80px; height: 80px; border-radius: 14px; object-fit: cover; flex-shrink: 0; }
-  .card-photo-placeholder { width: 80px; height: 80px; border-radius: 14px; background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 36px; flex-shrink: 0; }
+  .card-photo {
+    width: 80px; height: 80px; border-radius: 16px; object-fit: cover; flex-shrink: 0;
+    border: 2px solid rgba(233,30,140,0.4);
+    box-shadow: 0 4px 16px rgba(233,30,140,0.2);
+  }
+  .card-photo-placeholder {
+    width: 80px; height: 80px; border-radius: 16px; background: var(--surface);
+    display: flex; align-items: center; justify-content: center; font-size: 36px; flex-shrink: 0;
+  }
   .card-info { flex: 1; }
   .card-info h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
   .card-info .meta { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
@@ -51,32 +72,43 @@
   .card-interests { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
   .card-actions { display: flex; gap: 12px; }
 
-  /* Marker pulse */
+  /* Origin marker — user dot */
+  .origin-marker {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #fff;
+    border: 2px solid rgba(233,30,140,0.8);
+    box-shadow: 0 0 8px rgba(255,255,255,0.6);
+  }
+  /* Destination marker — pulse */
   .pulse-marker {
-    width: 16px; height: 16px; border-radius: 50%;
-    background: var(--primary);
-    box-shadow: 0 0 0 0 rgba(233,30,140,0.6);
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #E91E8C;
+    box-shadow: 0 0 0 0 rgba(233,30,140,0.7);
     animation: pulse 1.5s infinite;
   }
   @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(233,30,140,0.6); }
-    70% { box-shadow: 0 0 0 12px rgba(233,30,140,0); }
+    0%   { box-shadow: 0 0 0 0 rgba(233,30,140,0.7); }
+    70%  { box-shadow: 0 0 0 14px rgba(233,30,140,0); }
     100% { box-shadow: 0 0 0 0 rgba(233,30,140,0); }
   }
 
-  /* Loading overlay */
   .map-loading {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    z-index: 15; background: rgba(15,15,26,0.9);
-    padding: 20px 28px; border-radius: 14px; border: 1px solid var(--border);
+    z-index: 15; background: rgba(15,15,26,0.95);
+    backdrop-filter: blur(12px);
+    padding: 24px 32px; border-radius: 16px;
+    border: 1px solid rgba(233,30,140,0.2);
     text-align: center; display: none;
   }
   .map-loading.show { display: block; }
-  .map-loading p { margin-top: 10px; font-size: 14px; color: var(--text-muted); }
+  .map-loading p { margin-top: 12px; font-size: 14px; color: var(--text-muted); }
 </style>
 
 <div class="map-wrap">
   <div id="map"></div>
+  <div class="map-overlay-top"></div>
+  <div class="map-overlay-bottom"></div>
+  <div class="map-title">🌍 World Discovery</div>
 
   <div class="map-loading" id="mapLoading">
     <div class="spinner"></div>
@@ -85,11 +117,11 @@
 
   <div class="find-btn-wrap" id="findBtnWrap">
     <button class="find-btn" id="findBtn" onclick="findMatch()">
-      🗺 <span data-i18n="btn_find_match">Find My Match</span>
+      <i class="fa-solid fa-location-crosshairs"></i>
+      <span data-i18n="btn_find_match">Find My Match</span>
     </button>
   </div>
 
-  <!-- Profile card -->
   <div class="profile-card" id="profileCard">
     <div class="card-drag-handle"></div>
     <div class="card-top">
@@ -115,13 +147,23 @@
 
 {% block scripts %}
 <script>
-  let map, marker;
+  let map, destMarker, originMarker, antPath;
   let currentUserId = null;
-  let currentUserPhoto = null;
+  let userLat = 20, userLng = 0;  // fallback center
 
-  // Init map
+  // CartoDB Dark Matter tiles
   map = L.map('map', { zoomControl: false, attributionControl: false }).setView([20, 0], 2);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19, subdomains: 'abcd',
+  }).addTo(map);
+
+  // Try to get user's real location
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => { userLat = pos.coords.latitude; userLng = pos.coords.longitude; },
+      () => {}  // silently fail, use fallback
+    );
+  }
 
   async function findMatch() {
     const btn = document.getElementById('findBtn');
@@ -141,20 +183,63 @@
       }
 
       currentUserId = data.id;
-      currentUserPhoto = data.photo;
+      const destLat = data.lat || 20;
+      const destLng = data.lng || 0;
 
-      // Fly to location
-      const lat = data.lat || 20;
-      const lng = data.lng || 0;
-      map.flyTo([lat, lng], 10, { duration: 1.8 });
+      // Step 1: zoom out to world view to show full path
+      map.flyTo([20, 0], 2, { duration: 0.6, easeLinearity: 0.5 });
 
-      // Add pulse marker
-      if (marker) map.removeLayer(marker);
-      const icon = L.divIcon({ className: '', html: '<div class="pulse-marker"></div>', iconSize: [16, 16] });
-      marker = L.marker([lat, lng], { icon }).addTo(map);
+      setTimeout(() => {
+        // Step 2: draw origin marker (user)
+        if (originMarker) map.removeLayer(originMarker);
+        const originIcon = L.divIcon({
+          className: '',
+          html: '<div class="origin-marker"></div>',
+          iconSize: [12, 12], iconAnchor: [6, 6]
+        });
+        originMarker = L.marker([userLat, userLng], { icon: originIcon }).addTo(map);
 
-      // Show card after fly
-      setTimeout(() => showCard(data), 2000);
+        // Step 3: animated ant-path arrow from user to match
+        if (antPath) map.removeLayer(antPath);
+        antPath = L.polyline.antPath(
+          [[userLat, userLng], [destLat, destLng]],
+          {
+            delay: 400,
+            dashArray: [12, 24],
+            weight: 2.5,
+            color: '#E91E8C',
+            pulseColor: '#ffffff',
+            paused: false,
+            reverse: false,
+            hardwareAccelerated: true,
+          }
+        ).addTo(map);
+
+        // Step 4: fit map to show both points with padding
+        const bounds = L.latLngBounds(
+          [userLat, userLng],
+          [destLat, destLng]
+        ).pad(0.3);
+        map.fitBounds(bounds, { duration: 1.4, easeLinearity: 0.25 });
+
+        // Step 5: after path animation, fly to destination and show pulse marker
+        setTimeout(() => {
+          if (destMarker) map.removeLayer(destMarker);
+          const destIcon = L.divIcon({
+            className: '',
+            html: '<div class="pulse-marker"></div>',
+            iconSize: [18, 18], iconAnchor: [9, 9]
+          });
+          destMarker = L.marker([destLat, destLng], { icon: destIcon }).addTo(map);
+
+          map.flyTo([destLat, destLng], 11, { duration: 1.8, easeLinearity: 0.25 });
+
+          // Step 6: show profile card
+          setTimeout(() => showCard(data), 2000);
+        }, 1800);
+
+      }, 700);
+
     } catch {
       document.getElementById('mapLoading').classList.remove('show');
       showToast('Something went wrong. Try again.');
@@ -163,26 +248,17 @@
   }
 
   function showCard(data) {
-    // Photo
     const photoWrap = document.getElementById('cardPhotoWrap');
-    if (data.photo) {
-      photoWrap.innerHTML = `<img class="card-photo" src="${data.photo}" alt="${data.name}" />`;
-    } else {
-      photoWrap.innerHTML = `<div class="card-photo-placeholder">👤</div>`;
-    }
-
-    // Info
+    photoWrap.innerHTML = data.photo
+      ? `<img class="card-photo" src="${data.photo}" alt="${data.name}" />`
+      : `<div class="card-photo-placeholder">👤</div>`;
     document.getElementById('cardName').innerHTML =
       `${data.name}, ${data.age}${data.is_verified ? ' ⭐' : ''}`;
     document.getElementById('cardMeta').textContent =
-      [data.city, data.age ? `${data.age} yrs` : ''].filter(Boolean).join(' · ');
+      data.city ? '📍 ' + data.city : '';
     document.getElementById('cardBio').textContent = data.bio || '';
-
-    // Interests
-    const interestsEl = document.getElementById('cardInterests');
-    interestsEl.innerHTML = (data.interests || []).slice(0, 6)
-      .map(t => `<span class="tag">${t}</span>`).join('');
-
+    document.getElementById('cardInterests').innerHTML =
+      (data.interests || []).slice(0, 6).map(t => `<span class="tag">${t}</span>`).join('');
     document.getElementById('profileCard').classList.add('show');
     document.getElementById('findBtnWrap').style.display = 'none';
   }
@@ -191,8 +267,10 @@
     document.getElementById('profileCard').classList.remove('show');
     document.getElementById('findBtnWrap').style.display = 'block';
     document.getElementById('findBtn').disabled = false;
-    if (marker) { map.removeLayer(marker); marker = null; }
-    map.flyTo([20, 0], 2, { duration: 1.2 });
+    if (destMarker)  { map.removeLayer(destMarker);  destMarker = null; }
+    if (originMarker){ map.removeLayer(originMarker); originMarker = null; }
+    if (antPath)     { map.removeLayer(antPath);      antPath = null; }
+    map.flyTo([20, 0], 2, { duration: 1.5, easeLinearity: 0.3 });
   }
 
   async function likeMatch() {
@@ -201,16 +279,15 @@
     const data = await res.json();
     if (data.limit) {
       showToast('Daily swipe limit reached! Upgrade to Premium for unlimited.');
-      closeCard();
-      return;
+      closeCard(); return;
     }
     if (data.matched) {
       showToast("💕 It's a Match!");
       setTimeout(() => window.location.href = '/matches', 1500);
     } else {
       showToast('❤️ Liked!');
+      closeCard();
     }
-    closeCard();
   }
 
   async function skipMatch() {
