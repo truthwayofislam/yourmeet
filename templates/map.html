@@ -197,12 +197,13 @@
 
   async function likeMatch() {
     if (!currentUserId) return;
-    const res = await fetch(`/like/${currentUserId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ super: false }),
-    });
+    const res = await fetch(`/api/map/like/${currentUserId}`, { method: 'POST' });
     const data = await res.json();
+    if (data.limit) {
+      showToast('Daily swipe limit reached! Upgrade to Premium for unlimited.');
+      closeCard();
+      return;
+    }
     if (data.matched) {
       showToast("💕 It's a Match!");
       setTimeout(() => window.location.href = '/matches', 1500);

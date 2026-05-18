@@ -11,6 +11,7 @@ load_dotenv()
 
 from database import init_db, get_conn
 from routers import auth, setup, profiles, map, chat, payment, translate
+from routers import vibe
 from routers.auth import get_current_user
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI):
     # Scheduler — cleanup expired chat sessions every minute
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_cleanup_chats, "interval", minutes=1)
+    scheduler.add_job(_expire_premium, "interval", hours=1)
     scheduler.start()
     print("[SCHEDULER] Started")
 
@@ -79,6 +81,15 @@ async def _cleanup_chats():
     await cleanup_expired_sessions(db)
 
 
+async def _expire_premium():
+    """Expire premium for users whose premium_until has passed."""
+    db = get_conn()
+    db.execute(
+        "UPDATE users SET is_premium=0, super_likes_left=1 WHERE is_premium=1 AND premium_until != '' AND premium_until < datetime('now')"
+    )
+    db.commit()
+
+
 app = FastAPI(title="YourMeet", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -89,6 +100,7 @@ app.include_router(map.router)
 app.include_router(chat.router)
 app.include_router(payment.router)
 app.include_router(translate.router)
+app.include_router(vibe.router)
 
 
 @app.get("/premium")

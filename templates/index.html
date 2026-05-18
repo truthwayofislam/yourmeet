@@ -36,6 +36,17 @@
     display: flex; align-items: center; justify-content: center; font-size: 80px;
   }
 
+  /* Mystery Mode card */
+  .mystery-photo {
+    width: 100%; height: 100%;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px;
+  }
+  .mystery-photo .ghost { font-size: 80px; filter: blur(0px); animation: float 3s ease-in-out infinite; }
+  .mystery-photo p { font-size: 16px; font-weight: 600; color: var(--text-muted); }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
   /* Photo dots */
   .photo-dots {
     position: absolute; top: 12px; left: 12px; right: 12px;
@@ -133,18 +144,24 @@
     {% for p in profiles %}
     {% set photos = p.photos | from_json %}
     {% set interests = p.interests | from_json %}
+    {% set is_mystery = p.mystery_until and p.mystery_until > '' %}
     <div class="swipe-card" id="card-{{ p.id }}"
          data-id="{{ p.id }}"
          data-photos='{{ photos | tojson }}'
          data-photo-idx="0">
 
-      {% if p.photo %}
+      {% if is_mystery %}
+      <div class="mystery-photo">
+        <div class="ghost">👻</div>
+        <p>Mystery Mode</p>
+      </div>
+      {% elif p.photo %}
       <img src="{{ p.photo | photo_url }}" id="cardImg-{{ p.id }}" alt="{{ p.name }}" />
       {% else %}
       <div class="card-no-photo">👤</div>
       {% endif %}
 
-      {% if photos | length > 1 %}
+      {% if not is_mystery and photos | length > 1 %}
       <div class="photo-dots" id="dots-{{ p.id }}">
         {% for ph in photos %}
         <div class="photo-dot {% if loop.first %}active{% endif %}"></div>
@@ -157,7 +174,7 @@
 
       <div class="card-overlay">
         <div class="card-name">
-          {{ p.name }}, {{ p.age }}
+          {% if is_mystery %}👻 Mystery{% else %}{{ p.name }}, {{ p.age }}{% endif %}
           {% if p.is_verified %}<span style="font-size:18px;">⭐</span>{% endif %}
         </div>
         <div class="card-meta">
@@ -165,9 +182,11 @@
         </div>
         {% if p.bio %}
         <div class="card-bio" id="bio-{{ p.id }}">{{ p.bio }}</div>
+        {% if not is_mystery %}
         <button class="translate-btn" id="tbtn-{{ p.id }}" onclick="translateBio('{{ p.id }}', this)">
           <i class="fa-solid fa-language"></i> Translate
         </button>
+        {% endif %}
         {% endif %}
         {% if interests %}
         <div class="card-tags">
@@ -281,6 +300,16 @@
 
   async function animateSwipe(card, type) {
     const id = parseInt(card.dataset.id);
+
+    // Check limit BEFORE animating
+    if (type === 'like' || type === 'super') {
+      if (swipesLeft <= 0) {
+        showToast('Daily swipe limit reached! Come back tomorrow or upgrade to Premium.');
+        card.style.transform = '';
+        return;
+      }
+    }
+
     const dir = type === 'nope' ? -1 : 1;
     card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
     card.style.transform = `translateX(${dir * 120}%) rotate(${dir * 20}deg)`;
@@ -288,7 +317,6 @@
     currentIdx--;
 
     if (type === 'like' || type === 'super') {
-      if (swipesLeft <= 0) { showToast('Daily limit reached! Come back tomorrow.'); return; }
       swipesLeft--;
       document.getElementById('swipeCount').textContent = swipesLeft;
       const res = await fetch(`/like/${id}`, {
@@ -298,13 +326,58 @@
       });
       const data = await res.json();
       if (data.matched) showMatch(card);
-      if (data.limit) showToast('Daily swipe limit reached!');
+      if (data.limit) { swipesLeft = 0; document.getElementById('swipeCount').textContent = 0; }
     } else {
       await fetch(`/skip/${id}`, { method: 'POST' });
     }
 
     setTimeout(() => card.remove(), 400);
-    if (currentIdx < 0) showEmpty();
+    if (currentIdx < 0) loadMoreProfiles();
+  }
+
+  async function loadMoreProfiles() {
+    const stack = document.getElementById('cardStack');
+    if (!stack) return;
+    try {
+      const res = await fetch('/api/feed');
+      const data = await res.json();
+      if (!data.profiles || data.profiles.length === 0) {
+        showEmpty(); return;
+      }
+      data.profiles.forEach(p => {
+        const card = createCard(p);
+        stack.insertBefore(card, stack.firstChild);
+        cards.unshift(card);
+        currentIdx++;
+        initDrag(card);
+      });
+    } catch { showEmpty(); }
+  }
+
+  function createCard(p) {
+    const div = document.createElement('div');
+    div.className = 'swipe-card';
+    div.id = `card-${p.id}`;
+    div.dataset.id = p.id;
+    div.dataset.photos = JSON.stringify(p.photos || []);
+    div.dataset.photoIdx = '0';
+    const photoSrc = p.photo || '';
+    const photoHtml = p.is_mystery
+      ? `<div class="mystery-photo"><div class="ghost">👻</div><p>Mystery Mode</p></div>`
+      : photoSrc ? `<img src="${photoSrc}" alt="${p.name}" />` : '<div class="card-no-photo">👤</div>';
+    div.innerHTML = `
+      ${photoHtml}
+      ${!p.is_mystery && p.photos && p.photos.length > 1 ? `<div class="photo-dots" id="dots-${p.id}">${p.photos.map((_, i) => `<div class="photo-dot${i===0?' active':''}"></div>`).join('')}</div>` : ''}
+      <div class="like-indicator" id="like-${p.id}">LIKE ❤️</div>
+      <div class="nope-indicator" id="nope-${p.id}">NOPE 👎</div>
+      <div class="card-overlay">
+        <div class="card-name">${p.is_mystery ? '👻 Mystery' : p.name + ', ' + p.age}${p.is_verified ? ' <span style="font-size:18px;">⭐</span>' : ''}</div>
+        <div class="card-meta">${p.city ? '📍 ' + p.city : ''}</div>
+        ${p.bio ? `<div class="card-bio" id="bio-${p.id}">${p.bio}</div>` : ''}
+        ${p.interests && p.interests.length ? `<div class="card-tags">${p.interests.slice(0,4).map(t=>`<span class="card-tag">${t}</span>`).join('')}</div>` : ''}
+      </div>
+    `;
+    return div;
   }
 
   function showMatch(card) {

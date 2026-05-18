@@ -238,7 +238,7 @@
     if (n === 1 && saved.name) document.getElementById('inp-name').value = saved.name;
     if (n === 2 && saved.age) document.getElementById('inp-age').value = saved.age;
     if (n === 6 && saved.bio) { document.getElementById('inp-bio').value = saved.bio; updateCharCount(document.getElementById('inp-bio'),'bio-count',300); }
-    if (n === 8 && saved.phone) document.getElementById('inp-phone').value = saved.phone;
+    if (n === 8 && saved.phone) document.getElementById('inp-phone-num').value = saved.phone;
     if (n === 9 && saved.city) document.getElementById('inp-city').value = saved.city;
     if (n === 10 && saved.social) document.getElementById('inp-social').value = saved.social;
   }
@@ -431,4 +431,5 @@
     const langCode = (window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code || 'en').slice(0,2);
     sel.value = langToCode[langCode] || '+1';
   }
+</script>
 {% endblock %}

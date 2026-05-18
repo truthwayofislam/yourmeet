@@ -27,6 +27,7 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("boost", cmd_boost))
     app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
+    app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:"))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -244,6 +245,28 @@ async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print(f"[BOT] send_invoice failed: {e}")
+
+
+async def cb_vibe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Handle vibe check answer from inline button."""
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split(":")
+    if len(parts) != 3:
+        return
+    match_id = int(parts[1])
+    answer = parts[2]  # 'a' or 'b'
+    tg_id = str(update.effective_user.id)
+    from database import get_conn, row_to_user, USER_COLS
+    db = get_conn()
+    cols = ", ".join(USER_COLS)
+    user = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE telegram_id=?", (tg_id,)).fetchone())
+    if not user:
+        return
+    from routers.vibe import submit_vibe_answer
+    result = await submit_vibe_answer(match_id, {"answer": answer}, db=db, current_user=user)
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.message.reply_text("✅ Answer recorded! Waiting for your match to answer..." if True else "")
 
 
 async def cb_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):

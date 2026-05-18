@@ -158,16 +158,19 @@ async def like_user(target_id: int, request: Request, db=Depends(get_db), curren
                     await _start_chat_session(db, match_row[0], current_user, target)
             except Exception as e:
                 print(f"[LIKE] chat session failed: {e}")
-            # Notify via bot
+            # Notify via bot + send vibe check
             try:
                 from main import bot_app
                 from bot import notify_match
+                from routers.vibe import send_vibe_question_to_match
                 if not target:
                     target = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (target_id,)).fetchone())
                 if bot_app and target and target.telegram_id:
                     await notify_match(bot_app.bot, target, current_user)
                 if bot_app and current_user.telegram_id:
                     await notify_match(bot_app.bot, current_user, target)
+                if bot_app and target and match_row:
+                    await send_vibe_question_to_match(bot_app.bot, match_row[0], current_user, target)
             except Exception as e:
                 print(f"[LIKE] notify failed: {e}")
         return JSONResponse({"matched": True})
@@ -221,6 +224,41 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
     return JSONResponse({"ok": True})
 
 
+@router.get("/api/likes/received")
+async def likes_received(db=Depends(get_db), current_user=Depends(get_current_user)):
+    """Premium only — return list of users who liked current user."""
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not current_user.is_premium:
+        return JSONResponse({"error": "premium_required"}, status_code=403)
+    from storage import photo_url as _photo_url
+    rows = db.execute(
+        f"""SELECT {_COLS} FROM users
+            INNER JOIN likes ON likes.from_user = users.id
+            WHERE likes.to_user = ?
+            AND users.is_blocked = 0 AND users.is_approved = 1
+            ORDER BY likes.created_at DESC""",
+        (current_user.id,),
+    ).fetchall()
+    result = []
+    for r in rows:
+        u = row_to_user(r)
+        is_super_row = db.execute(
+            "SELECT is_super FROM likes WHERE from_user=? AND to_user=?",
+            (u.id, current_user.id)
+        ).fetchone()
+        result.append({
+            "id": u.id,
+            "name": u.name,
+            "age": u.age,
+            "city": u.city or "",
+            "photo": _photo_url(u.photo),
+            "is_verified": u.is_verified,
+            "is_super": bool(is_super_row[0]) if is_super_row else False,
+        })
+    return JSONResponse({"likes": result})
+
+
 @router.post("/boost")
 async def boost(db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
@@ -267,7 +305,7 @@ async def update_profile(
 
     db.execute(
         """UPDATE users SET bio=?, city=?, lat=?, lng=?, social_handle=?, age=?, gender=?,
-           interested_in=?, photo=?, is_approved=0 WHERE id=?""",
+           interested_in=?, photo=?, is_approved=0, daily_swipes=10, swipes_reset_date='' WHERE id=?""",
         (bio, city, lat, lng, social_handle, new_age, new_gender, new_interested, photo_path, current_user.id),
     )
     db.commit()
@@ -279,6 +317,41 @@ async def update_profile(
         pass
 
     return JSONResponse({"ok": True})
+
+
+@router.get("/api/feed")
+async def get_feed(db=Depends(get_db), current_user=Depends(get_current_user)):
+    """Return next batch of profiles as JSON for infinite scroll."""
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    _reset_swipes_if_needed(db, current_user)
+    profiles = _get_feed(db, current_user, limit=10)
+    from storage import photo_url
+    result = []
+    for p in profiles:
+        photos = json.loads(p.photos or "[]")
+        interests = json.loads(p.interests or "[]")
+        # Mystery mode check
+        mystery_until = getattr(p, "mystery_until", "") or ""
+        is_mystery = False
+        if mystery_until:
+            try:
+                is_mystery = datetime.strptime(mystery_until, "%Y-%m-%d %H:%M:%S") > datetime.utcnow()
+            except Exception:
+                pass
+        result.append({
+            "id": p.id,
+            "name": p.name,
+            "age": p.age,
+            "city": p.city or "",
+            "bio": p.bio or "",
+            "photo": photo_url(p.photo) if not is_mystery else "",
+            "photos": [photo_url(ph) for ph in photos] if not is_mystery else [],
+            "interests": interests,
+            "is_verified": p.is_verified,
+            "is_mystery": is_mystery,
+        })
+    return JSONResponse({"profiles": result})
 
 
 # ── Helper ───────────────────────────────────────────────────────────────────
@@ -297,6 +370,7 @@ def _get_feed(db, user, limit=10):
         gender_sql = "gender=?"
         gender_params = (interested_in,)
 
+    # Pending users get feed too (approved profiles only, limit 10)
     rows = db.execute(
         f"""SELECT {_COLS} FROM users
             WHERE id NOT IN ({placeholders})

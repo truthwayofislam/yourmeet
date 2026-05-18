@@ -222,7 +222,7 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 - Click → backend picks random matching user
 - Map flyTo() animation to that user's city
 - Profile card slides up from bottom
-- Name, Age, City, Bio, Interests, Social handle shown
+- Name, Age, City, Bio, Interests shown
 - Like ❤️ / Skip 👎 buttons
 - Match → 1 min Telegram bot chat opens
 
@@ -363,7 +363,7 @@ CREATE INDEX idx_chat_sessions_active ON chat_sessions(is_active);
 | Daily swipes | 30 (after approval) | Unlimited |
 | Super likes | 1/day | Unlimited |
 | See who liked you | ❌ | ✅ |
-| Contact details on match | ❌ | ✅ |
+| Social handle on match | ❌ | ✅ |
 | Profile boost | ❌ | ✅ (30 min) |
 | Priority in feed | ❌ | ✅ |
 | Bot chat on match | 1 minute | Unlimited |

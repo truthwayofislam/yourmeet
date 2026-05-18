@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from database import get_db, row_to_user, USER_COLS
 from routers.auth import get_current_user
+from routers.profiles import _reset_swipes_if_needed
 from storage import photo_url
 from templating import templates
 
@@ -13,7 +14,7 @@ _COLS = ", ".join(USER_COLS)
 @router.get("/map", response_class=HTMLResponse)
 async def map_page(request: Request, current_user=Depends(get_current_user)):
     if not current_user:
-        return HTMLResponse(status_code=302, headers={"Location": "/setup"})
+        return RedirectResponse("/setup", status_code=302)
     return templates.TemplateResponse(
         request, "map.html", {"user": current_user, "active": "map"}
     )
@@ -83,3 +84,67 @@ async def get_map_match(request: Request, db=Depends(get_db), current_user=Depen
         "lat": user.lat or 20.0,
         "lng": user.lng or 0.0,
     })
+
+
+@router.post("/api/map/like/{target_id}")
+async def map_like(target_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
+    """Like from map — respects swipe limits same as swipe feed."""
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if target_id == current_user.id:
+        return JSONResponse({"error": "invalid"}, status_code=400)
+
+    if not current_user.is_premium:
+        _reset_swipes_if_needed(db, current_user)
+        if current_user.daily_swipes <= 0:
+            return JSONResponse({"error": "limit", "limit": True})
+
+    already = db.execute(
+        "SELECT id FROM likes WHERE from_user=? AND to_user=?",
+        (current_user.id, target_id),
+    ).fetchone()
+    if not already:
+        db.execute(
+            "INSERT INTO likes (from_user, to_user, is_super) VALUES (?,?,0)",
+            (current_user.id, target_id),
+        )
+        if not current_user.is_premium:
+            db.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (current_user.id,))
+        db.commit()
+
+    mutual = db.execute(
+        "SELECT id FROM likes WHERE from_user=? AND to_user=?",
+        (target_id, current_user.id),
+    ).fetchone()
+    if mutual:
+        existing = db.execute(
+            "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
+            (current_user.id, target_id, target_id, current_user.id),
+        ).fetchone()
+        if not existing:
+            db.execute("INSERT INTO matches (user1_id, user2_id) VALUES (?,?)", (current_user.id, target_id))
+            db.commit()
+            try:
+                from routers.chat import _start_chat_session
+                target_user = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (target_id,)).fetchone())
+                match_row = db.execute(
+                    "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
+                    (current_user.id, target_id, target_id, current_user.id)
+                ).fetchone()
+                if match_row and target_user:
+                    await _start_chat_session(db, match_row[0], current_user, target_user)
+            except Exception as e:
+                print(f"[MAP LIKE] chat session failed: {e}")
+            try:
+                from main import bot_app
+                from bot import notify_match
+                target_user = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (target_id,)).fetchone())
+                if bot_app and target_user and target_user.telegram_id:
+                    await notify_match(bot_app.bot, target_user, current_user)
+                if bot_app and current_user.telegram_id:
+                    await notify_match(bot_app.bot, current_user, target_user)
+            except Exception as e:
+                print(f"[MAP LIKE] notify failed: {e}")
+        return JSONResponse({"matched": True})
+
+    return JSONResponse({"matched": False})

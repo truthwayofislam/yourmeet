@@ -56,6 +56,7 @@ STRINGS = {
         "boost_active": "🚀 <b>¡Perfil Impulsado!</b>\n\n¡Tu perfil se mostrará primero durante los próximos 30 minutos!",
         "language_changed": "✅ ¡Idioma actualizado!",
         "not_approved_yet": "⏳ Tu perfil aún está en revisión. ¡Te notificaremos pronto!",
+        "btn_upgrade": "👑 ¡Actualiza a Premium para funciones ilimitadas!",
     },
 
     "ru": {
@@ -85,6 +86,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Профиль продвинут!</b>\n\nВаш профиль будет показываться первым 30 минут!",
         "language_changed": "✅ Язык обновлён!",
         "not_approved_yet": "⏳ Ваш профиль ещё на проверке. Скоро уведомим!",
+        "btn_upgrade": "👑 Перейдите на Premium для безлимитных функций!",
     },
 
     "ko": {
@@ -114,6 +116,7 @@ STRINGS = {
         "boost_active": "🚀 <b>프로필 부스트!</b>\n\n30분 동안 프로필이 먼저 표시됩니다!",
         "language_changed": "✅ 언어가 업데이트되었습니다!",
         "not_approved_yet": "⏳ 프로필이 아직 검토 중입니다. 곧 알려드리겠습니다!",
+        "btn_upgrade": "👑 무제한 기능을 위해 프리미엄으로 업그레이드하세요!",
     },
 
     "zh": {
@@ -143,6 +146,7 @@ STRINGS = {
         "boost_active": "🚀 <b>资料已加速！</b>\n\n您的资料将在接下来30分钟内优先显示！",
         "language_changed": "✅ 语言已更新！",
         "not_approved_yet": "⏳ 您的资料仍在审核中，我们会尽快通知您！",
+        "btn_upgrade": "👑 升级到高级版，解锁无限功能！",
     },
 
     "id": {
@@ -172,6 +176,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Profil Diboost!</b>\n\nProfilmu akan ditampilkan pertama selama 30 menit ke depan!",
         "language_changed": "✅ Bahasa diperbarui!",
         "not_approved_yet": "⏳ Profil kamu masih dalam peninjauan. Kami akan segera memberi tahu!",
+        "btn_upgrade": "👑 Upgrade ke Premium untuk fitur tanpa batas!",
     },
 
     "ar": {
@@ -201,6 +206,7 @@ STRINGS = {
         "boost_active": "🚀 <b>تم تعزيز الملف الشخصي!</b>\n\nسيظهر ملفك أولاً خلال الـ 30 دقيقة القادمة!",
         "language_changed": "✅ تم تحديث اللغة!",
         "not_approved_yet": "⏳ ملفك الشخصي لا يزال قيد المراجعة. سنخطرك قريباً!",
+        "btn_upgrade": "👑 ترقَّ إلى Premium للحصول على ميزات غير محدودة!",
     },
 
     "pt": {
@@ -230,6 +236,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Perfil Impulsionado!</b>\n\nSeu perfil será mostrado primeiro pelos próximos 30 minutos!",
         "language_changed": "✅ Idioma atualizado!",
         "not_approved_yet": "⏳ Seu perfil ainda está em análise. Avisaremos em breve!",
+        "btn_upgrade": "👑 Atualize para Premium para recursos ilimitados!",
     },
 
     "fr": {
@@ -259,6 +266,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Profil Boosté!</b>\n\nVotre profil sera affiché en premier pendant les 30 prochaines minutes!",
         "language_changed": "✅ Langue mise à jour!",
         "not_approved_yet": "⏳ Votre profil est encore en cours d'examen. Nous vous notifierons bientôt!",
+        "btn_upgrade": "👑 Passez à Premium pour des fonctionnalités illimitées!",
     },
 
     "de": {
@@ -288,6 +296,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Profil geboostet!</b>\n\nDein Profil wird in den nächsten 30 Minuten zuerst angezeigt!",
         "language_changed": "✅ Sprache aktualisiert!",
         "not_approved_yet": "⏳ Dein Profil wird noch überprüft. Wir benachrichtigen dich bald!",
+        "btn_upgrade": "👑 Upgrade auf Premium für unbegrenzte Funktionen!",
     },
 
     "tr": {
@@ -317,6 +326,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Profil Boost Edildi!</b>\n\nProfiliniz önümüzdeki 30 dakika boyunca önce gösterilecek!",
         "language_changed": "✅ Dil güncellendi!",
         "not_approved_yet": "⏳ Profiliniz hâlâ inceleniyor. Yakında bilgilendireceğiz!",
+        "btn_upgrade": "👑 Sınırsız özellikler için Premium'a yükseltin!",
     },
 
     "it": {
@@ -346,6 +356,7 @@ STRINGS = {
         "boost_active": "🚀 <b>Profilo Boostato!</b>\n\nIl tuo profilo sarà mostrato per primo per i prossimi 30 minuti!",
         "language_changed": "✅ Lingua aggiornata!",
         "not_approved_yet": "⏳ Il tuo profilo è ancora in revisione. Ti avviseremo presto!",
+        "btn_upgrade": "👑 Passa a Premium per funzionalità illimitate!",
     },
 
     "ja": {
@@ -375,6 +386,7 @@ STRINGS = {
         "boost_active": "🚀 <b>プロフィールブースト！</b>\n\n今後30分間、あなたのプロフィールが優先表示されます！",
         "language_changed": "✅ 言語が更新されました！",
         "not_approved_yet": "⏳ プロフィールはまだ審査中です。もうすぐお知らせします！",
+        "btn_upgrade": "👑 無制限の機能のためにプレミアムにアップグレード！",
     },
 
     "hi": {
@@ -404,6 +416,7 @@ STRINGS = {
         "boost_active": "🚀 <b>प्रोफ़ाइल बूस्ट!</b>\n\nआपकी प्रोफ़ाइल अगले 30 मिनट तक सबसे पहले दिखाई देगी!",
         "language_changed": "✅ भाषा अपडेट की गई!",
         "not_approved_yet": "⏳ आपकी प्रोफ़ाइल अभी समीक्षाधीन है। हम जल्द ही सूचित करेंगे!",
+        "btn_upgrade": "👑 असीमित सुविधाओं के लिए Premium में अपग्रेड करें!",
     },
 }
 

@@ -130,6 +130,7 @@
     <button class="btn btn-primary" onclick="toggleEdit()" id="editBtn" data-i18n="btn_edit">Edit Profile</button>
     {% if user.is_premium %}
     <button class="btn btn-secondary" onclick="boostProfile()" style="flex-shrink:0;width:auto;padding:14px 18px;">🚀</button>
+    <button class="btn btn-secondary" onclick="toggleMystery()" id="mysteryBtn" style="flex-shrink:0;width:auto;padding:14px 18px;">👻</button>
     {% endif %}
   </div>
 
@@ -232,6 +233,25 @@
     </div>
   </div>
 
+  <!-- Who Liked You (Premium only) -->
+  {% if user.is_premium %}
+  <div class="section" id="likedYouSection">
+    <div class="section-title">Who Liked You ❤️</div>
+    <div id="likedYouList" style="display:flex;flex-wrap:wrap;gap:10px;">
+      <div class="spinner"></div>
+    </div>
+  </div>
+  {% else %}
+  <div class="section">
+    <div class="glass" style="padding:16px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:8px;">🔒</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px;">See Who Liked You</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Upgrade to Premium to see everyone who liked your profile.</div>
+      <a href="/premium" class="btn btn-primary btn-sm" style="max-width:180px;">Upgrade 👑</a>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Danger zone -->
   <div class="danger-zone">
     <button class="btn btn-danger btn-sm" onclick="deleteAccount()">🗑 Delete Account</button>
@@ -275,18 +295,73 @@
     showToast(data.ok ? '🚀 Profile boosted for 30 minutes!' : (data.error || 'Boost failed.'));
   }
 
+  async function toggleMystery() {
+    const res = await fetch('/api/mystery/toggle', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      const btn = document.getElementById('mysteryBtn');
+      if (data.active) {
+        btn.style.background = 'rgba(233,30,140,0.2)';
+        btn.style.borderColor = 'var(--primary)';
+        showToast('👻 Mystery Mode ON! Your photo is hidden for 24 hours.');
+      } else {
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        showToast('👻 Mystery Mode OFF.');
+      }
+    } else {
+      showToast(data.error || 'Failed.');
+    }
+  }
+
+  // Check mystery status on load
+  {% if user.is_premium %}
+  (async () => {
+    const res = await fetch('/api/mystery/status');
+    const data = await res.json();
+    if (data.active) {
+      const btn = document.getElementById('mysteryBtn');
+      if (btn) { btn.style.background = 'rgba(233,30,140,0.2)'; btn.style.borderColor = 'var(--primary)'; }
+    }
+  })();
+  {% endif %}
+
   async function deleteAccount() {
     if (!confirm('Are you sure? This cannot be undone.')) return;
-    const tg = window.Telegram?.WebApp?.initDataUnsafe?.user;
-    if (tg) {
-      await fetch('/auth/telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: tg.id, first_name: tg.first_name }),
-      });
-    }
-    showToast('Account deleted.');
-    setTimeout(() => { document.cookie = 'token=;max-age=0;path=/'; window.location.href = '/setup'; }, 1500);
+    try {
+      const res = await fetch('/account/delete', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        showToast('Account deleted.');
+        setTimeout(() => {
+          document.cookie = 'token=;max-age=0;path=/';
+          window.location.href = '/setup';
+        }, 1500);
+      } else {
+        showToast(data.error || 'Delete failed.');
+      }
+    } catch { showToast('Network error.'); }
   }
+
+  {% if user.is_premium %}
+  (async () => {
+    const res = await fetch('/api/likes/received');
+    const data = await res.json();
+    const el = document.getElementById('likedYouList');
+    if (!data.likes || data.likes.length === 0) {
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">No likes yet. Keep swiping!</p>';
+      return;
+    }
+    el.innerHTML = data.likes.map(u => `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:80px;">
+        <div style="position:relative;">
+          <img src="${u.photo || ''}" onerror="this.style.display='none'" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--primary);" />
+          ${u.is_super ? '<span style="position:absolute;bottom:-2px;right:-2px;font-size:14px;">⭐</span>' : ''}
+        </div>
+        <span style="font-size:12px;font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${u.name}, ${u.age}</span>
+      </div>
+    `).join('');
+  })();
+  {% endif %}
 </script>
 {% endblock %}

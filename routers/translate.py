@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 router = APIRouter()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-MODEL = "google/gemma-3-27b-it"
+MODEL = "google/gemma-4-31b-it:free"
 
 
 @router.post("/api/translate")

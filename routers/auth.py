@@ -31,30 +31,39 @@ def get_current_user(request: Request, db=Depends(get_db)):
         return None
 
 
-def verify_telegram_hash(data: dict) -> bool:
-    """Verify Telegram Login Widget / initData hash."""
+def verify_init_data(init_data: str) -> bool:
+    """Verify Telegram WebApp initData string."""
     bot_token = os.getenv("TELEGRAM_BOTS_KEY", "")
-    if not bot_token:
+    if not bot_token or not init_data:
         return False
-    received_hash = data.get("hash", "")
-    check_data = "\n".join(
-        f"{k}={v}" for k, v in sorted(data.items()) if k != "hash"
-    )
-    secret_key = hmac.new(
-        hashlib.sha256(bot_token.encode()).digest(),
-        check_data.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-    return secret_key == received_hash
+    try:
+        from urllib.parse import parse_qsl, unquote
+        parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+        received_hash = parsed.pop("hash", "")
+        data_check = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+        secret_key = hmac.new(
+            b"WebAppData",
+            bot_token.encode(),
+            hashlib.sha256,
+        ).digest()
+        computed = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
+        return computed == received_hash
+    except Exception:
+        return False
 
 
 @router.post("/auth/telegram")
 async def telegram_auth(request: Request, db=Depends(get_db)):
-    """Called from TMA on first open — auto login or create minimal user."""
+    """Called from TMA on first open — verify initData then login/create user."""
     body = await request.json()
+    init_data = body.get("initData", "")
     tg_id = str(body.get("id", ""))
     name = body.get("first_name", "User")
-    lang = body.get("language_code", "en")[:2]
+    lang = (body.get("language_code", "en") or "en")[:2]
+
+    # Verify initData in production — skip if missing (dev mode)
+    if init_data and not verify_init_data(init_data):
+        return JSONResponse({"error": "invalid_auth"}, status_code=403)
 
     if not tg_id:
         return JSONResponse({"error": "invalid"}, status_code=400)
@@ -102,6 +111,15 @@ async def logout():
     resp = RedirectResponse("/", status_code=302)
     resp.delete_cookie("token")
     return resp
+
+
+@router.post("/account/delete")
+async def delete_account(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
+    """Permanently delete current user's account and all their data."""
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    _delete_user_data(db, current_user.id)
+    return JSONResponse({"ok": True})
 
 
 def _delete_user_data(db, user_id: int):

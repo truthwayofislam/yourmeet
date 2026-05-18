@@ -185,13 +185,19 @@
       const res = await fetch('/auth/telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: tgUser.id, first_name: tgUser.first_name, language_code: tgUser.language_code }),
+        body: JSON.stringify({
+          id: tgUser.id,
+          first_name: tgUser.first_name,
+          language_code: tgUser.language_code,
+          initData: tg.initData || '',
+        }),
       });
       if (res.ok) {
         const data = await res.json();
         if (data.token) {
           document.cookie = `token=${data.token};path=/;max-age=2592000;SameSite=None;Secure`;
-          if (data.new_user && !window.location.pathname.startsWith('/setup')) {
+          const path = window.location.pathname;
+          if (data.new_user && !path.startsWith('/setup')) {
             window.location.href = '/setup';
             return;
           }

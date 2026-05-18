@@ -153,7 +153,35 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_likes_from ON likes(from_user);
         CREATE INDEX IF NOT EXISTS idx_likes_to ON likes(to_user);
         CREATE INDEX IF NOT EXISTS idx_chat_active ON chat_sessions(is_active);
+
+        -- Vibe Check: daily question
+        CREATE TABLE IF NOT EXISTS vibe_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            option_a TEXT NOT NULL,
+            option_b TEXT NOT NULL,
+            date TEXT NOT NULL UNIQUE
+        );
+
+        -- Vibe Check: user answers per match
+        CREATE TABLE IF NOT EXISTS vibe_answers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            answer TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(match_id, user_id)
+        );
+
+        -- Mystery Mode: add column if not exists handled in Python
     """)
+
+    # Mystery Mode column — safe to run multiple times
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN mystery_until TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
     conn.commit()
 
 
@@ -166,6 +194,7 @@ USER_COLS = [
     "premium_until", "is_approved", "is_verified", "is_rejected",
     "is_blocked", "is_admin", "daily_swipes", "swipes_reset_date",
     "super_likes_left", "boosted_until", "referral_count", "created_at",
+    "mystery_until",
 ]
 
 USER_SELECT = ", ".join(f"u.{c}" if False else c for c in USER_COLS)

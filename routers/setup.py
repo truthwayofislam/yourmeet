@@ -2,7 +2,7 @@ import os
 import json
 import httpx
 from fastapi import APIRouter, Depends, Request, Form, UploadFile, File
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from database import get_db, row_to_user, USER_COLS
 from routers.auth import get_current_user, create_token
 from storage import upload_photo
@@ -12,10 +12,9 @@ router = APIRouter()
 
 
 @router.get("/setup", response_class=HTMLResponse)
-async def setup_page(request: Request, current_user=Depends(get_current_user)):
-    # If already has complete profile, redirect to home
+async def setup_page(request: Request, db=Depends(get_db), current_user=Depends(get_current_user)):
     if current_user and current_user.photo and current_user.age and current_user.gender:
-        return templates.TemplateResponse(request, "index.html", {"user": current_user})
+        return RedirectResponse("/", status_code=302)
     return templates.TemplateResponse(request, "setup.html", {"user": current_user})
 
 
