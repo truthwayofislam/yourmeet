@@ -172,8 +172,6 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             UNIQUE(match_id, user_id)
         );
-
-        -- Mystery Mode: add column if not exists handled in Python
     """)
 
     # Mystery Mode column — safe to run multiple times
