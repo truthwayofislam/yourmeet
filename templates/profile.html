@@ -25,7 +25,11 @@
     display: grid; grid-template-columns: repeat(3, 1fr);
     gap: 12px; padding: 16px 20px;
   }
-  .stat-card { text-align: center; padding: 14px 8px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); }
+  .stat-card { text-align: center; padding: 14px 8px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); opacity:0; animation: statPop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+  .stat-card:nth-child(1) { animation-delay: 0.1s; }
+  .stat-card:nth-child(2) { animation-delay: 0.2s; }
+  .stat-card:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes statPop { from { opacity:0; transform:scale(0.8) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
   .stat-val { font-size: 24px; font-weight: 800; color: var(--primary); }
   .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
@@ -72,6 +76,7 @@
   .action-row { display: flex; gap: 10px; padding: 0 20px; margin-bottom: 12px; }
 
   .danger-zone { padding: 0 20px; }
+  @keyframes fadeInUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
 </style>
 
 <div class="profile-wrap">
@@ -265,6 +270,24 @@
 
 {% block scripts %}
 <script>
+  // Stats count-up animation
+  function countUp(el, target, duration = 800) {
+    const start = performance.now();
+    const update = (now) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.floor(ease * target);
+      if (progress < 1) requestAnimationFrame(update);
+      else el.textContent = target;
+    };
+    requestAnimationFrame(update);
+  }
+  document.querySelectorAll('.stat-val').forEach(el => {
+    const val = parseInt(el.textContent) || 0;
+    el.textContent = '0';
+    setTimeout(() => countUp(el, val), 300);
+  });
+
   function toggleEdit() {
     const form = document.getElementById('editForm');
     const view = document.getElementById('viewMode');
@@ -356,8 +379,8 @@
       el.innerHTML = '<p style="color:var(--text-muted);font-size:14px;">No likes yet. Keep swiping!</p>';
       return;
     }
-    el.innerHTML = data.likes.map(u => `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:80px;">
+    el.innerHTML = data.likes.map((u, i) => `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:80px;opacity:0;animation:fadeInUp 0.4s ease ${i*60}ms forwards;">
         <div style="position:relative;">
           <img src="${u.photo || ''}" onerror="this.style.display='none'" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--primary);" />
           ${u.is_super ? '<span style="position:absolute;bottom:-2px;right:-2px;font-size:14px;">⭐</span>' : ''}

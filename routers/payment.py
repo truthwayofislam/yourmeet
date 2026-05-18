@@ -51,3 +51,31 @@ async def handle_successful_payment(tg_id: str, payload: str, db):
         (premium_until, tg_id),
     )
     db.commit()
+
+    # Notify admin
+    try:
+        admin_tg_id = os.getenv("ADMIN_TG_ID", "")
+        admin_bot_token = os.getenv("ADMIN_BOT_TOKEN", "") or os.getenv("TELEGRAM_BOTS_KEY", "")
+        if admin_tg_id and admin_bot_token:
+            row = db.execute("SELECT name, age, city FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+            name = row[0] if row else "Unknown"
+            age = row[1] if row else "-"
+            city = row[2] if row else "-"
+            plan_title = PLANS[plan]["title"]
+            stars = PLANS[plan]["stars"]
+            text = (
+                f"💰 <b>New Premium Purchase!</b>\n\n"
+                f"👤 {name}, {age} — {city}\n"
+                f"📦 Plan: {plan_title}\n"
+                f"⭐ Stars: {stars}\n"
+                f"📅 Active until: {premium_until[:10]}\n"
+                f"🆔 Telegram ID: {tg_id}"
+            )
+            import httpx
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{admin_bot_token}/sendMessage",
+                    json={"chat_id": admin_tg_id, "text": text, "parse_mode": "HTML"},
+                )
+    except Exception as e:
+        print(f"[PAYMENT] admin notify failed: {e}")

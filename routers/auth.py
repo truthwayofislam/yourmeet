@@ -12,8 +12,8 @@ router = APIRouter()
 SECRET = os.getenv("SECRET_KEY", "yourmeet_secret_2024")
 
 
-def create_token(user_id: int) -> str:
-    return jwt.encode({"sub": str(user_id)}, SECRET, algorithm="HS256")
+def create_token(user_id: int, is_premium: bool = False) -> str:
+    return jwt.encode({"sub": str(user_id), "p": int(is_premium)}, SECRET, algorithm="HS256")
 
 
 def get_current_user(request: Request, db=Depends(get_db)):
@@ -102,8 +102,20 @@ async def telegram_auth(request: Request, db=Depends(get_db)):
             db.commit()
         new_user = not bool(user.photo and user.age and user.gender and user.city and user.social_handle)
 
-    token = create_token(user.id)
-    return JSONResponse({"token": token, "new_user": new_user, "lang": user.language})
+    # Detect if premium status changed since last token
+    premium_changed = False
+    old_token = request.cookies.get("token")
+    if old_token and user:
+        try:
+            old_payload = jwt.decode(old_token, SECRET, algorithms=["HS256"])
+            old_premium = bool(old_payload.get("p", 0))
+            if user.is_premium and not old_premium:
+                premium_changed = True
+        except Exception:
+            pass
+
+    token = create_token(user.id, is_premium=bool(user.is_premium))
+    return JSONResponse({"token": token, "new_user": new_user, "lang": user.language, "premium_changed": premium_changed})
 
 
 @router.get("/logout")

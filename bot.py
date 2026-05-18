@@ -351,9 +351,17 @@ async def successful_payment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     lang = (user.language if user else "en") or "en"
     premium_until = user.premium_until[:10] if user and user.premium_until else "-"
-    await update.message.reply_text(
-        s(lang, "premium_activated", date=premium_until), parse_mode="HTML"
-    )
+    # Send confirmation with open app button so user refreshes session
+    from routers.auth import create_token
+    new_token = create_token(user.id) if user else None
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))
+    ]])
+    text = s(lang, "premium_activated", date=premium_until)
+    if new_token:
+        # Append token hint so web app picks it up on next open
+        text += f"\n\n<i>Open the app to see your 👑 Premium badge!</i>"
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 # ── Message forwarding (chat sessions) ───────────────────────────────────────

@@ -138,11 +138,14 @@ async def map_like(target_id: int, db=Depends(get_db), current_user=Depends(get_
             try:
                 from main import bot_app
                 from bot import notify_match
+                from routers.vibe import send_vibe_question_to_match
                 target_user = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (target_id,)).fetchone())
                 if bot_app and target_user and target_user.telegram_id:
                     await notify_match(bot_app.bot, target_user, current_user)
                 if bot_app and current_user.telegram_id:
                     await notify_match(bot_app.bot, current_user, target_user)
+                if bot_app and target_user and match_row:
+                    await send_vibe_question_to_match(bot_app.bot, match_row[0], current_user, target_user)
             except Exception as e:
                 print(f"[MAP LIKE] notify failed: {e}")
         return JSONResponse({"matched": True})

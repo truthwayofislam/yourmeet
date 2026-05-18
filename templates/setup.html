@@ -7,9 +7,11 @@
   .progress-bar-fill { height: 100%; background: var(--gradient); border-radius: 2px; transition: width 0.4s ease; }
   .progress-label { font-size: 12px; color: var(--text-muted); text-align: right; }
 
-  .step-page { display: none; flex-direction: column; flex: 1; padding: 24px 20px 100px; animation: fadeIn 0.3s ease; }
-  .step-page.active { display: flex; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .step-page { display: none; flex-direction: column; flex: 1; padding: 24px 20px 100px; }
+  .step-page.active { display: flex; animation: stepSlideIn 0.35s cubic-bezier(0.25,0.46,0.45,0.94); }
+  .step-page.slide-back { animation: stepSlideBack 0.35s cubic-bezier(0.25,0.46,0.45,0.94); }
+  @keyframes stepSlideIn { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes stepSlideBack { from { opacity:0; transform:translateX(-40px); } to { opacity:1; transform:translateX(0); } }
 
   .step-icon { font-size: 44px; margin-bottom: 16px; color: var(--primary); }
   .step-icon i { font-size: 44px; }
@@ -40,15 +42,18 @@
     background: var(--surface); color: var(--text-muted); font-size: 14px;
     cursor: pointer; transition: all 0.2s; user-select: none;
   }
-  .interest-chip.selected { border-color: var(--primary); background: rgba(233,30,140,0.1); color: var(--primary); }
+  .interest-chip.selected { border-color: var(--primary); background: rgba(233,30,140,0.1); color: var(--primary); animation: chipPop 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes chipPop { 0% { transform:scale(1); } 50% { transform:scale(1.15); } 100% { transform:scale(1); } }
 
   .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
   .photo-slot {
     aspect-ratio: 1; border-radius: 12px; border: 2px dashed var(--border);
     background: var(--surface); display: flex; align-items: center; justify-content: center;
-    cursor: pointer; overflow: hidden; position: relative; transition: border-color 0.2s;
+    cursor: pointer; overflow: hidden; position: relative; transition: border-color 0.2s, transform 0.2s;
   }
   .photo-slot:hover { border-color: var(--primary); }
+  .photo-slot.added { animation: slotBounce 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes slotBounce { 0% { transform:scale(1); } 40% { transform:scale(1.12); } 100% { transform:scale(1); } }
   .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
   .photo-slot .add-icon { font-size: 24px; color: var(--text-muted); }
   .photo-slot .remove-btn {
@@ -239,10 +244,15 @@
   }
 
   function showStep(n) {
-    document.querySelectorAll('.step-page').forEach(p => p.classList.remove('active'));
-    document.getElementById(`step-${n}`).classList.add('active');
+    const prev = document.getElementById(`step-${current}`);
+    if (prev) prev.classList.remove('active', 'slide-back');
+    const next = document.getElementById(`step-${n}`);
+    const goingBack = n < current;
     current = n;
     updateProgress();
+    next.classList.remove('active', 'slide-back');
+    next.classList.add('active');
+    if (goingBack) next.classList.add('slide-back');
     // Restore from localStorage
     const saved = JSON.parse(localStorage.getItem('ym_setup') || '{}');
     if (n === 1 && saved.name) document.getElementById('inp-name').value = saved.name;
@@ -358,6 +368,9 @@
     reader.onload = ev => {
       const slot = document.getElementById(`slot-${activeSlot}`);
       slot.innerHTML = `<img src="${ev.target.result}" /><button class="remove-btn" onclick="removePhoto(event,${activeSlot})">×</button>`;
+      slot.classList.remove('added');
+      void slot.offsetWidth;
+      slot.classList.add('added');
     };
     reader.readAsDataURL(file);
     e.target.value = '';

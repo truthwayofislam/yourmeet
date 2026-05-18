@@ -121,13 +121,43 @@
     align-items: center; justify-content: center;
     padding: 32px 24px; text-align: center;
   }
-  .match-modal.show { display: flex; animation: fadeIn 0.4s ease; }
+  .match-modal.show { display: flex; animation: matchReveal 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes matchReveal { from { opacity:0; transform:scale(0.85); } to { opacity:1; transform:scale(1); } }
   .match-avatars { display: flex; gap: -16px; margin-bottom: 24px; }
   .match-avatar { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid var(--primary); }
   .match-avatar:last-child { margin-left: -20px; }
-  .match-title { font-size: 32px; font-weight: 800; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }
+  .match-title {
+    font-size: 32px; font-weight: 800;
+    background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 8px;
+    animation: titlePop 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;
+  }
+  @keyframes titlePop { from { opacity:0; transform:scale(0.5) translateY(20px); } to { opacity:1; transform:scale(1) translateY(0); } }
   .match-sub { color: var(--text-muted); font-size: 15px; margin-bottom: 28px; }
   .match-btns { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+
+  /* Confetti canvas */
+  #confettiCanvas { position:fixed; inset:0; z-index:199; pointer-events:none; }
+
+  /* Like/Nope indicators — scale + opacity */
+  .like-indicator { left: 20px; color: #4caf50; border-color: #4caf50; transform: rotate(-15deg) scale(0.8); transition: opacity 0.15s, transform 0.15s; }
+  .nope-indicator { right: 20px; color: #f44336; border-color: #f44336; transform: rotate(15deg) scale(0.8); transition: opacity 0.15s, transform 0.15s; }
+  .like-indicator.visible { transform: rotate(-15deg) scale(1.1); }
+  .nope-indicator.visible { transform: rotate(15deg) scale(1.1); }
+
+  /* Empty state bounce */
+  .empty-state .emoji { font-size: 64px; margin-bottom: 16px; animation: bounce 1.2s ease-in-out infinite; }
+  @keyframes bounce { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-14px); } }
+
+  /* Action buttons ripple */
+  .action-btn { position: relative; overflow: hidden; }
+  .action-btn::after {
+    content:''; position:absolute; inset:0; border-radius:50%;
+    background: rgba(255,255,255,0.25);
+    transform: scale(0); opacity:0;
+    transition: transform 0.4s ease, opacity 0.4s ease;
+  }
+  .action-btn:active::after { transform:scale(2); opacity:0; transition:none; }
 </style>
 
 <div class="home-wrap">
@@ -271,9 +301,18 @@
       card.style.transform = `translateX(${currentX}px) rotate(${rotate}deg)`;
       const likeEl = document.getElementById(`like-${card.dataset.id}`);
       const nopeEl = document.getElementById(`nope-${card.dataset.id}`);
-      if (currentX > 30) { likeEl.style.opacity = Math.min((currentX - 30) / 80, 1); nopeEl.style.opacity = 0; }
-      else if (currentX < -30) { nopeEl.style.opacity = Math.min((-currentX - 30) / 80, 1); likeEl.style.opacity = 0; }
-      else { likeEl.style.opacity = 0; nopeEl.style.opacity = 0; }
+      if (currentX > 30) {
+        const op = Math.min((currentX - 30) / 80, 1);
+        likeEl.style.opacity = op; likeEl.classList.toggle('visible', op > 0.5);
+        nopeEl.style.opacity = 0; nopeEl.classList.remove('visible');
+      } else if (currentX < -30) {
+        const op = Math.min((-currentX - 30) / 80, 1);
+        nopeEl.style.opacity = op; nopeEl.classList.toggle('visible', op > 0.5);
+        likeEl.style.opacity = 0; likeEl.classList.remove('visible');
+      } else {
+        likeEl.style.opacity = 0; likeEl.classList.remove('visible');
+        nopeEl.style.opacity = 0; nopeEl.classList.remove('visible');
+      }
     };
     const onEnd = () => {
       if (!isDragging) return;
@@ -331,7 +370,11 @@
     card.style.transition = 'transform 0.4s ease, opacity 0.4s ease';
     card.style.transform = `translateX(${dir * 120}%) rotate(${dir * 20}deg)`;
     card.style.opacity = '0';
-    currentIdx--;
+
+    // Capture photo src BEFORE card flies away
+    const cardImg = card.querySelector('img');
+    const cardPhotoSrc = cardImg ? cardImg.src : '';
+    const cardName = card.querySelector('.card-name')?.textContent?.trim()?.split(',')[0] || '';
 
     if (type === 'like' || type === 'super') {
       swipesLeft--;
@@ -342,14 +385,17 @@
         body: JSON.stringify({ super: type === 'super' }),
       });
       const data = await res.json();
-      if (data.matched) showMatch(card);
+      if (data.matched) showMatch(cardPhotoSrc, cardName);
       if (data.limit) { swipesLeft = 0; document.getElementById('swipeCount').textContent = 0; }
     } else {
       await fetch(`/skip/${id}`, { method: 'POST' });
     }
 
-    setTimeout(() => card.remove(), 400);
-    if (currentIdx < 0) loadMoreProfiles();
+    setTimeout(() => {
+      card.remove();
+      currentIdx--;
+      if (currentIdx < 0) loadMoreProfiles();
+    }, 400);
   }
 
   async function loadMoreProfiles() {
@@ -397,17 +443,64 @@
     return div;
   }
 
-  function showMatch(card) {
+  function showMatch(photoSrc, name) {
     const modal = document.getElementById('matchModal');
-    const img = card.querySelector('img');
-    if (img) document.getElementById('matchAvatar').src = img.src;
-    const name = card.querySelector('.card-name')?.textContent?.trim()?.split(',')[0] || '';
+    const matchAvatar = document.getElementById('matchAvatar');
+    if (photoSrc) {
+      matchAvatar.src = photoSrc;
+      matchAvatar.style.display = 'block';
+    } else {
+      matchAvatar.style.display = 'none';
+    }
     document.getElementById('matchSub').textContent = `You and ${name} liked each other!`;
     modal.classList.add('show');
+    launchConfetti();
   }
 
   function closeMatch() {
     document.getElementById('matchModal').classList.remove('show');
+    const canvas = document.getElementById('confettiCanvas');
+    if (canvas) canvas.remove();
+  }
+
+  function launchConfetti() {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'confettiCanvas';
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    const pieces = Array.from({length: 80}, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * -canvas.height,
+      r: Math.random() * 6 + 3,
+      d: Math.random() * 80 + 20,
+      color: ['#E91E8C','#9C27B0','#fff','#ff6b9d','#ce93d8'][Math.floor(Math.random()*5)],
+      tilt: Math.random() * 10 - 5,
+      tiltSpeed: Math.random() * 0.1 + 0.05,
+      speed: Math.random() * 3 + 2,
+    }));
+    let frame = 0;
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      pieces.forEach(p => {
+        ctx.beginPath();
+        ctx.fillStyle = p.color;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.tilt * Math.PI / 180);
+        ctx.fillRect(-p.r, -p.r/2, p.r*2, p.r);
+        ctx.restore();
+        p.y += p.speed;
+        p.tilt += p.tiltSpeed;
+        p.x += Math.sin(frame/20) * 1.5;
+        if (p.y > canvas.height) { p.y = -10; p.x = Math.random() * canvas.width; }
+      });
+      frame++;
+      if (frame < 180) requestAnimationFrame(draw);
+      else { canvas.remove(); }
+    }
+    draw();
   }
 
   let reportTargetId = null;

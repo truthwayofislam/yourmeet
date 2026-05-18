@@ -7,7 +7,8 @@
     text-align: center; padding: 32px 20px 28px;
     background: var(--gradient); border-radius: 20px; margin-bottom: 28px;
   }
-  .premium-hero .crown { font-size: 56px; margin-bottom: 12px; }
+  .premium-hero .crown { font-size: 56px; margin-bottom: 12px; animation: crownFloat 3s ease-in-out infinite; }
+  @keyframes crownFloat { 0%,100% { transform:translateY(0) rotate(-3deg); } 50% { transform:translateY(-10px) rotate(3deg); } }
   .premium-hero h1 { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
   .premium-hero p { font-size: 14px; opacity: 0.85; }
 
@@ -16,8 +17,13 @@
   .feature-row {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 0; border-bottom: 1px solid var(--border);
+    opacity: 0;
+    animation: slideInLeft 0.4s ease forwards;
   }
   .feature-row:last-child { border-bottom: none; }
+  {% for i in range(8) %}.feature-row:nth-child({{ i+1 }}) { animation-delay: {{ i*50 }}ms; }
+  {% endfor %}
+  @keyframes slideInLeft { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
   .feature-icon { font-size: 20px; width: 32px; text-align: center; color: var(--primary); }
   .feature-text { flex: 1; }
   .feature-text strong { display: block; font-size: 15px; margin-bottom: 2px; }
@@ -40,9 +46,11 @@
   .plans-wrap { display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; }
   .plan-card {
     padding: 20px; border-radius: 16px; border: 2px solid var(--border);
-    background: var(--card); cursor: pointer; transition: all 0.2s; position: relative;
+    background: var(--card); cursor: pointer; transition: all 0.25s; position: relative;
+    transform: translateY(0);
   }
-  .plan-card.selected { border-color: var(--primary); background: rgba(233,30,140,0.06); }
+  .plan-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(233,30,140,0.15); }
+  .plan-card.selected { border-color: var(--primary); background: rgba(233,30,140,0.06); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(233,30,140,0.2); }
   .plan-card.popular::before {
     content: '🔥 Best Value'; position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
     background: var(--gradient); color: #fff; padding: 4px 14px; border-radius: 20px;
