@@ -148,7 +148,8 @@ async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
-    link = f"https://t.me/{BOT_USERNAME}?start=ref_{tg_id}"
+    bot_username = os.getenv("BOT_USERNAME", "").strip().strip("'\"")
+    link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
     await update.message.reply_text(s(lang, "referral_msg", link=link))
 
 
