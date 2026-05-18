@@ -91,6 +91,10 @@
     <div class="step-title" data-i18n="step_age">How old are you?</div>
     <div class="step-subtitle">You must be 18 or older.</div>
     <input class="input-field" id="inp-age" type="number" placeholder="Your age" min="18" max="60" />
+    <label style="display:flex;align-items:center;gap:10px;margin-top:16px;cursor:pointer;">
+      <input type="checkbox" id="chk-age" style="width:20px;height:20px;accent-color:var(--primary);cursor:pointer;" />
+      <span style="font-size:14px;color:var(--text-muted);">I confirm I am <strong style="color:var(--text);">18 years or older</strong></span>
+    </label>
     <div class="error-msg" id="err-2"></div>
   </div>
 
@@ -195,6 +199,12 @@
     <div class="step-title" data-i18n="step_social">Your social handle</div>
     <div class="step-subtitle">Instagram or Telegram username. Shared on match.</div>
     <input class="input-field" id="inp-social" type="text" placeholder="@yourusername" />
+    <p style="font-size:12px;color:var(--text-muted);margin-top:16px;line-height:1.6;">
+      By submitting, you agree to our
+      <a href="/terms" target="_blank" style="color:var(--primary);">Terms of Service</a>
+      and
+      <a href="/privacy" target="_blank" style="color:var(--primary);">Privacy Policy</a>.
+    </p>
     <div class="error-msg" id="err-10"></div>
   </div>
 
@@ -272,6 +282,7 @@
     if (step === 2) {
       const v = parseInt(document.getElementById('inp-age').value);
       if (!v || v < 18 || v > 60) { setErr('err-2', 'Age must be between 18 and 60.'); return false; }
+      if (!document.getElementById('chk-age').checked) { setErr('err-2', 'Please confirm you are 18 or older.'); return false; }
       save('age', v); return true;
     }
     if (step === 3) {

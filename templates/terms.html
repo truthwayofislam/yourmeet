@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .legal-wrap { padding: 20px 20px 40px; max-width: 600px; margin: 0 auto; }
+  .legal-wrap h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+  .legal-wrap .updated { font-size: 12px; color: var(--text-muted); margin-bottom: 24px; }
+  .legal-wrap h2 { font-size: 15px; font-weight: 700; color: var(--primary); margin: 20px 0 8px; }
+  .legal-wrap p { font-size: 14px; color: var(--text-muted); line-height: 1.7; margin-bottom: 8px; }
+  .legal-wrap ul { padding-left: 18px; margin-bottom: 8px; }
+  .legal-wrap ul li { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+  .back-btn { display: flex; align-items: center; gap: 8px; color: var(--primary); font-size: 14px; font-weight: 600; margin-bottom: 20px; cursor: pointer; background: none; border: none; padding: 0; }
+</style>
+
+<div class="legal-wrap">
+  <button class="back-btn" onclick="history.back()">
+    <i class="fa-solid fa-arrow-left"></i> Back
+  </button>
+
+  <h1>Terms of Service</h1>
+  <div class="updated">Last updated: January 2025</div>
+
+  <h2>1. Acceptance</h2>
+  <p>By using YourMeet, you agree to these Terms. If you do not agree, do not use the app.</p>
+
+  <h2>2. Eligibility</h2>
+  <p>You must be at least <strong>18 years old</strong> to use YourMeet. By registering, you confirm that you are 18 or older. We reserve the right to terminate accounts of users found to be underage.</p>
+
+  <h2>3. Your Account</h2>
+  <ul>
+    <li>You are responsible for all activity on your account.</li>
+    <li>You must provide accurate information during registration.</li>
+    <li>You may not create multiple accounts.</li>
+    <li>You may not use another person's identity or photos.</li>
+  </ul>
+
+  <h2>4. Prohibited Conduct</h2>
+  <p>You agree NOT to:</p>
+  <ul>
+    <li>Post fake, misleading, or inappropriate content</li>
+    <li>Harass, threaten, or abuse other users</li>
+    <li>Share explicit, violent, or illegal content</li>
+    <li>Spam or send unsolicited messages</li>
+    <li>Attempt to hack or disrupt the service</li>
+    <li>Use the app for commercial purposes without permission</li>
+  </ul>
+
+  <h2>5. Content</h2>
+  <p>You retain ownership of content you post. By posting, you grant YourMeet a license to display it within the app. We may remove any content that violates these Terms.</p>
+
+  <h2>6. Payments</h2>
+  <p>Premium subscriptions are paid via Telegram Stars (⭐). All payments are final and non-refundable unless required by law. Subscriptions auto-expire and do not auto-renew.</p>
+
+  <h2>7. Account Termination</h2>
+  <p>We may suspend or permanently ban accounts that violate these Terms. Banned users may not re-register. You may delete your account at any time via the app.</p>
+
+  <h2>8. Disclaimer</h2>
+  <p>YourMeet is provided "as is". We do not guarantee matches, connections, or any specific outcomes. We are not responsible for the conduct of other users.</p>
+
+  <h2>9. Changes</h2>
+  <p>We may update these Terms at any time. Continued use of the app after changes constitutes acceptance.</p>
+
+  <h2>10. Contact</h2>
+  <p>For questions or reports: <a href="https://t.me/who_is_the-black_hat" style="color:var(--primary);">@who_is_the-black_hat</a></p>
+</div>
+{% endblock %}

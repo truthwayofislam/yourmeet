@@ -28,6 +28,7 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
     app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:"))
+    app.add_handler(CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"))
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -69,6 +70,26 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     if user:
         lang = user.language or lang
+
+    # Show terms if not accepted yet
+    if not user or not getattr(user, 'terms_accepted', 0):
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ I Agree", callback_data="terms:accept"),
+        ]])
+        app_url = os.getenv("APP_URL", "")
+        text = (
+            f"👋 Welcome to <b>YourMeet</b>!\n\n"
+            f"Before you start, please read and accept our:\n"
+            f"• <a href='{app_url}/terms'>Terms of Service</a>\n"
+            f"• <a href='{app_url}/privacy'>Privacy Policy</a>\n\n"
+            f"By tapping <b>I Agree</b>, you confirm:\n"
+            f"✓ You are <b>18 years or older</b>\n"
+            f"✓ You accept our Terms of Service\n"
+            f"✓ You have read our Privacy Policy"
+        )
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard,
+                                        disable_web_page_preview=True)
+        return
 
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))],
@@ -246,6 +267,36 @@ async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print(f"[BOT] send_invoice failed: {e}")
+
+
+async def cb_terms_accept(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """User accepted terms — save to DB and show welcome."""
+    query = update.callback_query
+    await query.answer()
+    tg_id = str(update.effective_user.id)
+    tg_user = update.effective_user
+    lang = (tg_user.language_code or "en")[:2]
+
+    from database import get_conn, row_to_user, USER_COLS
+    db = get_conn()
+    cols = ", ".join(USER_COLS)
+
+    row = db.execute(f"SELECT {cols} FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if not row:
+        db.execute(
+            "INSERT INTO users (name, telegram_id, language, terms_accepted) VALUES (?,?,?,1)",
+            (tg_user.first_name or "User", tg_id, lang),
+        )
+    else:
+        db.execute("UPDATE users SET terms_accepted=1 WHERE telegram_id=?", (tg_id,))
+    db.commit()
+
+    user = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE telegram_id=?", (tg_id,)).fetchone())
+    lang = (user.language if user else lang) or "en"
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(s(lang, "open_app"), web_app=WebAppInfo(url=APP_URL))
+    ]])
+    await query.edit_message_text(s(lang, "welcome"), parse_mode="HTML", reply_markup=keyboard)
 
 
 async def cb_vibe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):

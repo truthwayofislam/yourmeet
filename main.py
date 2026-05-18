@@ -112,6 +112,18 @@ async def premium_page(request: Request, current_user=Depends(get_current_user))
     return templates.TemplateResponse(request, "premium.html", {"user": current_user, "active": "premium"})
 
 
+@app.get("/terms")
+async def terms_page(request: Request):
+    from templating import templates
+    return templates.TemplateResponse(request, "terms.html", {})
+
+
+@app.get("/privacy")
+async def privacy_page(request: Request):
+    from templating import templates
+    return templates.TemplateResponse(request, "privacy.html", {})
+
+
 @app.get("/photo/{file_id:path}")
 async def proxy_photo(file_id: str):
     """Proxy Telegram file_id to image bytes."""

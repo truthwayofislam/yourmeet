@@ -1,4 +1,4 @@
-# YourMeet — Complete Redesign Plan
+# YourMeet — Complete Plan (Updated)
 
 ## Overview
 Full redesign of YourMeet dating app with multilingual support, improved UX, and streamlined bot + web app flow.
@@ -12,8 +12,10 @@ Full redesign of YourMeet dating app with multilingual support, improved UX, and
 - **Frontend:** Telegram Mini App (TMA)
 - **Hosting:** Render
 - **Payments:** Telegram Stars (XTR)
-- **Translation:** OpenRouter API — Google Gemma 4 (free)
-- **Map:** Leaflet.js (free, OpenStreetMap)
+- **Translation:** OpenRouter API — Google Gemma 4 31B (`google/gemma-4-31b-it:free`)
+- **Vibe Check Questions:** OpenRouter API — same model
+- **Map:** Leaflet.js + CartoDB Dark Matter tiles (free, no key)
+- **Map Animation:** leaflet-ant-path (animated arrow)
 - **Chat:** Telegram Bot forwarding (no extra service needed)
 
 ---
@@ -42,18 +44,17 @@ Full redesign of YourMeet dating app with multilingual support, improved UX, and
 
 ### Bot Messages
 - Manually written in `strings.py` for all 14 languages
-- Bot messages are limited (~25 strings) so manual is practical
+- All strings including `btn_upgrade` present in all 14 languages
 - Language stored in DB per user
 
 ### Web App UI
-- **Base language: English**
+- Base language: English
 - On first open, detect language from `Telegram.WebApp.initDataUnsafe.user.language_code`
-- If language is `en` → no translation needed
-- If other language → call `/api/translate` endpoint
-- Backend calls **OpenRouter API (Gemma 4)** to translate all UI strings at once
-- Translated strings cached in `localStorage` as `ym_strings_<lang>`
+- If `en` → no translation needed
+- If other → call `/api/translate` endpoint
+- Backend calls OpenRouter Gemma 4 31B to translate all UI strings at once
+- Translated strings cached in `localStorage` as `ym_strings_<lang>_v1.0`
 - On next visit → load from cache, no API call
-- Cache cleared only if app version changes
 
 ### Translation Endpoint
 ```
@@ -61,8 +62,7 @@ POST /api/translate
 Body: { "lang": "ru", "strings": { "key": "English text", ... } }
 Response: { "key": "Translated text", ... }
 ```
-- API key stored in Render env as `OPENROUTER_API_KEY`
-- Model: `google/gemma-3-27b-it` via OpenRouter
+- Model: `google/gemma-4-31b-it:free` via OpenRouter
 - Key never exposed to frontend
 
 ---
@@ -73,9 +73,7 @@ Response: { "key": "Translated text", ... }
 ```
 User opens bot → /start
     ↓
-Language selection (inline buttons, auto-detect from Telegram)
-    ↓
-Welcome message in selected language
+Welcome message (auto-detect language from Telegram)
     ↓
 "Open YourMeet" button → opens TMA (web app)
 ```
@@ -88,14 +86,14 @@ Step 3:  Gender (Male / Female)
 Step 4:  Interested In (Male / Female / Both)
 Step 5:  Photos (min 1, max 6)
 Step 6:  Bio (min 10 chars)
-Step 7:  Interests/Hobbies (tags: Music, Travel, Fitness, etc.)
-Step 8:  Phone Number (required)
-Step 9:  City (required)
+Step 7:  Interests/Hobbies (tags)
+Step 8:  Phone Number (country code + number)
+Step 9:  City (required, geocoded to lat/lng)
 Step 10: Social Handle (Instagram/Telegram — required)
     ↓
 Profile submitted → pending approval
     ↓
-Bot sends: "Profile under review" message in user's language
+Bot sends: "Profile under review" in user's language
 ```
 
 ### Phase 3 — Admin Approval
@@ -107,7 +105,7 @@ Approve / Approve+Verify / Reject (can re-register) / Ban (permanent)
 User gets notification in their language
 ```
 
-### Phase 4 — Swipe System (Web App Only)
+### Phase 4 — Swipe System
 ```
 Before approval: 10 free swipes/day
 After approval:  30 free swipes/day
@@ -115,33 +113,59 @@ Premium:         Unlimited swipes
     ↓
 Like ❤️ / Nope 👎 / Super Like ⭐ (1/day free, unlimited premium)
     ↓
-Match → both notified via bot in their language
+Swipe limit checked BEFORE animation (no false swipes)
     ↓
-Contact via social handle (Instagram/Telegram)
+Cards khatam → /api/feed se naye cards load (infinite scroll)
     ↓
-Premium: see contact directly
-Free: upgrade prompt
+Match → both notified via bot
+    ↓
+Vibe Check question sent to both via bot inline buttons
+    ↓
+Premium: see contact directly | Free: upgrade prompt
 ```
 
-### Phase 5 — Map Discovery (Web App)
+### Phase 5 — Map Discovery
 ```
-User opens Map tab → World map loads (Leaflet.js)
+User opens Map tab → CartoDB Dark Matter map loads
     ↓
-User taps "Find My Match" button
+User taps "Find My Match"
     ↓
-Backend returns random approved user (based on interested_in filter)
+Map zooms out to world view
     ↓
-Map animates — flyTo() that user's city location
+White dot appears at user's location (browser geolocation)
     ↓
-Profile card slides up — name, age, city, bio, interests, social handle
+Animated pink dashed arrow draws from user → match city
     ↓
-Like ❤️ / Skip 👎
+Map fits both points in view
     ↓
-Skip → map zooms back out → find next match
-Like → if mutual → Match! → 1 min chat opens via Telegram bot
+Pink pulse marker appears at destination
+    ↓
+FlyTo destination (zoom 11)
+    ↓
+Profile card slides up — name, age, city, bio, interests
+    ↓
+Like ❤️ / Skip 👎 (swipe limit applies)
+    ↓
+Skip → map resets → find next
+Like → if mutual → Match! + Vibe Check sent
 ```
 
-### Phase 6 — Telegram Bot Chat (on Match)
+### Phase 6 — Vibe Check (on Match) 🎯
+```
+Match ho → bot dono ko notify kare
+    ↓
+Bot AI-generated question bheje (daily, Gemma 4 31B se)
+Inline buttons: Option A | Option B
+    ↓
+Dono answer karein
+    ↓
+Same answer → "✨ Vibe Match! Great minds think alike!"
+Alag answer → "🎭 Opposites Attract!"
+    ↓
+Result dono ko bot pe milta hai
+```
+
+### Phase 7 — Telegram Bot Chat (on Match)
 ```
 Match ho → bot dono users ko notify kare
     ↓
@@ -154,7 +178,6 @@ Free user: 1 minute chat
 Premium user: unlimited chat
     ↓
 Timer khatam → bot dono ko notify kare "Chat ended"
-→ Session delete, koi data store nahi
 ```
 
 ---
@@ -163,7 +186,7 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 
 | Command | Description |
 |---------|-------------|
-| `/start` | Language select → welcome → open app |
+| `/start` | Welcome → open app |
 | `/profile` | View your profile |
 | `/matches` | See your matches count |
 | `/stats` | Your activity stats |
@@ -171,7 +194,8 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 | `/share` | Referral link |
 | `/help` | Help message |
 | `/about` | About app & developer |
-| `/delete` | Delete account |
+| `/delete` | Delete account (confirm step) |
+| `/confirmdelete` | Permanently delete account |
 | `/language` | Change language |
 | `/boost` | Boost profile (Premium only) |
 
@@ -190,7 +214,7 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 | `/user <id>` | View user details |
 
 ### Approval Flow
-- **Approve** → `is_approved=1`, notify user in their language
+- **Approve** → `is_approved=1`, notify user, swipes reset to 30
 - **Approve+Verify** → same + verified badge ⭐
 - **Reject** (can re-register) → `is_rejected=1`, notify
 - **Ban** (permanent) → `is_blocked=1`, cannot re-register
@@ -201,53 +225,64 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 
 ### 1. Profile Setup (Multi-step wizard)
 - Progress bar at top
-- One step at a time
-- Back button on each step
+- One step at a time, back button on each
 - Auto-save to localStorage on each step
-- Translated UI via Gemma 4
+- Country code selector (auto-detect from Telegram language)
+- Translated UI via Gemma 4 31B
 
 ### 2. Home / Swipe Feed
-- Card-based swipe UI
-- Photo carousel (multiple photos per card)
-- Name, Age, City, Bio, Interests shown
+- Card-based swipe UI with drag gestures
+- Photo carousel (tap left/right to cycle)
+- Mystery Mode cards show 👻 ghost animation instead of photo
 - Like ❤️ / Nope 👎 / Super ⭐ buttons
-- Touch/swipe gesture support
+- Swipe limit checked before animation
 - Daily swipe counter shown
-- Boost indicator if active
+- Infinite scroll — new cards load automatically
+- Bio translate button (per card)
 
 ### 3. Map Discovery Page
-- Full world map (Leaflet.js + OpenStreetMap)
-- Clean map — no dots, no markers
-- "Find My Match" button
-- Click → backend picks random matching user
-- Map flyTo() animation to that user's city
-- Profile card slides up from bottom
-- Name, Age, City, Bio, Interests shown
-- Like ❤️ / Skip 👎 buttons
-- Match → 1 min Telegram bot chat opens
+- CartoDB Dark Matter tiles (cinematic dark map)
+- Top/bottom gradient overlays for depth
+- "Find My Match" pill button with pink glow
+- Click → animated sequence:
+  1. Zoom out to world
+  2. White dot at user location
+  3. Pink animated dashed arrow to match
+  4. fitBounds to show both
+  5. Pulse marker at destination
+  6. FlyTo zoom in
+  7. Profile card slides up
+- Glassmorphism profile card with pink border
+- Like ❤️ / Skip 👎 (swipe limit applies)
 
 ### 4. Matches Page
 - List of matched profiles
 - Social handle shown (premium) or locked (free)
 - Match date shown
 - Unmatch option
+- Start chat button
 
-### 4. Profile Page
+### 5. Profile Page
 - View & edit all fields
-- Photo management (add/remove)
-- Premium badge if premium
-- Verified badge ⭐ if verified
 - Stats: likes given, received, matches
+- Premium badge, Verified badge, Approved/Pending badge
+- Edit Profile button
+- 🚀 Boost button (premium)
+- 👻 Mystery Mode toggle button (premium) — glows pink when active
+- "Who Liked You" section (premium) — avatar grid with super like indicator
+- "See Who Liked You" locked card (free) → upgrade prompt
+- Delete Account button
 
-### 5. Premium Page
-- Plan comparison table
-- Telegram Stars payment
-- Benefits list
+### 6. Premium Page
+- Comparison table (Free vs Premium) — all features listed
+- "What you get" feature list with icons
+- Plan cards: 1 Month (150 ⭐) / 3 Months (350 ⭐)
+- Active premium badge with expiry date
 
-### 6. Pending Page
-- Shown before approval
-- Progress steps: submitted → reviewing → approved
-- 10 free swipes available during pending
+### 7. Pending Page
+- Progress steps: Submitted → Reviewing → Approved
+- Swipe preview cards while waiting
+- Profile summary
 
 ---
 
@@ -256,7 +291,7 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 ```sql
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
+    name TEXT NOT NULL,
     phone TEXT UNIQUE,
     age INTEGER,
     gender TEXT,
@@ -266,8 +301,8 @@ CREATE TABLE users (
     lat REAL DEFAULT 0,
     lng REAL DEFAULT 0,
     photo TEXT DEFAULT '',
-    photos TEXT DEFAULT '',        -- JSON array of file_ids
-    interests TEXT DEFAULT '',     -- JSON array of tags
+    photos TEXT DEFAULT '[]',
+    interests TEXT DEFAULT '[]',
     social_handle TEXT DEFAULT '',
     telegram_id TEXT UNIQUE,
     language TEXT DEFAULT 'en',
@@ -283,65 +318,74 @@ CREATE TABLE users (
     super_likes_left INTEGER DEFAULT 1,
     boosted_until TEXT DEFAULT '',
     referral_count INTEGER DEFAULT 0,
-    created_at TEXT
+    mystery_until TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE likes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_user INTEGER,
-    to_user INTEGER,
+    from_user INTEGER NOT NULL,
+    to_user INTEGER NOT NULL,
     is_super INTEGER DEFAULT 0,
-    created_at TEXT
+    created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE matches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user1_id INTEGER,
-    user2_id INTEGER,
-    matched_at TEXT
+    user1_id INTEGER NOT NULL,
+    user2_id INTEGER NOT NULL,
+    matched_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE skips (
-    user_id INTEGER,
-    skipped_id INTEGER,
+    user_id INTEGER NOT NULL,
+    skipped_id INTEGER NOT NULL,
     PRIMARY KEY (user_id, skipped_id)
 );
 
 CREATE TABLE referrals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    referrer_id INTEGER,
-    referred_id INTEGER,
-    created_at TEXT
+    referrer_id INTEGER NOT NULL,
+    referred_id INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    reporter_id INTEGER,
-    reported_id INTEGER,
+    reporter_id INTEGER NOT NULL,
+    reported_id INTEGER NOT NULL,
     reason TEXT,
-    created_at TEXT
+    created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE chat_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user1_id INTEGER,
-    user2_id INTEGER,
-    user1_tg_id TEXT,
-    user2_tg_id TEXT,
-    expires_at TEXT,          -- 1 min for free, NULL for premium
+    user1_id INTEGER NOT NULL,
+    user2_id INTEGER NOT NULL,
+    user1_tg_id TEXT NOT NULL,
+    user2_tg_id TEXT NOT NULL,
+    is_premium_chat INTEGER DEFAULT 0,
+    expires_at TEXT,
     is_active INTEGER DEFAULT 1,
-    created_at TEXT
+    created_at TEXT DEFAULT (datetime('now'))
 );
-```
 
-### Indexes
-```
-CREATE INDEX idx_users_telegram_id ON users(telegram_id);
-CREATE INDEX idx_users_gender ON users(gender);
-CREATE INDEX idx_users_is_approved ON users(is_approved);
-CREATE INDEX idx_likes_from ON likes(from_user);
-CREATE INDEX idx_likes_to ON likes(to_user);
-CREATE INDEX idx_chat_sessions_active ON chat_sessions(is_active);
+CREATE TABLE vibe_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    option_a TEXT NOT NULL,
+    option_b TEXT NOT NULL,
+    date TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE vibe_answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    answer TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(match_id, user_id)
+);
 ```
 
 ---
@@ -353,6 +397,9 @@ CREATE INDEX idx_chat_sessions_active ON chat_sessions(is_active);
 | Pending (before approval) | 10 | 1/day |
 | Approved (free) | 30 | 1/day |
 | Premium | Unlimited | Unlimited |
+
+- Profile edit → swipes reset to 10 (pending state)
+- Map likes use same swipe limit as feed
 
 ---
 
@@ -367,11 +414,60 @@ CREATE INDEX idx_chat_sessions_active ON chat_sessions(is_active);
 | Profile boost | ❌ | ✅ (30 min) |
 | Priority in feed | ❌ | ✅ |
 | Bot chat on match | 1 minute | Unlimited |
+| Mystery Mode 👻 | ❌ | ✅ (24h) |
 | Map discovery | ✅ | ✅ |
+| Vibe Check 🎯 | ✅ | ✅ |
 
 ### Plans
 - 1 Month — 150 ⭐
 - 3 Months — 350 ⭐
+
+### Premium Auto-Expiry
+- Scheduler runs every 1 hour
+- When `premium_until` < now → `is_premium=0`, `super_likes_left=1` reset
+
+---
+
+## Vibe Check Feature 🎯
+
+- Triggers automatically on every match
+- Daily question generated by Gemma 4 31B via OpenRouter
+- Question cached in `vibe_questions` table (one per day)
+- Bot sends question to both users with inline A/B buttons
+- Both answers stored in `vibe_answers` table
+- When both answer → result sent to both:
+  - Same → "✨ Vibe Match!"
+  - Different → "🎭 Opposites Attract!"
+- Conversation starter built-in
+
+---
+
+## Mystery Mode Feature 👻
+
+- Premium only
+- Toggle from profile page (👻 button)
+- Active for 24 hours, auto-expires
+- While active: photo hidden in feed, ghost animation shown
+- Name, age, city, bio, interests still visible
+- Match → photo revealed normally
+- Button glows pink when active
+
+---
+
+## Security
+
+- **Telegram initData verification** — `verify_init_data()` uses `WebAppData` HMAC-SHA256
+- If initData present and invalid → 403 returned
+- If initData missing (dev mode) → allowed
+- JWT tokens for session auth (cookie-based)
+- Account delete clears all related data (likes, matches, skips, referrals, reports)
+
+---
+
+## Schedulers (every minute/hour)
+
+- **Every 1 min:** cleanup expired chat sessions, notify both users
+- **Every 1 hour:** expire premium subscriptions
 
 ---
 
@@ -394,9 +490,9 @@ CREATE INDEX idx_chat_sessions_active ON chat_sessions(is_active);
 ### Design Style
 - Glassmorphism cards
 - Smooth swipe animations (CSS transform)
-- Bottom navigation bar (Home, Matches, Profile, Premium)
+- Bottom navigation bar (Home, Map, Matches, Profile, Premium)
 - Toast notifications
-- Loading skeletons
+- Loading skeletons + spinners
 - Mobile first — designed for Telegram WebApp
 - Touch-friendly buttons (min 44px)
 - No horizontal scroll
@@ -409,13 +505,14 @@ CREATE INDEX idx_chat_sessions_active ON chat_sessions(is_active);
 ```
 TURSO_DATABASE_URL=
 TURSO_DATABASE_KEY=
-TELEGRAM_BOTS_KEY=        # Main bot token
-ADMIN_BOT_TOKEN=          # Admin bot token
-ADMIN_TG_ID=              # Admin Telegram user ID
-BOT_USERNAME=             # e.g. Yoursmeetbot
-APP_URL=                  # e.g. https://yourmeet.onrender.com
-SECRET_KEY=               # JWT secret
-OPENROUTER_API_KEY=       # For Gemma 4 translation
+TELEGRAM_BOTS_KEY=           # Main bot token
+ADMIN_BOT_TOKEN=             # Admin bot token
+ADMIN_TG_ID=                 # Admin Telegram user ID
+BOT_USERNAME=                # e.g. Yoursmeetbot
+APP_URL=                     # e.g. https://yourmeet.onrender.com
+SECRET_KEY=                  # JWT secret
+OPENROUTER_API_KEY=          # For Gemma 4 31B (translation + vibe questions)
+TELEGRAM_STORAGE_CHAT_ID=    # Chat ID for photo storage
 ```
 
 ---
@@ -424,77 +521,38 @@ OPENROUTER_API_KEY=       # For Gemma 4 translation
 
 ```
 /
-├── main.py               # FastAPI app, lifespan, webhooks
+├── main.py               # FastAPI app, lifespan, webhooks, schedulers
 ├── database.py           # DB connection, init, helpers
-├── strings.py            # Bot multilingual strings (14 langs)
+├── strings.py            # Bot multilingual strings (14 langs, all keys)
 ├── storage.py            # Photo upload to Telegram
-├── bot.py                # Main user bot
-├── admin_bot.py          # Admin bot
+├── bot.py                # Main user bot (all commands + vibe callback)
+├── admin_bot.py          # Admin bot (all commands)
+├── templating.py         # Jinja2 setup with custom filters
 ├── requirements.txt
 ├── render.yaml
 ├── routers/
-│   ├── auth.py           # TMA auth via initData
-│   ├── profiles.py       # Swipe, like, match, profile
-│   ├── setup.py          # Multi-step profile setup
-│   ├── map.py            # Map discovery — random match + geocode
-│   ├── chat.py           # Chat session create/end
+│   ├── auth.py           # TMA auth via initData verification + account delete
+│   ├── profiles.py       # Swipe, like, match, profile, feed, likes received
+│   ├── setup.py          # Multi-step profile setup + geocoding
+│   ├── map.py            # Map discovery + /api/map/like
+│   ├── chat.py           # Chat session create/end/forward/cleanup
 │   ├── payment.py        # Telegram Stars
-│   └── translate.py      # /api/translate endpoint
+│   ├── translate.py      # /api/translate — Gemma 4 31B
+│   └── vibe.py           # Vibe Check + Mystery Mode
 ├── templates/
-│   ├── base.html         # Base layout, TMA init, i18n init
-│   ├── setup.html        # Multi-step wizard
-│   ├── index.html        # Swipe feed
-│   ├── map.html          # World map discovery
+│   ├── base.html         # Base layout, TMA init, i18n init, auth
+│   ├── setup.html        # Multi-step wizard (10 steps)
+│   ├── index.html        # Swipe feed (infinite scroll, mystery support)
+│   ├── map.html          # Dark map + animated arrow discovery
 │   ├── matches.html      # Matches list
-│   ├── profile.html      # Profile view/edit
+│   ├── profile.html      # Profile view/edit + mystery toggle + who liked you
 │   ├── pending.html      # Pending approval page
-│   └── premium.html      # Premium plans
+│   └── premium.html      # Premium plans (all features listed)
 └── static/
     ├── css/
     └── js/
         └── i18n.js       # Translation loader + cache
 ```
-
----
-
-## Implementation Order
-
-### Phase 1 — Foundation
-1. `requirements.txt`
-2. `database.py` — clean schema, no migrations needed (fresh DB)
-3. `strings.py` — all 14 language bot strings
-4. `storage.py` — photo upload
-5. `main.py` — FastAPI app skeleton
-
-### Phase 2 — Translation
-1. `routers/translate.py` — OpenRouter Gemma 4 endpoint
-2. `static/js/i18n.js` — detect lang, fetch, cache, apply
-
-### Phase 3 — Auth & Setup
-1. `routers/auth.py` — TMA auth via initData
-2. `templates/setup.html` — 10-step wizard
-3. `routers/setup.py` — submit endpoint
-
-### Phase 4 — Web App Pages
-1. `templates/index.html` — swipe feed
-2. `templates/map.html` — world map discovery
-3. `templates/pending.html` — pending page
-4. `templates/matches.html` — matches
-5. `templates/profile.html` — profile edit
-6. `templates/premium.html` — premium page
-7. `routers/profiles.py` — swipe/like/match API routes
-8. `routers/map.py` — random match + geocode API
-9. `routers/chat.py` — chat session API
-
-### Phase 5 — Bots
-1. `bot.py` — user bot (all commands)
-2. `admin_bot.py` — admin bot (all commands)
-
-### Phase 6 — Polish
-1. Error handling everywhere
-2. Rate limiting
-3. Loading states in UI
-4. Test all flows end to end
 
 ---
 
@@ -504,6 +562,6 @@ OPENROUTER_API_KEY=       # For Gemma 4 translation
 - **Stack:** FastAPI + Python Telegram Bot + Turso + Telegram WebApp
 - **Hosting:** Render
 - **Payments:** Telegram Stars (XTR)
-- **Translation:** OpenRouter — Google Gemma 4 (free)
-- **Map:** Leaflet.js + OpenStreetMap (free)
+- **Translation + AI:** OpenRouter — Google Gemma 4 31B (free)
+- **Map:** Leaflet.js + CartoDB Dark Matter + leaflet-ant-path
 - **Chat:** Telegram Bot forwarding (free, no extra service)

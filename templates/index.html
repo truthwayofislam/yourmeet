@@ -195,6 +195,7 @@
           {% endfor %}
         </div>
         {% endif %}
+        <button onclick="openReport({{ p.id }})" style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.4);border:none;color:rgba(255,255,255,0.6);font-size:18px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">⚠️</button>
       </div>
     </div>
     {% endfor %}
@@ -225,6 +226,22 @@
   <div class="match-btns">
     <a href="/matches" class="btn btn-primary" data-i18n="btn_view_matches">View Matches</a>
     <button class="btn btn-secondary" onclick="closeMatch()" data-i18n="btn_keep_swiping">Keep Swiping</button>
+  </div>
+</div>
+
+<!-- Report Modal -->
+<div id="reportModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.8);align-items:flex-end;">
+  <div class="glass" style="width:100%;padding:24px 20px 40px;border-radius:24px 24px 0 0;">
+    <div style="font-size:16px;font-weight:700;margin-bottom:16px;">🚨 Report User</div>
+    <div style="display:flex;flex-direction:column;gap:10px;" id="reportReasons">
+      <button class="btn btn-secondary" onclick="submitReport('fake_profile')">Fake Profile</button>
+      <button class="btn btn-secondary" onclick="submitReport('underage')">Underage User</button>
+      <button class="btn btn-secondary" onclick="submitReport('harassment')">Harassment</button>
+      <button class="btn btn-secondary" onclick="submitReport('spam')">Spam</button>
+      <button class="btn btn-secondary" onclick="submitReport('inappropriate')">Inappropriate Content</button>
+      <button class="btn btn-secondary" onclick="submitReport('other')">Other</button>
+    </div>
+    <button class="btn btn-secondary" style="margin-top:12px;color:var(--text-muted);" onclick="document.getElementById('reportModal').style.display='none'">Cancel</button>
   </div>
 </div>
 {% endblock %}
@@ -391,6 +408,24 @@
 
   function closeMatch() {
     document.getElementById('matchModal').classList.remove('show');
+  }
+
+  let reportTargetId = null;
+  function openReport(userId) {
+    reportTargetId = userId;
+    document.getElementById('reportModal').style.display = 'flex';
+  }
+
+  async function submitReport(reason) {
+    if (!reportTargetId) return;
+    document.getElementById('reportModal').style.display = 'none';
+    await fetch(`/report/${reportTargetId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    showToast('✅ Report submitted. Thank you!');
+    reportTargetId = null;
   }
 
   function showEmpty() {

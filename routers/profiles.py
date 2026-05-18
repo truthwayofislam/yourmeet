@@ -208,6 +208,9 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     body = await request.json()
     reason = body.get("reason", "inappropriate")
+    valid_reasons = ["fake_profile", "spam", "underage", "harassment", "inappropriate", "other"]
+    if reason not in valid_reasons:
+        reason = "inappropriate"
     already = db.execute(
         "SELECT id FROM reports WHERE reporter_id=? AND reported_id=?",
         (current_user.id, target_id),

@@ -180,6 +180,13 @@ def init_db():
         conn.commit()
     except Exception:
         pass  # column already exists
+
+    # Terms accepted column
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN terms_accepted INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
     conn.commit()
 
 
@@ -192,7 +199,7 @@ USER_COLS = [
     "premium_until", "is_approved", "is_verified", "is_rejected",
     "is_blocked", "is_admin", "daily_swipes", "swipes_reset_date",
     "super_likes_left", "boosted_until", "referral_count", "created_at",
-    "mystery_until",
+    "mystery_until", "terms_accepted",
 ]
 
 USER_SELECT = ", ".join(f"u.{c}" if False else c for c in USER_COLS)

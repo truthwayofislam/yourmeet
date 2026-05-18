@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .legal-wrap { padding: 20px 20px 40px; max-width: 600px; margin: 0 auto; }
+  .legal-wrap h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+  .legal-wrap .updated { font-size: 12px; color: var(--text-muted); margin-bottom: 24px; }
+  .legal-wrap h2 { font-size: 15px; font-weight: 700; color: var(--primary); margin: 20px 0 8px; }
+  .legal-wrap p { font-size: 14px; color: var(--text-muted); line-height: 1.7; margin-bottom: 8px; }
+  .legal-wrap ul { padding-left: 18px; margin-bottom: 8px; }
+  .legal-wrap ul li { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+  .back-btn { display: flex; align-items: center; gap: 8px; color: var(--primary); font-size: 14px; font-weight: 600; margin-bottom: 20px; cursor: pointer; background: none; border: none; padding: 0; }
+</style>
+
+<div class="legal-wrap">
+  <button class="back-btn" onclick="history.back()">
+    <i class="fa-solid fa-arrow-left"></i> Back
+  </button>
+
+  <h1>Privacy Policy</h1>
+  <div class="updated">Last updated: January 2025</div>
+
+  <h2>1. What We Collect</h2>
+  <p>When you use YourMeet, we collect:</p>
+  <ul>
+    <li><strong>Telegram data:</strong> Your Telegram user ID, first name, and language code (provided by Telegram)</li>
+    <li><strong>Profile data:</strong> Name, age, gender, city, bio, interests, phone number, social handle</li>
+    <li><strong>Photos:</strong> Stored via Telegram's servers using file IDs</li>
+    <li><strong>Activity data:</strong> Likes, matches, swipes, chat sessions</li>
+    <li><strong>Location:</strong> City name and approximate coordinates (for map discovery)</li>
+  </ul>
+
+  <h2>2. How We Use Your Data</h2>
+  <ul>
+    <li>To show your profile to potential matches</li>
+    <li>To send you match and chat notifications via Telegram bot</li>
+    <li>To provide map-based discovery features</li>
+    <li>To process premium payments via Telegram Stars</li>
+    <li>To enforce our Terms of Service</li>
+  </ul>
+
+  <h2>3. Data Sharing</h2>
+  <p>We do NOT sell your data. Your data is shared only:</p>
+  <ul>
+    <li>With other users — only the profile info you choose to display</li>
+    <li>With Telegram — as required to operate the bot and mini app</li>
+    <li>With Turso (database hosting) — encrypted storage</li>
+  </ul>
+
+  <h2>4. Photos</h2>
+  <p>Your photos are stored on Telegram's servers. We store only the Telegram file ID, not the actual image file. Photos are displayed only within the app.</p>
+
+  <h2>5. Chat Sessions</h2>
+  <p>Bot chat messages are forwarded in real-time and are NOT stored. Once a chat session ends, no message history is retained.</p>
+
+  <h2>6. Data Retention</h2>
+  <p>Your data is retained as long as your account is active. When you delete your account, all your data is permanently removed including likes, matches, and profile information.</p>
+
+  <h2>7. Your Rights</h2>
+  <ul>
+    <li>Access your data via the profile page</li>
+    <li>Edit your data via the profile edit feature</li>
+    <li>Delete all your data via "Delete Account"</li>
+  </ul>
+
+  <h2>8. Security</h2>
+  <p>We use HMAC-SHA256 to verify Telegram identity on every session. JWT tokens are used for authentication. All connections are over HTTPS.</p>
+
+  <h2>9. Children</h2>
+  <p>YourMeet is strictly for users 18 and older. We do not knowingly collect data from minors. If we discover a minor has registered, the account will be immediately terminated.</p>
+
+  <h2>10. Contact</h2>
+  <p>For privacy concerns: <a href="https://t.me/who_is_the-black_hat" style="color:var(--primary);">@who_is_the-black_hat</a></p>
+</div>
+{% endblock %}
