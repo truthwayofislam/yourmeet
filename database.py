@@ -45,10 +45,6 @@ class _ConnWrapper:
             self._reconnect()
             return self._c.execute(sql, params)
 
-    def executescript(self, sql):
-        self._sync()
-        return self._c.executescript(sql)
-
     def commit(self):
         return self._c.commit()
 
@@ -66,8 +62,9 @@ def get_db():
 
 def init_db():
     conn = get_conn()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS users (
+
+    statements = [
+        """CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             phone TEXT UNIQUE,
@@ -96,46 +93,42 @@ def init_db():
             super_likes_left INTEGER DEFAULT 1,
             boosted_until TEXT DEFAULT '',
             referral_count INTEGER DEFAULT 0,
+            mystery_until TEXT DEFAULT '',
+            terms_accepted INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS likes (
+        )""",
+        """CREATE TABLE IF NOT EXISTS likes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             from_user INTEGER NOT NULL,
             to_user INTEGER NOT NULL,
             is_super INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS matches (
+        )""",
+        """CREATE TABLE IF NOT EXISTS matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user1_id INTEGER NOT NULL,
             user2_id INTEGER NOT NULL,
             matched_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS skips (
+        )""",
+        """CREATE TABLE IF NOT EXISTS skips (
             user_id INTEGER NOT NULL,
             skipped_id INTEGER NOT NULL,
             PRIMARY KEY (user_id, skipped_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS referrals (
+        )""",
+        """CREATE TABLE IF NOT EXISTS referrals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             referrer_id INTEGER NOT NULL,
             referred_id INTEGER NOT NULL,
             created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS reports (
+        )""",
+        """CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             reporter_id INTEGER NOT NULL,
             reported_id INTEGER NOT NULL,
             reason TEXT,
             created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS chat_sessions (
+        )""",
+        """CREATE TABLE IF NOT EXISTS chat_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user1_id INTEGER NOT NULL,
             user2_id INTEGER NOT NULL,
@@ -145,48 +138,46 @@ def init_db():
             expires_at TEXT,
             is_active INTEGER DEFAULT 1,
             created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_users_tg ON users(telegram_id);
-        CREATE INDEX IF NOT EXISTS idx_users_gender ON users(gender);
-        CREATE INDEX IF NOT EXISTS idx_users_approved ON users(is_approved);
-        CREATE INDEX IF NOT EXISTS idx_likes_from ON likes(from_user);
-        CREATE INDEX IF NOT EXISTS idx_likes_to ON likes(to_user);
-        CREATE INDEX IF NOT EXISTS idx_chat_active ON chat_sessions(is_active);
-
-        -- Vibe Check: daily question
-        CREATE TABLE IF NOT EXISTS vibe_questions (
+        )""",
+        """CREATE TABLE IF NOT EXISTS vibe_questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             question TEXT NOT NULL,
             option_a TEXT NOT NULL,
             option_b TEXT NOT NULL,
             date TEXT NOT NULL UNIQUE
-        );
-
-        -- Vibe Check: user answers per match
-        CREATE TABLE IF NOT EXISTS vibe_answers (
+        )""",
+        """CREATE TABLE IF NOT EXISTS vibe_answers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             answer TEXT NOT NULL,
             created_at TEXT DEFAULT (datetime('now')),
             UNIQUE(match_id, user_id)
-        );
-    """)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_users_tg ON users(telegram_id)",
+        "CREATE INDEX IF NOT EXISTS idx_users_gender ON users(gender)",
+        "CREATE INDEX IF NOT EXISTS idx_users_approved ON users(is_approved)",
+        "CREATE INDEX IF NOT EXISTS idx_likes_from ON likes(from_user)",
+        "CREATE INDEX IF NOT EXISTS idx_likes_to ON likes(to_user)",
+        "CREATE INDEX IF NOT EXISTS idx_chat_active ON chat_sessions(is_active)",
+    ]
 
-    # Mystery Mode column — safe to run multiple times
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN mystery_until TEXT DEFAULT ''")
-        conn.commit()
-    except Exception:
-        pass  # column already exists
+    for stmt in statements:
+        try:
+            conn.execute(stmt)
+        except Exception as e:
+            print(f"[DB] init statement skipped: {e}")
 
-    # Terms accepted column
-    try:
-        conn.execute("ALTER TABLE users ADD COLUMN terms_accepted INTEGER DEFAULT 0")
-        conn.commit()
-    except Exception:
-        pass  # column already exists
+    # Add new columns safely (ignored if already exist)
+    for alter in [
+        "ALTER TABLE users ADD COLUMN mystery_until TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN terms_accepted INTEGER DEFAULT 0",
+    ]:
+        try:
+            conn.execute(alter)
+        except Exception:
+            pass
+
     conn.commit()
 
 
