@@ -20,6 +20,10 @@ def build_admin_bot() -> Application:
     app.add_handler(CommandHandler("remind_blocked", cmd_remind_blocked))
     app.add_handler(CommandHandler("find", cmd_find))
     app.add_handler(CommandHandler("user", cmd_user))
+    app.add_handler(CommandHandler("users", cmd_users))
+    app.add_handler(CommandHandler("cleanup", cmd_cleanup))
+    app.add_handler(CommandHandler("deleteuser", cmd_delete_user))
+    app.add_handler(CommandHandler("confirmcleanup", cmd_confirm_cleanup))
     app.add_handler(CallbackQueryHandler(cb_approve, pattern=r"^approve:"))
     app.add_handler(CallbackQueryHandler(cb_verify, pattern=r"^verify:"))
     app.add_handler(CallbackQueryHandler(cb_reject, pattern=r"^reject:"))
@@ -234,6 +238,94 @@ async def cmd_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     user = row_to_user(row)
     await _send_pending_profile(ctx.bot, update.effective_chat.id, user)
+
+
+async def cmd_users(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """List all users with basic info."""
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    rows = db.execute(
+        "SELECT id, name, age, telegram_id, photo, is_approved, is_premium, created_at FROM users ORDER BY id"
+    ).fetchall()
+    if not rows:
+        await update.message.reply_text("No users found.")
+        return
+    lines = []
+    for r in rows:
+        uid, name, age, tg_id, photo, approved, premium, created = r
+        status = "✅" if approved else "⏳"
+        has_photo = "📷" if photo else "❌"
+        prem = "👑" if premium else ""
+        lines.append(f"#{uid} {has_photo}{prem} {status} {name or '?'}, {age or '?'} | tg:{tg_id or '-'} | {(created or '')[:10]}")
+    text = "👥 <b>All Users:</b>\n\n" + "\n".join(lines)
+    # Split if too long
+    if len(text) > 4000:
+        chunks = [lines[i:i+20] for i in range(0, len(lines), 20)]
+        for chunk in chunks:
+            await update.message.reply_text("👥 <b>Users:</b>\n\n" + "\n".join(chunk), parse_mode="HTML")
+    else:
+        await update.message.reply_text(text, parse_mode="HTML")
+
+
+async def cmd_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Delete incomplete users — no photo, no age, no telegram_id."""
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    # Find ghost users: no photo AND no age (never completed setup)
+    rows = db.execute(
+        "SELECT id, name, telegram_id, created_at FROM users WHERE (photo='' OR photo IS NULL) AND (age IS NULL OR age=0)"
+    ).fetchall()
+    if not rows:
+        await update.message.reply_text("✅ No incomplete users to clean up!")
+        return
+    text = f"🗑 Found <b>{len(rows)}</b> incomplete users:\n\n"
+    for r in rows:
+        text += f"#{r[0]} {r[1] or '?'} | tg:{r[2] or '-'} | {(r[3] or '')[:10]}\n"
+    text += "\nReply /confirmcleanup to delete them all."
+    await update.message.reply_text(text, parse_mode="HTML")
+
+
+async def cmd_delete_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Delete a specific user by ID — /deleteuser <id>"""
+    if not _is_admin(update):
+        return
+    if not ctx.args:
+        await update.message.reply_text("Usage: /deleteuser <id>")
+        return
+    try:
+        user_id = int(ctx.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid ID.")
+        return
+    db = _get_db()
+    row = db.execute("SELECT name, telegram_id FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        await update.message.reply_text("User not found.")
+        return
+    from routers.auth import _delete_user_data
+    _delete_user_data(db, user_id)
+    await update.message.reply_text(f"✅ User #{user_id} ({row[0]}) deleted permanently.")
+
+
+async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Actually delete all incomplete users."""
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    rows = db.execute(
+        "SELECT id FROM users WHERE (photo='' OR photo IS NULL) AND (age IS NULL OR age=0)"
+    ).fetchall()
+    if not rows:
+        await update.message.reply_text("✅ Nothing to clean up!")
+        return
+    from routers.auth import _delete_user_data
+    count = 0
+    for (uid,) in rows:
+        _delete_user_data(db, uid)
+        count += 1
+    await update.message.reply_text(f"✅ Deleted {count} incomplete users. Database is clean!")
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
