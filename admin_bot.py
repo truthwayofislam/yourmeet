@@ -330,9 +330,9 @@ async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ("reports", "reporter_id", "reported_id"),
         ("chat_sessions", "user1_id", "user2_id"),
     ]:
-        db.execute(f"DELETE FROM {tbl} WHERE {c1} IN ({placeholders}) OR {c2} IN ({placeholders})", ids + ids)
-    db.execute(f"DELETE FROM vibe_answers WHERE user_id IN ({placeholders})", ids)
-    db.execute(f"DELETE FROM users WHERE id IN ({placeholders})", ids)
+        db.execute(f"DELETE FROM {tbl} WHERE {c1} IN ({placeholders}) OR {c2} IN ({placeholders})", tuple(ids + ids))
+    db.execute(f"DELETE FROM vibe_answers WHERE user_id IN ({placeholders})", tuple(ids))
+    db.execute(f"DELETE FROM users WHERE id IN ({placeholders})", tuple(ids))
     db.commit()
     await update.message.reply_text(f"✅ Deleted {len(ids)} incomplete users. Database is clean!")
 
