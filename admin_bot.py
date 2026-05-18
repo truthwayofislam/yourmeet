@@ -29,7 +29,21 @@ def build_admin_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_reject, pattern=r"^reject:"))
     app.add_handler(CallbackQueryHandler(cb_ban, pattern=r"^ban:"))
     app.add_handler(CallbackQueryHandler(cb_next_pending, pattern=r"^next_pending$"))
+    app.add_error_handler(admin_error_handler)
     return app
+
+
+async def admin_error_handler(update, context):
+    from telegram.error import TimedOut, NetworkError, RetryAfter
+    err = context.error
+    if isinstance(err, (TimedOut, NetworkError)):
+        print(f"[ADMIN BOT] Transient error ignored: {err}")
+        return
+    if isinstance(err, RetryAfter):
+        print(f"[ADMIN BOT] Rate limited, retry after {err.retry_after}s")
+        return
+    import traceback
+    print(f"[ADMIN BOT] Unhandled error: {traceback.format_exc()}")
 
 
 def _is_admin(update: Update) -> bool:

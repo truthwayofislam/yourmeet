@@ -32,7 +32,22 @@ def build_bot() -> Application:
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_error_handler(error_handler)
     return app
+
+
+async def error_handler(update, context):
+    import traceback
+    err = context.error
+    # Silently ignore timeouts and network errors — they are transient
+    from telegram.error import TimedOut, NetworkError, RetryAfter
+    if isinstance(err, (TimedOut, NetworkError)):
+        print(f"[BOT] Transient error ignored: {err}")
+        return
+    if isinstance(err, RetryAfter):
+        print(f"[BOT] Rate limited, retry after {err.retry_after}s")
+        return
+    print(f"[BOT] Unhandled error: {traceback.format_exc()}")
 
 
 def _lang(update: Update) -> str:
