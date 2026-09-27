@@ -8,11 +8,18 @@ from database import get_db, row_to_user, USER_COLS
 
 router = APIRouter()
 
-SECRET = os.getenv("SECRET_KEY", "yourmeet_secret_2024")
+SECRET = os.getenv("SECRET_KEY", "")
+if not SECRET:
+    raise RuntimeError("SECRET_KEY env var is not set!")
 
 
-def create_token(user_id: int, is_premium: bool = False) -> str:
-    return jwt.encode({"sub": str(user_id), "p": int(is_premium)}, SECRET, algorithm="HS256")
+def create_token(user_id: int) -> str:
+    from datetime import datetime, timedelta
+    exp = datetime.utcnow() + timedelta(days=30)
+    # NOTE: is_premium is deliberately NOT embedded in the token. The server
+    # always re-verifies premium status against the database on every request,
+    # so a forged or stale token can never grant premium access.
+    return jwt.encode({"sub": str(user_id), "exp": exp}, SECRET, algorithm="HS256")
 
 
 def get_current_user(request: Request, db=Depends(get_db)):
@@ -21,9 +28,16 @@ def get_current_user(request: Request, db=Depends(get_db)):
         return None
     try:
         payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        sub = payload.get("sub")
+        if sub is None:
+            return None
+        user_id = int(sub)
+    except (ValueError, TypeError, KeyError, jwt.JWTError):
+        return None
+    try:
         cols = ", ".join(USER_COLS)
         row = db.execute(
-            f"SELECT {cols} FROM users WHERE id=?", (int(payload["sub"]),)
+            "SELECT " + cols + " FROM users WHERE id=?", (user_id,)
         ).fetchone()
         return row_to_user(row)
     except Exception:

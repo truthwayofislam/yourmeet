@@ -6,11 +6,13 @@ from telegram.ext import (
 )
 
 ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
-ADMIN_TG_ID = os.getenv("ADMIN_TG_ID", "")
+ADMIN_TG_ID = os.getenv("ADMIN_TG_ID", "").strip()
 APP_URL = os.getenv("APP_URL", "")
 
 
 def build_admin_bot() -> Application:
+    if not ADMIN_BOT_TOKEN:
+        raise RuntimeError("ADMIN_BOT_TOKEN is not set")
     app = Application.builder().token(ADMIN_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("pending", cmd_pending))

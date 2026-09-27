@@ -1,4 +1,5 @@
 import os
+import hmac
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -131,7 +132,7 @@ async def proxy_photo(file_id: str):
 
 @app.post("/webhook/{token}")
 async def webhook(token: str, request: Request):
-    if token != BOT_TOKEN or not bot_app:
+    if not BOT_TOKEN or not hmac.compare_digest(token, BOT_TOKEN) or not bot_app:
         return JSONResponse({"error": "invalid"}, status_code=403)
     from telegram import Update
     update = Update.de_json(await request.json(), bot_app.bot)
@@ -141,7 +142,7 @@ async def webhook(token: str, request: Request):
 
 @app.post("/admin-webhook/{token}")
 async def admin_webhook(token: str, request: Request):
-    if token != ADMIN_BOT_TOKEN or not admin_bot_app:
+    if not ADMIN_BOT_TOKEN or not hmac.compare_digest(token, ADMIN_BOT_TOKEN) or not admin_bot_app:
         return JSONResponse({"error": "invalid"}, status_code=403)
     from telegram import Update
     update = Update.de_json(await request.json(), admin_bot_app.bot)

@@ -193,7 +193,8 @@ def init_db():
             from_user INTEGER NOT NULL,
             to_user INTEGER NOT NULL,
             is_super INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now'))
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(from_user, to_user)
         )""",
         """CREATE TABLE IF NOT EXISTS matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

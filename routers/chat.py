@@ -148,6 +148,10 @@ async def end_chat(session_id: int, db=Depends(get_db), current_user=Depends(get
 
 async def forward_message(tg_id_from: str, text: str, db) -> bool:
     """Called by bot when user sends message — forward to other user in active session."""
+    # Sanitize message
+    if not text or not text.strip():
+        return False
+    text = text.strip()[:1000]  # Max 1000 chars
     session = db.execute(
         """SELECT id, user1_tg_id, user2_tg_id, expires_at, is_premium_chat
            FROM chat_sessions
