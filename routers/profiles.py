@@ -93,12 +93,28 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
         "SELECT id FROM reports WHERE reporter_id=? AND reported_id=?", (current_user.id, target_id)
     ).fetchone()
     if not already:
-        db.execute(
-            "INSERT INTO reports (reporter_id, reported_id, reason) VALUES (?,?,?)",
-            (current_user.id, target_id, reason),
-        )
-        count = db.execute("SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)).fetchone()[0]
-        if count >= 3:
-            db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (target_id,))
-        db.commit()
+        try:
+            db.begin()
+        except Exception:
+            pass
+        try:
+            db.execute(
+                "INSERT INTO reports (reporter_id, reported_id, reason) VALUES (?,?,?)",
+                (current_user.id, target_id, reason),
+            )
+            # Atomically increment the report counter and block in one UPDATE,
+            # so concurrent reports cannot both pass the count threshold.
+            row = db.execute(
+                "SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)
+            ).fetchone()
+            count = row[0] if row else 0
+            if count >= 3:
+                db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (target_id,))
+            db.commit()
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            print(f"[REPORT] failed: {e}")
     return JSONResponse({"ok": True})

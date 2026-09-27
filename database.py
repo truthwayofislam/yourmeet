@@ -41,6 +41,11 @@ def _from_turso_val(val):
     return val
 
 
+class DuplicateError(Exception):
+    """Raised when an INSERT violates a UNIQUE constraint (a benign race outcome)."""
+    pass
+
+
 class _TursoResult:
     def __init__(self, rows, last_insert_rowid=0):
         self._rows = rows
@@ -82,8 +87,15 @@ class _ConnWrapper:
 
     def execute(self, sql, params=()):
         if not self._use_turso:
-            result = _LocalResult(self._local.execute(sql, params))
-            return result
+            try:
+                result = _LocalResult(self._local.execute(sql, params))
+                return result
+            except Exception as e:
+                # libsql wraps sqlite3.IntegrityError; detect UNIQUE violations
+                msg = str(e).lower()
+                if "unique" in msg or "constraint" in msg:
+                    raise DuplicateError(str(e)) from e
+                raise
 
         # Handle last_insert_rowid() without HTTP call
         if sql.strip().upper() == "SELECT LAST_INSERT_ROWID()":
@@ -106,8 +118,11 @@ class _ConnWrapper:
             if result.get("type") == "error":
                 err_detail = result.get('error', {})
                 err_msg = err_detail.get('message', '') if isinstance(err_detail, dict) else str(err_detail)
-                if 'duplicate column' not in err_msg:
-                    print(f"[DB] Turso query error: {err_detail}")
+                if 'duplicate column' in err_msg:
+                    raise DuplicateError(err_msg)
+                if 'unique' in err_msg.lower() or 'constraint' in err_msg.lower():
+                    raise DuplicateError(err_msg)
+                print(f"[DB] Turso query error: {err_detail}")
                 raise ValueError("Database error. Please try again.")
             res = result.get("response", {}).get("result", {})
             cols = [c["name"] for c in res.get("cols", [])]
@@ -129,6 +144,30 @@ class _ConnWrapper:
         # Turso HTTP API is auto-commit — no-op
         if not self._use_turso and self._local:
             self._local.commit()
+
+    def rollback(self):
+        if not self._use_turso and self._local:
+            try:
+                self._local.rollback()
+            except Exception:
+                pass
+
+    def begin(self):
+        """Begin an immediate transaction (serializes concurrent writers)."""
+        if not self._use_turso:
+            self._local.execute("BEGIN IMMEDIATE")
+            return
+        payload = {"requests": [{"type": "begin", "kind": "immediate"}]}
+        try:
+            resp = httpx.post(
+                _build_url(),
+                json=payload,
+                headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+        except Exception as e:
+            print(f"[DB] begin failed: {e}")
 
     def close(self):
         if not self._use_turso and self._local:
@@ -193,8 +232,7 @@ def init_db():
             from_user INTEGER NOT NULL,
             to_user INTEGER NOT NULL,
             is_super INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now')),
-            UNIQUE(from_user, to_user)
+            created_at TEXT DEFAULT (datetime('now'))
         )""",
         """CREATE TABLE IF NOT EXISTS matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -260,6 +298,12 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_likes_from ON likes(from_user)",
         "CREATE INDEX IF NOT EXISTS idx_likes_to ON likes(to_user)",
         "CREATE INDEX IF NOT EXISTS idx_chat_active ON chat_sessions(is_active)",
+        # Enforce uniqueness on existing tables. These use IF NOT EXISTS so they
+        # are idempotent on every startup, and they actually create the constraint
+        # even when the table already exists (inline UNIQUE in the DDL above is
+        # ignored by CREATE TABLE IF NOT EXISTS).
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_likes_unique ON likes(from_user, to_user)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_unique ON matches(user1_id, user2_id)",
     ]
 
     for stmt in statements:
@@ -267,6 +311,35 @@ def init_db():
             conn.execute(stmt)
         except Exception as e:
             print(f"[DB] init statement skipped: {e}")
+
+    # Ensure UNIQUE constraints exist on tables that predate this code.
+    # Inline UNIQUE in the DDL above is ignored by CREATE TABLE IF NOT EXISTS
+    # when the table already exists, so these idempotent indexes are what
+    # actually enforce uniqueness on a live database.
+    for index_stmt, dedup_sql in [
+        (
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_likes_unique ON likes(from_user, to_user)",
+            "DELETE FROM likes WHERE id NOT IN ("
+            "  SELECT MIN(id) FROM likes GROUP BY from_user, to_user"
+            ")",
+        ),
+        (
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_unique ON matches(user1_id, user2_id)",
+            "DELETE FROM matches WHERE id NOT IN ("
+            "  SELECT MIN(id) FROM matches GROUP BY user1_id, user2_id"
+            ")",
+        ),
+    ]:
+        try:
+            conn.execute(dedup_sql)
+            conn.commit()
+        except Exception as e:
+            print(f"[DB] dedup skipped: {e}")
+        try:
+            conn.execute(index_stmt)
+            conn.commit()
+        except Exception as e:
+            print(f"[DB] index skipped: {e}")
 
     for alter in [
         "ALTER TABLE users ADD COLUMN mystery_until TEXT DEFAULT ''",

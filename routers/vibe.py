@@ -14,6 +14,16 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 MODEL = "llama-3.3-70b-versatile"
 
 
+def _parse_dt(value) -> datetime | None:
+    """Parse a 'YYYY-MM-DD HH:MM:SS' timestamp, returning None on any bad input."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
+
 # ── Vibe Check ────────────────────────────────────────────────────────────────
 
 async def _fetch_question_from_ai() -> dict:
@@ -239,7 +249,8 @@ async def toggle_mystery(db=Depends(get_db), current_user=Depends(get_current_us
     mystery_until = getattr(current_user, "mystery_until", "") or ""
 
     # If currently active, turn off
-    if mystery_until and datetime.strptime(mystery_until, "%Y-%m-%d %H:%M:%S") > now:
+    active_until = _parse_dt(mystery_until)
+    if active_until and active_until > now:
         db.execute("UPDATE users SET mystery_until='' WHERE id=?", (current_user.id,))
         db.commit()
         return JSONResponse({"ok": True, "active": False})
@@ -257,9 +268,7 @@ async def mystery_status(db=Depends(get_db), current_user=Depends(get_current_us
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     mystery_until = getattr(current_user, "mystery_until", "") or ""
     active = False
-    if mystery_until:
-        try:
-            active = datetime.strptime(mystery_until, "%Y-%m-%d %H:%M:%S") > datetime.utcnow()
-        except Exception:
-            pass
+    active_until = _parse_dt(mystery_until)
+    if active_until:
+        active = active_until > datetime.utcnow()
     return JSONResponse({"active": active, "until": mystery_until if active else ""})

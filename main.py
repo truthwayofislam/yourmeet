@@ -1,13 +1,24 @@
 import os
+import re
 import hmac
+import httpx
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, Response
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 load_dotenv()
+
+# Telegram file_ids are opaque tokens with no fixed length, but they always
+# consist of a single segment of base64url characters. This rejects anything
+# that isn't a plausible file_id (path traversal, control chars, SQL, etc.).
+_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
+
+
+def _valid_file_id(file_id: str) -> bool:
+    return bool(file_id) and bool(_FILE_ID_RE.match(file_id))
 
 from database import init_db, get_conn
 from routers import auth, profiles, chat, payment, vibe
@@ -113,8 +124,21 @@ app.include_router(vibe.router)
 
 
 @app.get("/photo/{file_id:path}")
-async def proxy_photo(file_id: str):
-    import httpx
+async def proxy_photo(file_id: str, request: Request):
+    # Reject anything that isn't a plausible Telegram file_id before it ever
+    # reaches the Telegram API (blocks path traversal and injection).
+    if not _valid_file_id(file_id):
+        raise HTTPException(status_code=400, detail="invalid file_id")
+
+    # Only authenticated users may fetch photos through the proxy.
+    db = get_conn()
+    try:
+        user = await auth.get_current_user(request, db=db)
+    finally:
+        db.close()
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
     token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
     if not token:
         return Response(status_code=404)

@@ -167,7 +167,11 @@ async def forward_message(tg_id_from: str, text: str, db) -> bool:
 
     # Check expiry
     if not is_premium and expires_at:
-        if datetime.utcnow() > datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S"):
+        try:
+            expired = datetime.utcnow() > datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            expired = True
+        if expired:
             db.execute("UPDATE chat_sessions SET is_active=0 WHERE id=?", (session_id,))
             db.commit()
             # Notify BOTH users that chat ended

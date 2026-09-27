@@ -751,74 +751,106 @@ async def cb_next(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def _do_like(user, target_id: int, is_super: bool) -> bool:
-    from database import get_conn, row_to_user, USER_COLS
+    from database import get_conn, row_to_user, USER_COLS, DuplicateError
     db = get_conn()
 
-    if not user.is_premium:
-        row = db.execute("SELECT daily_swipes, super_likes_left FROM users WHERE id=?", (user.id,)).fetchone()
-        swipes = row[0] if row else 0
-        super_left = row[1] if row else 0
-        if swipes <= 0:
-            db.close()
-            return False
-        if is_super and super_left <= 0:
-            db.close()
-            return False
+    # Serialize the like→match→chat sequence so concurrent requests cannot
+    # create duplicate likes / matches / chat sessions.
+    try:
+        db.begin()
+    except Exception:
+        pass
 
-    already = db.execute(
-        "SELECT id FROM likes WHERE from_user=? AND to_user=?", (user.id, target_id)
-    ).fetchone()
-    if not already:
-        db.execute(
-            "INSERT INTO likes (from_user, to_user, is_super) VALUES (?,?,?)",
-            (user.id, target_id, int(is_super)),
-        )
+    try:
         if not user.is_premium:
-            db.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (user.id,))
-            if is_super:
-                db.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (user.id,))
-        db.commit()
+            row = db.execute("SELECT daily_swipes, super_likes_left FROM users WHERE id=?", (user.id,)).fetchone()
+            swipes = row[0] if row else 0
+            super_left = row[1] if row else 0
+            if swipes <= 0:
+                db.rollback()
+                return False
+            if is_super and super_left <= 0:
+                db.rollback()
+                return False
 
-    mutual = db.execute(
-        "SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, user.id)
-    ).fetchone()
-
-    if mutual:
-        existing_match = db.execute(
-            "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
-            (user.id, target_id, target_id, user.id),
+        # INSERT the like; a UNIQUE violation means another request already
+        # recorded this like — that's fine, treat it as already-liked.
+        already = db.execute(
+            "SELECT id FROM likes WHERE from_user=? AND to_user=?", (user.id, target_id)
         ).fetchone()
-        if not existing_match:
-            db.execute("INSERT INTO matches (user1_id, user2_id) VALUES (?,?)", (user.id, target_id))
-            db.commit()
-            match_row = db.execute(
+        if not already:
+            try:
+                db.execute(
+                    "INSERT INTO likes (from_user, to_user, is_super) VALUES (?,?,?)",
+                    (user.id, target_id, int(is_super)),
+                )
+                if not user.is_premium:
+                    db.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (user.id,))
+                    if is_super:
+                        db.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (user.id,))
+            except DuplicateError:
+                pass  # concurrent duplicate — benign, continue
+
+        mutual = db.execute(
+            "SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, user.id)
+        ).fetchone()
+
+        match_id = None
+        if mutual:
+            existing_match = db.execute(
                 "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
-                (user.id, target_id, target_id, user.id)
+                (user.id, target_id, target_id, user.id),
             ).fetchone()
-            match_id = match_row[0] if match_row else None
-            cols = ", ".join(USER_COLS)
-            target = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone())
-            db.close()
-            try:
-                from routers.chat import _start_chat_session
-                from database import get_conn as gc
-                chat_db = gc()
-                if match_id and target:
-                    await _start_chat_session(chat_db, match_id, user, target)
-                chat_db.close()
-            except Exception as e:
-                print(f"[LIKE] chat session failed: {e}")
-            try:
-                from main import bot_app
-                from routers.vibe import send_vibe_question_to_match
-                if bot_app and target and target.telegram_id:
-                    await notify_match(bot_app.bot, target, user)
-                if bot_app and match_id and target:
-                    await send_vibe_question_to_match(bot_app.bot, match_id, user, target)
-            except Exception as e:
-                print(f"[LIKE] notify failed: {e}")
-            return True
+            if existing_match:
+                match_id = existing_match[0]
+            else:
+                try:
+                    db.execute("INSERT INTO matches (user1_id, user2_id) VALUES (?,?)", (user.id, target_id))
+                    match_row = db.execute(
+                        "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
+                        (user.id, target_id, target_id, user.id)
+                    ).fetchone()
+                    match_id = match_row[0] if match_row else None
+                except DuplicateError:
+                    # Concurrent request created the match — fetch it.
+                    match_row = db.execute(
+                        "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
+                        (user.id, target_id, target_id, user.id)
+                    ).fetchone()
+                    match_id = match_row[0] if match_row else None
+        db.commit()
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        print(f"[LIKE] transaction failed: {e}")
+        db.close()
+        return False
+
+    cols = ", ".join(USER_COLS)
+    target = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone())
     db.close()
+
+    if match_id and target:
+        try:
+            from routers.chat import _start_chat_session
+            from database import get_conn as gc
+            chat_db = gc()
+            await _start_chat_session(chat_db, match_id, user, target)
+            chat_db.close()
+        except Exception as e:
+            print(f"[LIKE] chat session failed: {e}")
+        try:
+            from main import bot_app
+            from routers.vibe import send_vibe_question_to_match
+            if bot_app and target and target.telegram_id:
+                await notify_match(bot_app.bot, target, user)
+            if bot_app and match_id and target:
+                await send_vibe_question_to_match(bot_app.bot, match_id, user, target)
+        except Exception as e:
+            print(f"[LIKE] notify failed: {e}")
+        return True
     return False
 
 
