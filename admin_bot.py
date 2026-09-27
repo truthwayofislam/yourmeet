@@ -273,6 +273,7 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "SELECT telegram_id, language FROM users WHERE photo='' AND is_blocked=0 AND telegram_id IS NOT NULL"
     ).fetchall()
     sent = 0
+    import asyncio
     for tg_id, lang in rows:
         lang = lang or "en"
         try:
@@ -281,6 +282,7 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 text="👋 Hey! You haven't completed your profile yet. Open the app to finish setup and start matching! 💕",
             )
             sent += 1
+            await asyncio.sleep(0.05)
         except Exception:
             pass
     await update.message.reply_text(f"✅ Reminded {sent} incomplete users.")
@@ -294,6 +296,7 @@ async def cmd_remind_blocked(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "SELECT telegram_id, language FROM users WHERE is_rejected=1 AND telegram_id IS NOT NULL"
     ).fetchall()
     sent = 0
+    import asyncio
     for tg_id, lang in rows:
         try:
             await ctx.bot.send_message(
@@ -301,6 +304,7 @@ async def cmd_remind_blocked(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 text="ℹ️ Your profile was previously rejected. You can update your profile and resubmit for review.",
             )
             sent += 1
+            await asyncio.sleep(0.05)
         except Exception:
             pass
     await update.message.reply_text(f"✅ Notified {sent} rejected users.")
