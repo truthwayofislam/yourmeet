@@ -1,4 +1,6 @@
 import os
+import re
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -59,6 +61,16 @@ def _get_db():
     return get_conn()
 
 
+# Telegram file_ids are opaque tokens with no fixed length, but they always
+# consist of a single segment of base64url characters. Reject anything that
+# isn't a plausible file_id (URLs, path traversal, injection payloads).
+_FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
+
+
+def _valid_file_id(file_id: str) -> bool:
+    return bool(file_id) and bool(_FILE_ID_RE.match(file_id))
+
+
 def _approval_keyboard(user_id: int):
     return InlineKeyboardMarkup([
         [
@@ -74,20 +86,23 @@ def _approval_keyboard(user_id: int):
 
 
 async def _send_pending_profile(bot, chat_id: str, user):
-    import json
-    interests = json.loads(user.interests or "[]")
+    interests = []
+    try:
+        interests = json.loads(user.interests or "[]") or []
+    except (ValueError, TypeError):
+        interests = []
     text = (
         f"👤 <b>Pending Profile #{user.id}</b>\n\n"
-        f"📛 Name: {user.name}\n"
-        f"🎂 Age: {user.age}\n"
-        f"⚡ Gender: {user.gender}\n"
-        f"🏙 City: {user.city or '-'}\n"
-        f"📝 Bio: {user.bio or '-'}\n"
-        f"🏷 Interests: {', '.join(interests) or '-'}\n"
-        f"📱 Social: {user.social_handle or '-'}\n"
-        f"📞 Phone: {user.phone or '-'}\n"
-        f"🌐 Lang: {user.language or 'en'}\n"
-        f"📅 Joined: {(user.created_at or '')[:10]}"
+        f"Nickname: {user.name}\n"
+        f"Age: {user.age}\n"
+        f"Gender: {user.gender}\n"
+        f"City: {user.city or '-'}\n"
+        f"Bio: {user.bio or '-'}\n"
+        f"Interests: {', '.join(interests) or '-'}\n"
+        f"Social: {user.social_handle or '-'}\n"
+        f"Phone: {user.phone or '-'}\n"
+        f"Language: {user.language or 'en'}\n"
+        f"Joined: {(user.created_at or '')[:10]}"
     )
     keyboard = _approval_keyboard(user.id)
     if user.photo:
@@ -140,7 +155,7 @@ async def cmd_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         row = db.execute(
             f"SELECT {cols} FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0"
-            f" AND photo!='' AND age IS NOT NULL AND gender IS NOT NULL"
+            f" AND photo!='' AND age IS NOT NULL AND age != 0 AND gender IS NOT NULL AND gender != ''"
             f" ORDER BY created_at ASC LIMIT 1"
         ).fetchone()
     except Exception as e:
@@ -238,10 +253,13 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db = _get_db()
     tg_ids = [r[0] for r in db.execute("SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND is_blocked=0").fetchall()]
     sent, failed = 0, 0
+    import asyncio
     for tg_id in tg_ids:
         try:
             await ctx.bot.send_message(chat_id=tg_id, text=msg, parse_mode="HTML")
             sent += 1
+            # Telegram throttles ~30 messages/sec per bot; pace the broadcast.
+            await asyncio.sleep(0.05)
         except Exception:
             failed += 1
     await update.message.reply_text(f"✅ Sent: {sent} | ❌ Failed: {failed}")
@@ -422,6 +440,8 @@ async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ── Callbacks ─────────────────────────────────────────────────────────────────
 
 async def cb_approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
     query = update.callback_query
     await query.answer()
     user_id = int(query.data.split(":")[1])
@@ -435,6 +455,8 @@ async def cb_approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
     query = update.callback_query
     await query.answer()
     user_id = int(query.data.split(":")[1])
@@ -448,6 +470,8 @@ async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cb_reject(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
     query = update.callback_query
     await query.answer()
     user_id = int(query.data.split(":")[1])
@@ -461,6 +485,8 @@ async def cb_reject(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cb_ban(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
     query = update.callback_query
     await query.answer()
     user_id = int(query.data.split(":")[1])
@@ -474,6 +500,8 @@ async def cb_ban(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cb_next_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
     query = update.callback_query
     await query.answer()
     db = _get_db()
@@ -481,7 +509,7 @@ async def cb_next_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     cols = ", ".join(USER_COLS)
     row = db.execute(
         f"SELECT {cols} FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0"
-        f" AND photo!='' AND age IS NOT NULL AND gender IS NOT NULL"
+        f" AND photo!='' AND age IS NOT NULL AND age != 0 AND gender IS NOT NULL AND gender != ''"
         f" ORDER BY created_at ASC LIMIT 1"
     ).fetchone()
     if not row:
@@ -513,6 +541,10 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
     """Called from setup router when new profile is submitted."""
     if not ADMIN_TG_ID or not ADMIN_BOT_TOKEN:
         return
+    # Only trust photo values that look like Telegram file_ids; reject anything
+    # that could be a URL, path traversal, or injection payload.
+    if photo and not _valid_file_id(photo):
+        photo = ""
     text = (
         f"🔔 <b>New Profile Submitted</b>\n\n"
         f"ID: {user_id} | {name}, {age} | {gender} | {city or '-'}"
