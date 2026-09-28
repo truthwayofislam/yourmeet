@@ -525,6 +525,13 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     file_id = photo.file_id
 
+    # Re-upload to storage channel if configured (makes file_id permanent)
+    try:
+        from storage import store_photo_from_file_id
+        file_id = await store_photo_from_file_id(ctx.bot, file_id)
+    except Exception as e:
+        print(f"[SETUP] storage upload failed, using original file_id: {e}")
+
     s = await _get_setup_data(tg_id)
     d = s["data"]
     name = d.get("name", update.effective_user.first_name or "User")
