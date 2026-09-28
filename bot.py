@@ -1300,7 +1300,11 @@ async def cb_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "message_id": query.message.message_id,
             "date": int(__import__("time").time()),
             "chat": {"id": query.message.chat_id, "type": "private"},
-            "from": {"id": update.effective_user.id, "first_name": update.effective_user.first_name or "User"},
+            "from": {
+                "id": update.effective_user.id,
+                "is_bot": False,
+                "first_name": update.effective_user.first_name or "User",
+            },
             "text": f"/{cmd}",
         }},
         ctx.bot,
