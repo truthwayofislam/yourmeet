@@ -1,6 +1,8 @@
 import os
 import re
 import json
+import time
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -10,6 +12,9 @@ from telegram.ext import (
 ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
 ADMIN_TG_ID = os.getenv("ADMIN_TG_ID", "").strip()
 APP_URL = os.getenv("APP_URL", "")
+
+_rate_store: dict = {}
+_rate_lock = threading.Lock()
 
 
 def build_admin_bot() -> Application:
@@ -74,20 +79,17 @@ def _valid_file_id(file_id: str) -> bool:
 
 def _admin_rate_limit(update: Update, limit: int = 10, window: int = 60) -> bool:
     """Throttle admin commands. Returns True if allowed, False if rate-limited."""
-    import time
     uid = str(update.effective_user.id)
     key = f"admin_cmd:{uid}"
     now = time.time()
-    if not hasattr(_admin_rate_limit, "_store"):
-        _admin_rate_limit._store = {}
-    store = _admin_rate_limit._store
-    stamps = [t for t in store.get(key, []) if now - t < window]
-    if len(stamps) >= limit:
-        store[key] = stamps
-        return False
-    stamps.append(now)
-    store[key] = stamps
-    return True
+    with _rate_lock:
+        stamps = [t for t in _rate_store.get(key, []) if now - t < window]
+        if len(stamps) >= limit:
+            _rate_store[key] = stamps
+            return False
+        stamps.append(now)
+        _rate_store[key] = stamps
+        return True
 
 
 def _approval_keyboard(user_id: int):
@@ -124,8 +126,7 @@ async def _send_pending_profile(bot, chat_id: str, user):
     )
     keyboard = _approval_keyboard(user.id)
     if user.photo:
-        # Try sending via file_id directly first
-        sent = False
+        # 1st try: send via file_id directly (works if bot already has the file)
         try:
             await bot.send_photo(
                 chat_id=chat_id,
@@ -134,25 +135,34 @@ async def _send_pending_profile(bot, chat_id: str, user):
                 parse_mode="HTML",
                 reply_markup=keyboard,
             )
-            sent = True
+            return
         except Exception as e:
             print(f"[ADMIN BOT] send_photo file_id failed: {e}")
-        # Fallback: send via APP_URL proxy
-        if not sent and APP_URL:
+
+        # 2nd try: get a fresh download URL from Telegram API (no auth needed)
+        main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+        if main_bot_token:
             try:
-                photo_proxy = f"{APP_URL}/photo/{user.photo}"
-                await bot.send_photo(
-                    chat_id=chat_id,
-                    photo=photo_proxy,
-                    caption=text,
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
-                )
-                sent = True
+                import httpx
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.get(
+                        f"https://api.telegram.org/bot{main_bot_token}/getFile?file_id={user.photo}"
+                    )
+                    if r.is_success and r.json().get("ok"):
+                        file_path = r.json()["result"]["file_path"]
+                        direct_url = f"https://api.telegram.org/file/bot{main_bot_token}/{file_path}"
+                        await bot.send_photo(
+                            chat_id=chat_id,
+                            photo=direct_url,
+                            caption=text,
+                            parse_mode="HTML",
+                            reply_markup=keyboard,
+                        )
+                        return
             except Exception as e:
-                print(f"[ADMIN BOT] send_photo proxy failed: {e}")
-        if sent:
-            return
+                print(f"[ADMIN BOT] send_photo direct_url failed: {e}")
+
+    # Fallback: text only
     await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=keyboard)
 
 
@@ -651,30 +661,44 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
     try:
         from telegram import Bot
         bot = Bot(token=ADMIN_BOT_TOKEN)
-        sent = False
         if photo:
+            # 1st try: file_id directly
             try:
                 await bot.send_photo(
                     chat_id=ADMIN_TG_ID, photo=photo,
                     caption=text, parse_mode="HTML",
                     reply_markup=keyboard,
                 )
-                sent = True
+                return
             except Exception as e:
                 print(f"[ADMIN BOT] send_for_review file_id failed: {e}")
-            if not sent and APP_URL:
+
+            # 2nd try: get direct download URL via getFile (no auth needed)
+            main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+            if main_bot_token:
                 try:
-                    await bot.send_photo(
-                        chat_id=ADMIN_TG_ID,
-                        photo=f"{APP_URL}/photo/{photo}",
-                        caption=text, parse_mode="HTML",
-                        reply_markup=keyboard,
-                    )
-                    sent = True
+                    import httpx
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        r = await client.get(
+                            f"https://api.telegram.org/bot{main_bot_token}/getFile?file_id={photo}"
+                        )
+                        if r.is_success and r.json().get("ok"):
+                            file_path = r.json()["result"]["file_path"]
+                            direct_url = f"https://api.telegram.org/file/bot{main_bot_token}/{file_path}"
+                            await bot.send_photo(
+                                chat_id=ADMIN_TG_ID,
+                                photo=direct_url,
+                                caption=text, parse_mode="HTML",
+                                reply_markup=keyboard,
+                            )
+                            return
                 except Exception as e:
-                    print(f"[ADMIN BOT] send_for_review proxy failed: {e}")
-        if not sent:
-            await bot.send_message(chat_id=ADMIN_TG_ID, text=text, parse_mode="HTML",
-                                   reply_markup=keyboard)
+                    print(f"[ADMIN BOT] send_for_review direct_url failed: {e}")
+
+        # Fallback: text only
+        await bot.send_message(
+            chat_id=ADMIN_TG_ID, text=text, parse_mode="HTML",
+            reply_markup=keyboard
+        )
     except Exception as e:
         print(f"[ADMIN BOT] send_for_review failed: {e}")

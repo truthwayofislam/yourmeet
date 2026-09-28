@@ -22,7 +22,7 @@ def create_token(user_id: int) -> str:
     return jwt.encode({"sub": str(user_id), "exp": exp}, SECRET, algorithm="HS256")
 
 
-def get_current_user(request: Request, db=Depends(get_db)):
+async def get_current_user(request: Request, db=Depends(get_db)):
     token = request.cookies.get("token") or request.headers.get("X-Token")
     if not token:
         return None

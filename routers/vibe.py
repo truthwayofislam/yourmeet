@@ -183,7 +183,10 @@ async def _process_vibe_answer(match_id: int, answer: str, db, current_user):
 async def send_vibe_question_to_match(bot, match_id: int, user1, user2):
     """Called after a match is created — send vibe check question to both users via bot."""
     db = get_conn()
-    q = await ensure_today_question(db)
+    try:
+        q = await ensure_today_question(db)
+    finally:
+        db.close()
     BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
     if not BOT_TOKEN:
         return

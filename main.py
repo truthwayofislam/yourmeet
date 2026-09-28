@@ -193,7 +193,6 @@ async def export_data(request: Request, db=Depends(get_db)):
     matches = [r[0] for r in db.execute("SELECT id FROM matches WHERE user1_id=? OR user2_id=?", (user.id, user.id)).fetchall()]
     reports = [r[0] for r in db.execute("SELECT reported_id FROM reports WHERE reporter_id=?", (user.id,)).fetchall()]
     blocks = [r[0] for r in db.execute("SELECT blocked_id FROM user_blocks WHERE blocker_id=?", (user.id,)).fetchall()]
-    db.close()
     return JSONResponse({
         "profile": profile,
         "likes_given_to": likes_given,
@@ -206,18 +205,14 @@ async def export_data(request: Request, db=Depends(get_db)):
 
 
 @app.get("/photo/{file_id:path}")
-async def proxy_photo(file_id: str, request: Request):
+async def proxy_photo(file_id: str, request: Request, db=Depends(get_db)):
     # Reject anything that isn't a plausible Telegram file_id before it ever
     # reaches the Telegram API (blocks path traversal and injection).
     if not _valid_file_id(file_id):
         raise HTTPException(status_code=400, detail="invalid file_id")
 
     # Only authenticated users may fetch photos through the proxy.
-    db = get_conn()
-    try:
-        user = await auth.get_current_user(request, db=db)
-    finally:
-        db.close()
+    user = await auth.get_current_user(request, db=db)
     if not user:
         raise HTTPException(status_code=401, detail="unauthorized")
 

@@ -305,11 +305,9 @@ async def notify_missed_chats(db):
                FROM chat_sessions cs
                WHERE cs.created_at <= ?
                AND cs.is_premium_chat = 0
+               AND cs.missed_notified = 0
                AND NOT EXISTS (
                    SELECT 1 FROM chat_messages cm WHERE cm.session_id = cs.id
-               )
-               AND NOT EXISTS (
-                   SELECT 1 FROM chat_messages cm2 WHERE cm2.session_id = cs.id AND cm2.sender_tg_id = 'missed_notified'
                )""",
             (cutoff,),
         ).fetchall()
@@ -333,10 +331,10 @@ async def notify_missed_chats(db):
                         )
                 except Exception as e:
                     print(f"[CHAT MISSED] notify failed for {tg_id}: {e}")
-            # Mark as notified so we don't send again
+            # Mark as notified using a dedicated column, not a fake chat message
             try:
                 db.execute(
-                    "INSERT INTO chat_messages (session_id, sender_tg_id, message) VALUES (?, 'missed_notified', '')",
+                    "UPDATE chat_sessions SET missed_notified=1 WHERE id=?",
                     (session_id,),
                 )
                 db.commit()

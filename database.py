@@ -1,4 +1,5 @@
 import os
+import asyncio
 import httpx
 
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
@@ -106,12 +107,29 @@ class _ConnWrapper:
             "requests": [{"type": "execute", "stmt": {"sql": sql, "args": args}}]
         }
         try:
-            resp = httpx.post(
-                _build_url(),
-                json=payload,
-                headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                timeout=15,
-            )
+            loop = None
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+            if loop and loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(
+                        httpx.post,
+                        _build_url(),
+                        json=payload,
+                        headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
+                        timeout=15,
+                    )
+                    resp = future.result(timeout=20)
+            else:
+                resp = httpx.post(
+                    _build_url(),
+                    json=payload,
+                    headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
+                    timeout=15,
+                )
             resp.raise_for_status()
             data = resp.json()
             result = data["results"][0]
@@ -257,6 +275,7 @@ def init_db():
             is_premium_chat INTEGER DEFAULT 0,
             expires_at TEXT,
             is_active INTEGER DEFAULT 1,
+            missed_notified INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now'))
         )""",
         """CREATE TABLE IF NOT EXISTS vibe_questions (
@@ -365,6 +384,7 @@ def init_db():
         "ALTER TABLE users ADD COLUMN max_age INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN max_distance INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN profile_views INTEGER DEFAULT 0",
+        "ALTER TABLE chat_sessions ADD COLUMN missed_notified INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(alter)

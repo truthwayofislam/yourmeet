@@ -249,15 +249,15 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
                 "INSERT INTO reports (reporter_id, reported_id, reason) VALUES (?,?,?)",
                 (current_user.id, target_id, reason),
             )
-            # Atomically increment the report counter and block in one UPDATE,
-            # so concurrent reports cannot both pass the count threshold.
+            db.commit()
+            # Count AFTER insert so the threshold check is atomic with the insert
             row = db.execute(
                 "SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)
             ).fetchone()
             count = row[0] if row else 0
             if count >= 3:
                 db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (target_id,))
-            db.commit()
+                db.commit()
             log_audit(str(getattr(current_user, "telegram_id", "")), "report_user", target_id, reason)
         except Exception as e:
             try:
@@ -265,4 +265,5 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
             except Exception:
                 pass
             print(f"[REPORT] failed: {e}")
+    return JSONResponse({"ok": True})
     return JSONResponse({"ok": True})
