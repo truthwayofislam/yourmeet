@@ -62,6 +62,7 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("editprofile", cmd_edit_profile))
     app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
+    app.add_handler(CallbackQueryHandler(cb_filter, pattern=r"^filter:"))
     app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:"))
     app.add_handler(CallbackQueryHandler(cb_like, pattern=r"^like:"))
     app.add_handler(CallbackQueryHandler(cb_skip, pattern=r"^skip:"))
@@ -294,9 +295,14 @@ async def cmd_about(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _reply(ctx, update.effective_chat.id,
         "ℹ️ <b>About YourMeet</b>\n\n"
         "YourMeet is a dating app where you swipe, match, and chat — all through Telegram.\n\n"
-        "Developer: @who_is_the-black_hat\n"
-        "Stack: FastAPI + Python Telegram Bot + Turso\n\n"
-        "Use /premium to unlock unlimited swipes, super likes, and chat time! 👑"
+        "Features:\n"
+        "• Swipe & match with people nearby\n"
+        "• 1-on-1 chat via bot forwarding\n"
+        "• Vibe Check questions on every match\n"
+        "• Mystery Mode (Premium) — hide your photo\n"
+        "• Boost your profile for more visibility (Premium)\n"
+        "• See who liked you (Premium)\n\n"
+        "Use /premium to unlock Premium features. 👑"
     )
 
 
@@ -1189,14 +1195,31 @@ async def cmd_filters(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         row = db.execute("SELECT min_age, max_age, max_distance FROM users WHERE id=?", (user.id,)).fetchone()
         db.close()
         ma, xa, md = (row if row else (0, 0, 0))
-        await update.message.reply_text(
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("18-25", callback_data="filter:18:25:0"),
+                InlineKeyboardButton("25-35", callback_data="filter:25:35:0"),
+                InlineKeyboardButton("35-50", callback_data="filter:35:50:0"),
+            ],
+            [
+                InlineKeyboardButton("Within 10 km", callback_data="filter:0:0:10"),
+                InlineKeyboardButton("Within 50 km", callback_data="filter:0:0:50"),
+                InlineKeyboardButton("Within 100 km", callback_data="filter:0:0:100"),
+            ],
+            [InlineKeyboardButton("✖️ Clear Filters", callback_data="filter:0:0:0")],
+        ])
+        await _cleanup_chat(ctx, update.effective_chat.id)
+        sent = await update.message.reply_text(
             f"🎯 <b>Your Filters</b>\n\n"
             f"Min age: {ma or 'any'}\n"
             f"Max age: {xa or 'any'}\n"
             f"Max distance: {md or 'any'} km\n\n"
-            f"Usage: /filters <min> <max> <km>\nExample: /filters 20 35 50",
-            parse_mode="HTML"
+            f"Or type: /filters <min> <max> <km>\nExample: /filters 20 35 50",
+            parse_mode="HTML",
+            reply_markup=keyboard,
         )
+        ctx.user_data["last_keyboard_msg_id"] = sent.message_id
+        await _track_bot_message(ctx, sent.message_id)
         return
     try:
         min_age = max(0, min(100, int(ctx.args[0])))
@@ -1283,6 +1306,37 @@ async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print(f"[BOT] send_invoice failed: {e}")
+
+
+async def cb_filter(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Handle /filters quick-pick buttons (filter:min:max:km)."""
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split(":")
+    if len(parts) != 4:
+        return
+    _, min_age, max_age, max_distance = parts
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    if not user:
+        return
+    from database import get_conn
+    db = get_conn()
+    db.execute(
+        "UPDATE users SET min_age=?, max_age=?, max_distance=? WHERE id=?",
+        (int(min_age), int(max_age), int(max_distance), user.id),
+    )
+    db.commit()
+    db.close()
+    await query.edit_message_reply_markup(reply_markup=None)
+    await query.message.reply_text(
+        f"✅ Filters updated!\n\n"
+        f"Min age: {min_age or 'any'}\n"
+        f"Max age: {max_age or 'any'}\n"
+        f"Max distance: {max_distance or 'any'} km",
+        parse_mode="HTML",
+        reply_markup=_main_keyboard(),
+    )
 
 
 async def cb_vibe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
