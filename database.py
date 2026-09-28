@@ -208,7 +208,7 @@ def init_db():
             is_rejected INTEGER DEFAULT 0,
             is_blocked INTEGER DEFAULT 0,
             is_admin INTEGER DEFAULT 0,
-            daily_swipes INTEGER DEFAULT 10,
+            daily_swipes INTEGER DEFAULT 30,
             swipes_reset_date TEXT DEFAULT '',
             super_likes_left INTEGER DEFAULT 1,
             boosted_until TEXT DEFAULT '',

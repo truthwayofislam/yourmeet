@@ -798,6 +798,8 @@ async def cb_like(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     matched = await _do_like(user, target_id, is_super=False)
+    # Re-fetch user so daily_swipes count is fresh for next profile
+    user = _get_user(tg_id)
     if matched:
         from database import get_conn, row_to_user, USER_COLS
         db = get_conn()
@@ -811,7 +813,7 @@ async def cb_like(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
-    await _send_next_profile(query.message, _get_user(tg_id), ctx)
+    await _send_next_profile(query.message, user, ctx)
 
 
 async def cb_superlike(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -826,6 +828,8 @@ async def cb_superlike(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer("⭐ Super Liked!")
     target_id = int(query.data.split(":")[1])
     matched = await _do_like(user, target_id, is_super=True)
+    # Re-fetch user so super_likes_left count is fresh for next profile
+    user = _get_user(tg_id)
     if matched:
         from database import get_conn, row_to_user, USER_COLS
         db = get_conn()
@@ -838,7 +842,7 @@ async def cb_superlike(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
-    await _send_next_profile(query.message, _get_user(tg_id), ctx)
+    await _send_next_profile(query.message, user, ctx)
 
 
 async def cb_skip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -854,6 +858,8 @@ async def cb_skip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.execute("INSERT OR IGNORE INTO skips (user_id, skipped_id) VALUES (?,?)", (user.id, target_id))
     db.commit()
     db.close()
+    # Re-fetch so swipe counts are fresh
+    user = _get_user(tg_id)
     await _send_next_profile(query.message, user, ctx)
 
 
@@ -861,8 +867,11 @@ async def cb_next(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     tg_id = str(update.effective_user.id)
-    user = _get_user(tg_id)
+    user = _get_user(tg_id)  # always fresh fetch
     if not user:
+        return
+    if not user.is_approved:
+        await query.answer("⏳ Profile pending approval.", show_alert=True)
         return
     await _send_next_profile(query.message, user, ctx)
 
@@ -1121,7 +1130,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Yes, Delete", callback_data="confirmdelete")],
+        [InlineKeyboardButton("✅ Yes, Delete", callback_data="cmd:confirmdelete")],
     ])
     sent = await update.message.reply_text(
         "⚠️ Are you sure you want to delete your account?\n\n"
@@ -1309,7 +1318,8 @@ async def cb_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "stats": cmd_stats, "premium": cmd_premium, "share": cmd_share,
         "language": cmd_language, "boost": cmd_boost, "block": cmd_block,
         "filters": cmd_filters, "editprofile": cmd_edit_profile,
-        "delete": cmd_delete, "about": cmd_about, "help": cmd_help,
+        "delete": cmd_delete, "confirmdelete": cmd_confirm_delete,
+        "about": cmd_about, "help": cmd_help,
     }
     handler = handlers.get(cmd)
     if not handler:
@@ -1367,7 +1377,7 @@ async def cb_chat_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cb_unmatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer("💔 Unmatched")
     match_id = int(query.data.split(":")[1])
     tg_id = str(update.effective_user.id)
     user = _get_user(tg_id)
@@ -1379,9 +1389,23 @@ async def cb_unmatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "DELETE FROM matches WHERE id=? AND (user1_id=? OR user2_id=?)",
         (match_id, user.id, user.id)
     )
+    # Also close any active chat session for this match
+    db.execute(
+        "UPDATE chat_sessions SET is_active=0 WHERE "
+        "(user1_id=? OR user2_id=?) AND is_active=1",
+        (user.id, user.id)
+    )
     db.commit()
     db.close()
-    await query.edit_message_text("✅ Unmatched.")
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    sent = await query.message.reply_text(
+        "✅ Unmatched. They can no longer message you.",
+        reply_markup=_main_keyboard()
+    )
+    await _track_bot_message(ctx, sent.message_id)
 
 
 async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
