@@ -22,7 +22,7 @@ _FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
 def _valid_file_id(file_id: str) -> bool:
     return bool(file_id) and bool(_FILE_ID_RE.match(file_id))
 
-from database import init_db, get_conn
+from database import init_db, get_conn, get_db
 from routers import auth, profiles, chat, payment, vibe
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
