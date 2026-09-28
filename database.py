@@ -153,21 +153,12 @@ class _ConnWrapper:
                 pass
 
     def begin(self):
-        """Begin an immediate transaction (serializes concurrent writers)."""
+        """Begin transaction — only for local SQLite, no-op for Turso (auto-commit)."""
         if not self._use_turso:
-            self._local.execute("BEGIN IMMEDIATE")
-            return
-        payload = {"requests": [{"type": "begin", "kind": "immediate"}]}
-        try:
-            resp = httpx.post(
-                _build_url(),
-                json=payload,
-                headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                timeout=15,
-            )
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"[DB] begin failed: {e}")
+            try:
+                self._local.execute("BEGIN IMMEDIATE")
+            except Exception:
+                pass
 
     def close(self):
         if not self._use_turso and self._local:
