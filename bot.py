@@ -3,7 +3,7 @@ import json
 import warnings
 warnings.filterwarnings("ignore", message=".*per_message=False.*", category=UserWarning)
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     MessageHandler, ConversationHandler, filters, ContextTypes,
@@ -70,7 +70,6 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:"))
     app.add_handler(CommandHandler("about", cmd_about))
     app.add_handler(CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"))
-    app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:"))
     from telegram.ext import PreCheckoutQueryHandler
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
@@ -131,6 +130,33 @@ async def _track_bot_message(ctx, message_id: int):
     if len(recent) > 20:
         recent = recent[-20:]
     ctx.user_data["recent_bot_msg_ids"] = recent
+
+
+async def _reply(ctx, chat_id, text, **kwargs):
+    """Send a message with the persistent reply keyboard attached.
+
+    PTB 21.3 has no set_default_reply_keyboard, so every response must
+    carry the keyboard explicitly. This helper makes that uniform.
+    """
+    kwargs.setdefault("parse_mode", "HTML")
+    kwargs.setdefault("reply_markup", _main_keyboard())
+    sent = await ctx.bot.send_message(chat_id=chat_id, text=text, **kwargs)
+    await _track_bot_message(ctx, sent.message_id)
+    return sent
+
+
+def _main_keyboard():
+    """Persistent reply keyboard — stays visible below the text input."""
+    return ReplyKeyboardMarkup(
+        [
+            ["🔍 Browse", "💕 Matches", "👤 Profile", "📊 Stats"],
+            ["👑 Premium", "📖 Commands", "🌐 Language", "🚀 Boost"],
+            ["🎯 Filters", "✏️ Edit", "🚫 Block", "🗑 Delete"],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        input_field_placeholder="Type a command or tap a button 👇",
+    )
 
 
 def _browse_keyboard(target_id: int, super_left: int):
@@ -265,20 +291,13 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_about(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _cleanup_chat(ctx, update.effective_chat.id)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Browse Profiles", callback_data="next")],
-    ])
-    sent = await update.message.reply_text(
+    await _reply(ctx, update.effective_chat.id,
         "ℹ️ <b>About YourMeet</b>\n\n"
         "YourMeet is a dating app where you swipe, match, and chat — all through Telegram.\n\n"
         "Developer: @who_is_the-black_hat\n"
         "Stack: FastAPI + Python Telegram Bot + Turso\n\n"
-        "Use /premium to unlock unlimited swipes, super likes, and chat time! 👑",
-        parse_mode="HTML",
-        reply_markup=keyboard
+        "Use /premium to unlock unlimited swipes, super likes, and chat time! 👑"
     )
-    ctx.user_data["last_keyboard_msg_id"] = sent.message_id
-    await _track_bot_message(ctx, sent.message_id)
 
 
 # ── Setup Conversation ────────────────────────────────────────────────────────
@@ -586,7 +605,8 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         sent = await ctx.bot.send_message(
             chat_id,
             f"✅ <b>Profile updated!</b>\n\nYour changes are live. Approval status preserved.",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=_main_keyboard(),
         )
     else:
         sent = await ctx.bot.send_message(
@@ -595,7 +615,8 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "Our team will review your profile within a few hours.\n"
             "You will get a notification once approved!\n\n"
             "Use /help to see all commands.",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=_main_keyboard(),
         )
     await _track_bot_message(ctx, sent.message_id)
     return ConversationHandler.END
@@ -927,9 +948,7 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
              gender=user.gender or "-", city=user.city or "-",
              premium=premium, status=status)
     await _cleanup_chat(ctx, update.effective_chat.id)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Browse Profiles", callback_data="next")],
-    ])
+    keyboard = _main_keyboard()
     sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
@@ -972,10 +991,7 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )])
     db2.close()
     await _cleanup_chat(ctx, update.effective_chat.id)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Browse More", callback_data="next")],
-    ])
-    sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+    sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=_main_keyboard())
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
 
@@ -998,14 +1014,11 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.close()
     lang = user.language or "en"
     await _cleanup_chat(ctx, update.effective_chat.id)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Browse Profiles", callback_data="next")],
-    ])
     sent = await update.message.reply_text(
         s(lang, "your_stats", given=given, received=received,
           matches=matches, swipes=user.daily_swipes),
         parse_mode="HTML",
-        reply_markup=keyboard
+        reply_markup=_main_keyboard()
     )
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
@@ -1044,7 +1057,7 @@ async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Browse Profiles", callback_data="next")],
+        [InlineKeyboardButton("🔗 Share Link", url=link)],
     ])
     sent = await update.message.reply_text(s(lang, "referral_msg", link=link), reply_markup=keyboard)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
@@ -1053,31 +1066,10 @@ async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _cleanup_chat(ctx, update.effective_chat.id)
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("👤 Profile", callback_data="cmd:profile"),
-            InlineKeyboardButton("🔍 Browse", callback_data="cmd:browse"),
-            InlineKeyboardButton("💕 Matches", callback_data="cmd:matches"),
-            InlineKeyboardButton("📊 Stats", callback_data="cmd:stats"),
-        ],
-        [
-            InlineKeyboardButton("👑 Premium", callback_data="cmd:premium"),
-            InlineKeyboardButton("🔗 Share", callback_data="cmd:share"),
-            InlineKeyboardButton("🌐 Language", callback_data="cmd:language"),
-            InlineKeyboardButton("🚀 Boost", callback_data="cmd:boost"),
-        ],
-        [
-            InlineKeyboardButton("🚫 Block", callback_data="cmd:block"),
-            InlineKeyboardButton("🎯 Filters", callback_data="cmd:filters"),
-            InlineKeyboardButton("✏️ Edit", callback_data="cmd:editprofile"),
-            InlineKeyboardButton("🗑 Delete", callback_data="cmd:delete"),
-        ],
-        [InlineKeyboardButton("❓ About", callback_data="cmd:about")],
-    ])
     sent = await update.message.reply_text(
-        "📖 <b>YourMeet Commands</b>\n\nTap a button below to run it.",
+        "📖 <b>YourMeet Commands</b>\n\nTap a button below, or type any command.",
         parse_mode="HTML",
-        reply_markup=keyboard
+        reply_markup=_main_keyboard(),
     )
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
@@ -1086,12 +1078,12 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Browse Profiles", callback_data="next")],
+        [InlineKeyboardButton("✅ Yes, Delete", callback_data="confirmdelete")],
     ])
     sent = await update.message.reply_text(
         "⚠️ Are you sure you want to delete your account?\n\n"
         "This will permanently delete all your data, matches and messages.\n\n"
-        "Type /confirmdelete to confirm.",
+        "Type /confirmdelete to confirm, or tap below.",
         reply_markup=keyboard
     )
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
@@ -1147,9 +1139,7 @@ async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.commit()
     db.close()
     await _cleanup_chat(ctx, update.effective_chat.id)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Browse Profiles", callback_data="next")],
-    ])
+    keyboard = _main_keyboard()
     sent = await update.message.reply_text(s(lang, "boost_active"), parse_mode="HTML", reply_markup=keyboard)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
@@ -1268,50 +1258,6 @@ async def cb_unmatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("✅ Unmatched.")
 
 
-async def cb_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Dispatch /help buttons (cmd:<name>) to the matching command."""
-    query = update.callback_query
-    await query.answer()
-    cmd = query.data.split(":")[1] if ":" in query.data else ""
-    if not cmd:
-        return
-    handlers = {
-        "profile": cmd_profile,
-        "browse": cmd_browse,
-        "matches": cmd_matches,
-        "stats": cmd_stats,
-        "premium": cmd_premium,
-        "share": cmd_share,
-        "language": cmd_language,
-        "boost": cmd_boost,
-        "block": cmd_block,
-        "filters": cmd_filters,
-        "editprofile": cmd_edit_profile,
-        "delete": cmd_delete,
-        "about": cmd_about,
-        "help": cmd_help,
-    }
-    handler = handlers.get(cmd)
-    if not handler:
-        return
-    # Build a fake message update so the command runs as if typed
-    fake_update = Update.de_json(
-        {"update_id": update.update_id, "message": {
-            "message_id": query.message.message_id,
-            "date": int(__import__("time").time()),
-            "chat": {"id": query.message.chat_id, "type": "private"},
-            "from": {
-                "id": update.effective_user.id,
-                "is_bot": False,
-                "first_name": update.effective_user.first_name or "User",
-            },
-            "text": f"/{cmd}",
-        }},
-        ctx.bot,
-    )
-    await handler(fake_update, ctx)
-
-
 async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1424,7 +1370,52 @@ async def successful_payment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    text = update.message.text or ""
+    text = (update.message.text or "").strip()
+
+    # ── Persistent reply keyboard taps ──
+    # Telegram sends the button text as a normal message — route it to the
+    # matching command so tapping "🔍 Browse" behaves like /browse.
+    button_map = {
+        "🔍 Browse": "browse",
+        "💕 Matches": "matches",
+        "👤 Profile": "profile",
+        "📊 Stats": "stats",
+        "👑 Premium": "premium",
+        "📖 Commands": "help",
+        "🌐 Language": "language",
+        "🚀 Boost": "boost",
+        "🎯 Filters": "filters",
+        "✏️ Edit": "editprofile",
+        "🚫 Block": "block",
+        "🗑 Delete": "delete",
+    }
+    if text in button_map:
+        cmd = button_map[text]
+        handlers = {
+            "browse": cmd_browse, "matches": cmd_matches, "profile": cmd_profile,
+            "stats": cmd_stats, "premium": cmd_premium, "help": cmd_help,
+            "language": cmd_language, "boost": cmd_boost, "filters": cmd_filters,
+            "editprofile": cmd_edit_profile, "delete": cmd_delete,
+        }
+        handler = handlers.get(cmd)
+        if handler:
+            fake_update = Update.de_json(
+                {"update_id": update.update_id, "message": {
+                    "message_id": update.message.message_id,
+                    "date": int(__import__("time").time()),
+                    "chat": {"id": update.message.chat_id, "type": "private"},
+                    "from": {
+                        "id": update.effective_user.id,
+                        "is_bot": False,
+                        "first_name": update.effective_user.first_name or "User",
+                    },
+                    "text": f"/{cmd}",
+                }},
+                ctx.bot,
+            )
+            await handler(fake_update, ctx)
+            return
+
     from database import get_conn
     db = get_conn()
     from routers.chat import forward_message
