@@ -213,7 +213,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "👋 Welcome back! Let's complete your profile.\n\nWhat's your <b>name</b>?",
             parse_mode="HTML"
         )
-        _save_msg_id(tg_id, m.message_id)
+        _save_setup_data(tg_id, msg_id=m.message_id)
         await _track_bot_message(ctx, m.message_id)
         return SETUP_NAME
 
@@ -269,7 +269,7 @@ async def cb_terms_accept(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "✅ <b>Terms accepted!</b>\n\nLet's set up your profile! 🎉\n\nWhat's your <b>name</b>?",
         parse_mode="HTML"
     )
-    _save_msg_id(tg_id, query.message.message_id)
+    _save_setup_data(tg_id, msg_id=query.message.message_id)
 
 
 async def cb_setup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -280,7 +280,7 @@ async def cb_setup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "Let's set up your profile! 🎉\n\nWhat's your <b>name</b>?",
         parse_mode="HTML"
     )
-    _save_msg_id(tg_id, query.message.message_id)
+    _save_setup_data(tg_id, msg_id=query.message.message_id)
 
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1255,7 +1255,7 @@ async def cmd_edit_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "Send your new <b>name</b> (or type /cancel to abort):",
         parse_mode="HTML"
     )
-    _save_msg_id(tg_id, m.message_id)
+    _save_setup_data(tg_id, msg_id=m.message_id)
     await _track_bot_message(ctx, m.message_id)
     return SETUP_NAME
 
