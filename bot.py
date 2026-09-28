@@ -27,6 +27,7 @@ def build_bot() -> Application:
         entry_points=[
             CommandHandler("start", cmd_start),
             CallbackQueryHandler(cb_setup_start, pattern=r"^setup:start$"),
+            CommandHandler("editprofile", cmd_edit_profile),
         ],
         states={
             SETUP_NAME:          [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
@@ -59,7 +60,6 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("boost", cmd_boost))
     app.add_handler(CommandHandler("block", cmd_block))
     app.add_handler(CommandHandler("filters", cmd_filters))
-    app.add_handler(CommandHandler("editprofile", cmd_edit_profile))
     app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
     app.add_handler(CallbackQueryHandler(cb_filter, pattern=r"^filter:"))
@@ -69,6 +69,7 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_superlike, pattern=r"^superlike:"))
     app.add_handler(CallbackQueryHandler(cb_next, pattern=r"^next$"))
     app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:"))
+    app.add_handler(CallbackQueryHandler(cb_chat_match, pattern=r"^chat_match:"))
     app.add_handler(CommandHandler("about", cmd_about))
     app.add_handler(CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"))
     app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:"))
@@ -271,6 +272,7 @@ async def cb_terms_accept(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
     _save_setup_data(tg_id, msg_id=query.message.message_id)
+    return SETUP_NAME
 
 
 async def cb_setup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -282,6 +284,7 @@ async def cb_setup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
     _save_setup_data(tg_id, msg_id=query.message.message_id)
+    return SETUP_NAME
 
 
 async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -681,10 +684,12 @@ async def _send_next_profile(message, user, ctx=None):
             await _track_bot_message(ctx, sent.message_id)
         return
 
+    import math
     cols = ", ".join(USER_COLS)
     liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (user.id,)).fetchall()]
     skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (user.id,)).fetchall()]
-    excluded = list(set(liked + skipped + [user.id]))
+    blocked = [r[0] for r in db.execute("SELECT blocked_id FROM user_blocks WHERE blocker_id=?", (user.id,)).fetchall()]
+    excluded = list(set(liked + skipped + blocked + [user.id]))
     placeholders = ",".join("?" * len(excluded))
 
     interested_in = getattr(user, "interested_in", "both") or "both"
@@ -695,18 +700,47 @@ async def _send_next_profile(message, user, ctx=None):
         gender_sql = "gender=?"
         gender_params = (interested_in,)
 
-    row = db.execute(
+    min_age = getattr(user, "min_age", 0) or 0
+    max_age = getattr(user, "max_age", 0) or 0
+    max_distance = getattr(user, "max_distance", 0) or 0
+    age_sql = "AND age >= 18"
+    age_params = ()
+    if min_age and max_age:
+        age_sql = "AND age >= ? AND age <= ?"
+        age_params = (min_age, max_age)
+    elif min_age:
+        age_sql = "AND age >= ?"
+        age_params = (min_age,)
+    elif max_age:
+        age_sql = "AND age <= ?"
+        age_params = (max_age,)
+
+    rows = db.execute(
         f"""SELECT {cols} FROM users
             WHERE id NOT IN ({placeholders})
-            AND {gender_sql} AND age >= 18
+            AND {gender_sql} {age_sql}
             AND is_blocked=0 AND is_rejected=0 AND is_approved=1
             ORDER BY CASE WHEN boosted_until > datetime('now') THEN 0 ELSE 1 END, RANDOM()
-            LIMIT 1""",
-        (*excluded, *gender_params),
-    ).fetchone()
+            LIMIT 10""",
+        (*excluded, *gender_params, *age_params),
+    ).fetchall()
     db.close()
 
-    if not row:
+    # Apply distance filter in Python
+    profile = None
+    for r in rows:
+        candidate = row_to_user(r)
+        if max_distance and getattr(user, "lat", 0) and getattr(candidate, "lat", 0):
+            lat1, lng1 = user.lat, user.lng
+            lat2, lng2 = candidate.lat, candidate.lng
+            p1, p2 = math.radians(lat1), math.radians(lat2)
+            a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
+            if 2 * 6371.0 * math.asin(math.sqrt(a)) > max_distance:
+                continue
+        profile = candidate
+        break
+
+    if not profile:
         sent = await message.reply_text(
             "😔 No more profiles right now!\n\nCheck back later or invite friends with /share"
         )
@@ -715,7 +749,6 @@ async def _send_next_profile(message, user, ctx=None):
             await _track_bot_message(ctx, sent.message_id)
         return
 
-    profile = row_to_user(row)
     super_left = getattr(user, "super_likes_left", 1)
 
     try:
@@ -994,11 +1027,14 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             other = row_to_user(other_row)
             text += f"• <b>{other.name}</b>, {other.age} — {other.city or '-'}\n"
             buttons.append([InlineKeyboardButton(
-                f"💬 Chat with {other.name}", callback_data=f"unmatch:{match_id}"
+                f"💬 Chat with {other.name}", callback_data=f"chat_match:{match_id}"
+            ), InlineKeyboardButton(
+                f"💔 Unmatch", callback_data=f"unmatch:{match_id}"
             )])
     db2.close()
     await _cleanup_chat(ctx, update.effective_chat.id)
-    sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=_main_keyboard())
+    reply_markup = InlineKeyboardMarkup(buttons) if buttons else _main_keyboard()
+    sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
 
@@ -1295,6 +1331,40 @@ async def cb_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await handler(fake_update, ctx)
 
 
+async def cb_chat_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Tapping 'Chat with X' from matches list — inform user to just send a message."""
+    query = update.callback_query
+    await query.answer()
+    match_id = int(query.data.split(":")[1])
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    if not user:
+        return
+    from database import get_conn, row_to_user, USER_COLS
+    db = get_conn()
+    cols = ", ".join(USER_COLS)
+    match = db.execute(
+        "SELECT user1_id, user2_id FROM matches WHERE id=? AND (user1_id=? OR user2_id=?)",
+        (match_id, user.id, user.id)
+    ).fetchone()
+    if not match:
+        db.close()
+        await query.answer("Match not found.", show_alert=True)
+        return
+    other_id = match[1] if match[0] == user.id else match[0]
+    other = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE id=?", (other_id,)).fetchone())
+    db.close()
+    if not other:
+        return
+    sent = await query.message.reply_text(
+        f"💬 <b>Chatting with {other.name}</b>\n\n"
+        f"Just send your message here and it will be forwarded to {other.name}!",
+        parse_mode="HTML",
+        reply_markup=_main_keyboard(),
+    )
+    await _track_bot_message(ctx, sent.message_id)
+
+
 async def cb_unmatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1389,7 +1459,11 @@ async def cb_vibe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not user:
         return
     from routers.vibe import submit_vibe_answer
-    result = await submit_vibe_answer(match_id, {"answer": answer}, db=get_conn(), current_user=user)
+    vibe_db = get_conn()
+    try:
+        result = await submit_vibe_answer(match_id, {"answer": answer}, db=vibe_db, current_user=user)
+    finally:
+        vibe_db.close()
     await query.edit_message_reply_markup(reply_markup=None)
     try:
         import json as _json
@@ -1482,7 +1556,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "browse": cmd_browse, "matches": cmd_matches, "profile": cmd_profile,
             "stats": cmd_stats, "premium": cmd_premium, "help": cmd_help,
             "language": cmd_language, "boost": cmd_boost, "filters": cmd_filters,
-            "editprofile": cmd_edit_profile, "delete": cmd_delete,
+            "editprofile": cmd_edit_profile, "delete": cmd_delete, "block": cmd_block,
         }
         handler = handlers.get(cmd)
         if handler:

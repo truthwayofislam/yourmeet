@@ -157,10 +157,11 @@ async def who_liked_you(db=Depends(get_db), current_user=Depends(get_current_use
     for (uid,) in rows:
         u = row_to_user(db.execute(f"SELECT {_COLS} FROM users WHERE id=?", (uid,)).fetchone())
         if u:
+            is_super_row = db.execute("SELECT is_super FROM likes WHERE from_user=? AND to_user=?", (uid, current_user.id)).fetchone()
             out.append({
                 "id": u.id, "name": u.name, "age": u.age, "gender": u.gender,
                 "city": getattr(u, "city", ""), "photo": getattr(u, "photo", ""),
-                "is_super": bool(db.execute("SELECT is_super FROM likes WHERE from_user=? AND to_user=?", (uid, current_user.id)).fetchone()),
+                "is_super": bool(is_super_row[0]) if is_super_row else False,
             })
     return JSONResponse({"users": out})
 

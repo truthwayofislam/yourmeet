@@ -211,7 +211,11 @@ async def cmd_pending_all(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         else:
             st = "⏳PND" if (photo and age and gender) else "👻INC"
         lines.append(f"#{uid} {g}{p} {st} {name or '?'}, {age or '?'}")
-    await update.message.reply_text("📋 <b>All Users (latest 30):</b>\n\n" + "\n".join(lines), parse_mode="HTML")
+    header = "📋 <b>All Users (latest 30):</b>\n\n"
+    chunks = [lines[i:i+20] for i in range(0, len(lines), 20)]
+    for chunk in chunks:
+        await update.message.reply_text(header + "\n".join(chunk), parse_mode="HTML")
+        header = ""
 
 
 async def cmd_fix_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -278,9 +282,8 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     import asyncio
     for tg_id in tg_ids:
         try:
-            await ctx.bot.send_message(chat_id=tg_id, text=msg, parse_mode="HTML")
+            await ctx.bot.send_message(chat_id=tg_id, text=msg)
             sent += 1
-            # Telegram throttles ~30 messages/sec per bot; pace the broadcast.
             await asyncio.sleep(0.05)
         except Exception:
             failed += 1

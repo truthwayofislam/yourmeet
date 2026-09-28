@@ -224,14 +224,16 @@ async def forward_message(tg_id_from: str, text: str, db) -> bool:
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(
+            resp = await client.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 json={
                     "chat_id": target_tg_id,
                     "text": f"💬 {text}",
-                    "parse_mode": "Markdown",
                 },
             )
+            if not resp.is_success:
+                print(f"[CHAT] forward failed: HTTP {resp.status_code} — {resp.text[:200]}")
+                return False
         # Save message for premium history
         try:
             db.execute(
