@@ -71,6 +71,7 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:"))
     app.add_handler(CommandHandler("about", cmd_about))
     app.add_handler(CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"))
+    app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:"))
     from telegram.ext import PreCheckoutQueryHandler
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
@@ -452,7 +453,7 @@ async def setup_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         pass
     city = update.message.text.strip()[:100]
     if len(city) < 2:
-        await _edit_setup_msg(ctx, chat_id, tg_id, "Please enter a valid city name:")
+        await _edit_setup_msg(ctx, chat_id, tg_id, "Please enter a valid city name:", parse_mode="HTML")
         return SETUP_CITY
     s = await _get_setup_data(tg_id)
     d = s["data"]
@@ -475,7 +476,7 @@ async def setup_bio(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         pass
     bio = update.message.text.strip()[:300]
     if len(bio) < 10:
-        await _edit_setup_msg(ctx, chat_id, tg_id, "Bio too short (min 10 chars). Try again:")
+        await _edit_setup_msg(ctx, chat_id, tg_id, "Bio too short (min 10 chars). Try again:", parse_mode="HTML")
         return SETUP_BIO
     s = await _get_setup_data(tg_id)
     d = s["data"]
@@ -1261,6 +1262,38 @@ async def cmd_edit_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
+
+async def cb_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Dispatch /help and /start inline buttons (cmd:<name>) to commands."""
+    query = update.callback_query
+    await query.answer()
+    cmd = query.data.split(":")[1] if ":" in query.data else ""
+    handlers = {
+        "profile": cmd_profile, "browse": cmd_browse, "matches": cmd_matches,
+        "stats": cmd_stats, "premium": cmd_premium, "share": cmd_share,
+        "language": cmd_language, "boost": cmd_boost, "block": cmd_block,
+        "filters": cmd_filters, "editprofile": cmd_edit_profile,
+        "delete": cmd_delete, "about": cmd_about, "help": cmd_help,
+    }
+    handler = handlers.get(cmd)
+    if not handler:
+        return
+    fake_update = Update.de_json(
+        {"update_id": update.update_id, "message": {
+            "message_id": query.message.message_id,
+            "date": int(__import__("time").time()),
+            "chat": {"id": query.message.chat_id, "type": "private"},
+            "from": {
+                "id": update.effective_user.id,
+                "is_bot": False,
+                "first_name": update.effective_user.first_name or "User",
+            },
+            "text": f"/{cmd}",
+        }},
+        ctx.bot,
+    )
+    await handler(fake_update, ctx)
+
 
 async def cb_unmatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
