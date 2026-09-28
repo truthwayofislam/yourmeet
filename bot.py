@@ -1035,6 +1035,9 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/share — Invite friends\n"
         "/language — Change language\n"
         "/boost — Boost your profile (Premium)\n"
+        "/block &lt;id&gt; — Block a user\n"
+        "/filters [min] [max] [km] — Set age/distance filters\n"
+        "/editprofile — Edit your profile\n"
         "/delete — Delete your account\n",
         parse_mode="HTML",
         reply_markup=keyboard

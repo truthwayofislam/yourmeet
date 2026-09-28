@@ -6,7 +6,7 @@ import httpx
 import uvicorn
 from contextlib import asynccontextmanager
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse, Response
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -47,6 +47,27 @@ async def lifespan(app: FastAPI):
             f"{APP_URL}/webhook/{BOT_TOKEN}",
             drop_pending_updates=True,
         )
+        # Register the command menu so Telegram shows commands in autocomplete.
+        try:
+            from telegram import BotCommand
+            await bot_app.bot.set_my_commands([
+                BotCommand("start", "Create or update profile"),
+                BotCommand("browse", "Browse & swipe profiles"),
+                BotCommand("matches", "See your matches"),
+                BotCommand("profile", "View your profile"),
+                BotCommand("stats", "Your activity stats"),
+                BotCommand("premium", "Upgrade to Premium"),
+                BotCommand("share", "Invite friends"),
+                BotCommand("language", "Change language"),
+                BotCommand("boost", "Boost your profile (Premium)"),
+                BotCommand("block", "Block a user"),
+                BotCommand("filters", "Set age/distance filters"),
+                BotCommand("editprofile", "Edit your profile"),
+                BotCommand("delete", "Delete your account"),
+                BotCommand("help", "Show all commands"),
+            ])
+        except Exception as e:
+            print(f"[BOT] set_my_commands failed: {e}")
         await bot_app.start()
         print("[BOT] Webhook set")
     else:
@@ -60,6 +81,27 @@ async def lifespan(app: FastAPI):
             f"{APP_URL}/admin-webhook/{ADMIN_BOT_TOKEN}",
             drop_pending_updates=True,
         )
+        try:
+            from telegram import BotCommand
+            await admin_bot_app.bot.set_my_commands([
+                BotCommand("start", "Admin bot start"),
+                BotCommand("pending", "Show pending profiles"),
+                BotCommand("pendingall", "Show all users with status"),
+                BotCommand("stats", "Full app stats"),
+                BotCommand("broadcast", "Send to all users"),
+                BotCommand("remind", "Remind incomplete users"),
+                BotCommand("remind_blocked", "Notify rejected users"),
+                BotCommand("find", "Search user by name"),
+                BotCommand("user", "View user details"),
+                BotCommand("users", "List all users"),
+                BotCommand("cleanup", "Find incomplete users"),
+                BotCommand("confirmcleanup", "Delete incomplete users"),
+                BotCommand("deleteuser", "Delete a user"),
+                BotCommand("fixuser", "Reset a user to pending"),
+                BotCommand("auditlog", "Show recent admin actions"),
+            ])
+        except Exception as e:
+            print(f"[ADMIN BOT] set_my_commands failed: {e}")
         await admin_bot_app.start()
         print("[ADMIN BOT] Webhook set")
     else:

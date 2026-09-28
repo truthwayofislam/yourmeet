@@ -134,6 +134,8 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 | `/filters [min] [max] [km]` | Set age/distance filters |
 | `/editprofile` | Edit profile (preserves approval) |
 
+All commands are registered with Telegram via `set_my_commands` so they appear in autocomplete.
+
 ---
 
 ## Admin Bot Commands
