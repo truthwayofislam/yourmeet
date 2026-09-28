@@ -113,7 +113,7 @@ async def _send_pending_profile(bot, chat_id: str, user):
     except (ValueError, TypeError):
         interests = []
     text = (
-        f"👤 <b>Pending Profile #{user.id}</b>\n\n"
+        f"\U0001f464 <b>Pending Profile #{user.id}</b>\n\n"
         f"Nickname: {user.name}\n"
         f"Age: {user.age}\n"
         f"Gender: {user.gender}\n"
@@ -126,9 +126,12 @@ async def _send_pending_profile(bot, chat_id: str, user):
     )
     keyboard = _approval_keyboard(user.id)
     if user.photo:
-        # 1st try: send via file_id directly (works if bot already has the file)
+        # file_ids are bot-specific — use main bot (which owns the storage file_id)
+        main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+        from telegram import Bot as TGBot
+        send_bot = TGBot(token=main_bot_token) if main_bot_token else bot
         try:
-            await bot.send_photo(
+            await send_bot.send_photo(
                 chat_id=chat_id,
                 photo=user.photo,
                 caption=text,
@@ -137,32 +140,7 @@ async def _send_pending_profile(bot, chat_id: str, user):
             )
             return
         except Exception as e:
-            print(f"[ADMIN BOT] send_photo file_id failed: {e}")
-
-        # 2nd try: get a fresh download URL from Telegram API (no auth needed)
-        main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
-        if main_bot_token:
-            try:
-                import httpx
-                async with httpx.AsyncClient(timeout=10) as client:
-                    r = await client.get(
-                        f"https://api.telegram.org/bot{main_bot_token}/getFile?file_id={user.photo}"
-                    )
-                    if r.is_success and r.json().get("ok"):
-                        file_path = r.json()["result"]["file_path"]
-                        direct_url = f"https://api.telegram.org/file/bot{main_bot_token}/{file_path}"
-                        await bot.send_photo(
-                            chat_id=chat_id,
-                            photo=direct_url,
-                            caption=text,
-                            parse_mode="HTML",
-                            reply_markup=keyboard,
-                        )
-                        return
-            except Exception as e:
-                print(f"[ADMIN BOT] send_photo direct_url failed: {e}")
-
-    # Fallback: text only
+            print(f"[ADMIN BOT] send_photo failed: {e}")
     await bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=keyboard)
 
 
@@ -649,54 +627,31 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
     """Called from setup router when new profile is submitted."""
     if not ADMIN_TG_ID or not ADMIN_BOT_TOKEN:
         return
-    # Only trust photo values that look like Telegram file_ids; reject anything
-    # that could be a URL, path traversal, or injection payload.
     if photo and not _valid_file_id(photo):
         photo = ""
     text = (
-        f"🔔 <b>New Profile Submitted</b>\n\n"
+        f"\U0001f514 <b>New Profile Submitted</b>\n\n"
         f"ID: {user_id} | {name}, {age} | {gender} | {city or '-'}"
     )
     keyboard = _approval_keyboard(user_id)
     try:
         from telegram import Bot
-        bot = Bot(token=ADMIN_BOT_TOKEN)
+        # Use main bot token to send — it owns the file_id from storage channel
+        main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+        send_bot = Bot(token=main_bot_token) if main_bot_token else Bot(token=ADMIN_BOT_TOKEN)
         if photo:
-            # 1st try: file_id directly
             try:
-                await bot.send_photo(
+                await send_bot.send_photo(
                     chat_id=ADMIN_TG_ID, photo=photo,
                     caption=text, parse_mode="HTML",
                     reply_markup=keyboard,
                 )
                 return
             except Exception as e:
-                print(f"[ADMIN BOT] send_for_review file_id failed: {e}")
-
-            # 2nd try: get direct download URL via getFile (no auth needed)
-            main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
-            if main_bot_token:
-                try:
-                    import httpx
-                    async with httpx.AsyncClient(timeout=10) as client:
-                        r = await client.get(
-                            f"https://api.telegram.org/bot{main_bot_token}/getFile?file_id={photo}"
-                        )
-                        if r.is_success and r.json().get("ok"):
-                            file_path = r.json()["result"]["file_path"]
-                            direct_url = f"https://api.telegram.org/file/bot{main_bot_token}/{file_path}"
-                            await bot.send_photo(
-                                chat_id=ADMIN_TG_ID,
-                                photo=direct_url,
-                                caption=text, parse_mode="HTML",
-                                reply_markup=keyboard,
-                            )
-                            return
-                except Exception as e:
-                    print(f"[ADMIN BOT] send_for_review direct_url failed: {e}")
-
-        # Fallback: text only
-        await bot.send_message(
+                print(f"[ADMIN BOT] send_for_review photo failed: {e}")
+        # Fallback: text only via admin bot
+        admin_bot = Bot(token=ADMIN_BOT_TOKEN)
+        await admin_bot.send_message(
             chat_id=ADMIN_TG_ID, text=text, parse_mode="HTML",
             reply_markup=keyboard
         )

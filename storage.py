@@ -46,6 +46,9 @@ def upload_photo(file_bytes: bytes, filename: str = "photo.jpg") -> str | None:
                 )
                 if resp.is_success and resp.json().get("ok"):
                     return resp.json()["result"]["photo"][-1]["file_id"]
+                else:
+                    err = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text[:200]
+                    print(f"[STORAGE] sendPhoto failed: {err}")
             return None
 
         if loop and loop.is_running():
@@ -61,39 +64,58 @@ def upload_photo(file_bytes: bytes, filename: str = "photo.jpg") -> str | None:
 
 async def store_photo_from_file_id(bot, file_id: str) -> str:
     """
-    Download photo from Telegram using file_id, re-upload to storage channel.
+    Re-upload photo to storage channel using forwardMessage approach.
     Returns a permanent file_id from the storage channel.
     If storage is not configured, returns the original file_id unchanged.
     """
     token = _bot_token()
     chat_id = _storage_chat_id()
-    if not token or not chat_id:
-        print("[STORAGE] not configured (TELEGRAM_BOTS_KEY or TELEGRAM_STORAGE_CHAT_ID missing), skipping re-upload")
+    if not token:
+        print("[STORAGE] TELEGRAM_BOTS_KEY not set, skipping re-upload")
         return file_id
+    if not chat_id:
+        print("[STORAGE] TELEGRAM_STORAGE_CHAT_ID not set, skipping re-upload")
+        return file_id
+
+    print(f"[STORAGE] uploading to chat_id={chat_id} file_id={file_id[:20]}...")
     try:
-        # Download the photo bytes via bot
-        tg_file = await bot.get_file(file_id)
+        # Directly send the file_id to storage channel — no download needed.
+        # Telegram accepts an existing file_id in sendPhoto, which is instant.
         async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.get(
+            resp = await client.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                json={"chat_id": chat_id, "photo": file_id},
+            )
+            data = resp.json()
+            if data.get("ok"):
+                stored_id = data["result"]["photo"][-1]["file_id"]
+                print(f"[STORAGE] success! stored file_id: {stored_id[:20]}...")
+                return stored_id
+            else:
+                print(f"[STORAGE] sendPhoto with file_id failed: {data.get('description')}")
+
+        # Fallback: download bytes then re-upload
+        print("[STORAGE] trying download+reupload fallback...")
+        tg_file = await bot.get_file(file_id)
+        async with httpx.AsyncClient(timeout=30) as client:
+            dl = await client.get(
                 f"https://api.telegram.org/file/bot{token}/{tg_file.file_path}"
             )
-            if not resp.is_success:
-                print(f"[STORAGE] download failed: HTTP {resp.status_code}")
+            if not dl.is_success:
+                print(f"[STORAGE] download failed: HTTP {dl.status_code}")
                 return file_id
-            photo_bytes = resp.content
+            photo_bytes = dl.content
+            print(f"[STORAGE] downloaded {len(photo_bytes)} bytes, uploading...")
 
-        # Re-upload to storage channel (runs in thread pool to avoid blocking)
         stored_id = await asyncio.get_event_loop().run_in_executor(
             None, lambda: upload_photo(photo_bytes)
         )
         if stored_id:
-            print(f"[STORAGE] stored photo: {stored_id[:20]}...")
+            print(f"[STORAGE] fallback success! stored file_id: {stored_id[:20]}...")
             return stored_id
-        else:
-            print("[STORAGE] upload returned None, using original file_id")
+        print("[STORAGE] fallback upload also failed, using original file_id")
     except Exception as e:
         print(f"[STORAGE] store_photo_from_file_id failed: {e}")
-    # Fallback — use original file_id
     return file_id
 
 
