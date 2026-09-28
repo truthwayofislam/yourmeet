@@ -30,6 +30,7 @@ def build_admin_bot() -> Application:
     app.add_handler(CommandHandler("deleteuser", cmd_delete_user))
     app.add_handler(CommandHandler("confirmcleanup", cmd_confirm_cleanup))
     app.add_handler(CommandHandler("fixuser", cmd_fix_user))
+    app.add_handler(CommandHandler("auditlog", cmd_audit_log))
     app.add_handler(CallbackQueryHandler(cb_approve, pattern=r"^approve:"))
     app.add_handler(CallbackQueryHandler(cb_verify, pattern=r"^verify:"))
     app.add_handler(CallbackQueryHandler(cb_reject, pattern=r"^reject:"))
@@ -71,6 +72,24 @@ def _valid_file_id(file_id: str) -> bool:
     return bool(file_id) and bool(_FILE_ID_RE.match(file_id))
 
 
+def _admin_rate_limit(update: Update, limit: int = 10, window: int = 60) -> bool:
+    """Throttle admin commands. Returns True if allowed, False if rate-limited."""
+    import time
+    uid = str(update.effective_user.id)
+    key = f"admin_cmd:{uid}"
+    now = time.time()
+    if not hasattr(_admin_rate_limit, "_store"):
+        _admin_rate_limit._store = {}
+    store = _admin_rate_limit._store
+    stamps = [t for t in store.get(key, []) if now - t < window]
+    if len(stamps) >= limit:
+        store[key] = stamps
+        return False
+    stamps.append(now)
+    store[key] = stamps
+    return True
+
+
 def _approval_keyboard(user_id: int):
     return InlineKeyboardMarkup([
         [
@@ -100,7 +119,6 @@ async def _send_pending_profile(bot, chat_id: str, user):
         f"Bio: {user.bio or '-'}\n"
         f"Interests: {', '.join(interests) or '-'}\n"
         f"Social: {user.social_handle or '-'}\n"
-        f"Phone: {user.phone or '-'}\n"
         f"Language: {user.language or 'en'}\n"
         f"Joined: {(user.created_at or '')[:10]}"
     )
@@ -200,6 +218,8 @@ async def cmd_fix_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Reset a user to pending — /fixuser <id>"""
     if not _is_admin(update):
         return
+    if not _admin_rate_limit(update):
+        return
     if not ctx.args:
         await update.message.reply_text("Usage: /fixuser <id>")
         return
@@ -215,6 +235,8 @@ async def cmd_fix_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     db.execute("UPDATE users SET is_approved=0, is_rejected=0, is_blocked=0 WHERE id=?", (user_id,))
     db.commit()
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "fix_user", user_id)
     await update.message.reply_text(
         f"✅ User #{user_id} ({row[1]}) reset to pending.\n"
         f"Was: approved={row[2]} rejected={row[3]} blocked={row[4]}"
@@ -386,6 +408,8 @@ async def cmd_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Delete incomplete users — no photo, no age, no telegram_id."""
     if not _is_admin(update):
         return
+    if not _admin_rate_limit(update):
+        return
     db = _get_db()
     # Find ghost users: no photo AND no age (never completed setup)
     rows = db.execute(
@@ -405,6 +429,8 @@ async def cmd_delete_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Delete a specific user by ID — /deleteuser <id>"""
     if not _is_admin(update):
         return
+    if not _admin_rate_limit(update):
+        return
     if not ctx.args:
         await update.message.reply_text("Usage: /deleteuser <id>")
         return
@@ -421,12 +447,16 @@ async def cmd_delete_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     name = row[0]
     from routers.auth import _delete_user_data
     _delete_user_data(db, user_id)
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "delete_user", user_id)
     await update.message.reply_text(f"✅ User #{user_id} ({name}) deleted permanently.")
 
 
 async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Actually delete all incomplete users."""
     if not _is_admin(update):
+        return
+    if not _admin_rate_limit(update):
         return
     db = _get_db()
     rows = db.execute(
@@ -436,9 +466,40 @@ async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Nothing to clean up!")
         return
     from routers.auth import _delete_user_data
+    from database import log_audit
     for (uid,) in rows:
         _delete_user_data(db, uid)
+        log_audit(str(update.effective_user.id), "cleanup_delete_user", uid)
     await update.message.reply_text(f"✅ Deleted {len(rows)} incomplete users. Database is clean!")
+
+
+async def cmd_audit_log(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show recent admin actions — /auditlog [limit]"""
+    if not _is_admin(update):
+        return
+    if not _admin_rate_limit(update):
+        return
+    limit = 20
+    if ctx.args:
+        try:
+            limit = max(1, min(100, int(ctx.args[0])))
+        except ValueError:
+            pass
+    db = _get_db()
+    rows = db.execute(
+        "SELECT tg_id, action, target_id, detail, created_at FROM audit_log ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    if not rows:
+        await update.message.reply_text("📝 No audit log entries yet.")
+        return
+    lines = []
+    for tg_id, action, target_id, detail, created_at in rows:
+        lines.append(f"• {created_at[:16]} | {tg_id} | {action} | id={target_id} | {detail or ''}")
+    text = "📝 <b>Audit Log</b>\n\n" + "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:3900] + "\n...truncated"
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────
@@ -452,6 +513,8 @@ async def cb_approve(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db = _get_db()
     db.execute("UPDATE users SET is_approved=1, is_rejected=0 WHERE id=?", (user_id,))
     db.commit()
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "approve_user", user_id)
     await _notify_user(ctx.bot, db, user_id, "profile_approved")
     await query.edit_message_caption(
         caption=f"✅ User #{user_id} approved.", reply_markup=None
@@ -467,6 +530,8 @@ async def cb_verify(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db = _get_db()
     db.execute("UPDATE users SET is_approved=1, is_verified=1, is_rejected=0 WHERE id=?", (user_id,))
     db.commit()
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "verify_user", user_id)
     await _notify_user(ctx.bot, db, user_id, "profile_approved_verified")
     await query.edit_message_caption(
         caption=f"⭐ User #{user_id} approved + verified.", reply_markup=None
@@ -482,6 +547,8 @@ async def cb_reject(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db = _get_db()
     db.execute("UPDATE users SET is_rejected=1, is_approved=0 WHERE id=?", (user_id,))
     db.commit()
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "reject_user", user_id)
     await _notify_user(ctx.bot, db, user_id, "profile_rejected")
     await query.edit_message_caption(
         caption=f"❌ User #{user_id} rejected.", reply_markup=None
@@ -497,6 +564,8 @@ async def cb_ban(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db = _get_db()
     db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (user_id,))
     db.commit()
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "ban_user", user_id)
     await _notify_user(ctx.bot, db, user_id, "profile_banned")
     await query.edit_message_caption(
         caption=f"🚫 User #{user_id} banned.", reply_markup=None

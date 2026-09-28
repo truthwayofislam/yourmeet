@@ -57,6 +57,9 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("confirmdelete", cmd_confirm_delete))
     app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("boost", cmd_boost))
+    app.add_handler(CommandHandler("block", cmd_block))
+    app.add_handler(CommandHandler("filters", cmd_filters))
+    app.add_handler(CommandHandler("editprofile", cmd_edit_profile))
     app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
     app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:"))
@@ -499,14 +502,27 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     existing = row_to_user(row)
     photos_json = json.dumps([file_id])
 
+    # In edit mode, preserve the user's approval status so editing a profile
+    # doesn't force them back into the review queue.
+    edit_mode = bool(d.get("_edit_mode"))
+
     if existing:
-        db.execute(
-            """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-               lat=?, lng=?, social_handle=?, photo=?, photos=?,
-               is_approved=0, is_rejected=0, terms_accepted=1 WHERE id=?""",
-            (name, age, gender, interested_in, bio, city,
-             lat, lng, social, file_id, photos_json, existing.id),
-        )
+        if edit_mode:
+            db.execute(
+                """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
+                   lat=?, lng=?, social_handle=?, photo=?, photos=?,
+                   terms_accepted=1 WHERE id=?""",
+                (name, age, gender, interested_in, bio, city,
+                 lat, lng, social, file_id, photos_json, existing.id),
+            )
+        else:
+            db.execute(
+                """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
+                   lat=?, lng=?, social_handle=?, photo=?, photos=?,
+                   is_approved=0, is_rejected=0, terms_accepted=1 WHERE id=?""",
+                (name, age, gender, interested_in, bio, city,
+                 lat, lng, social, file_id, photos_json, existing.id),
+            )
         user_id = existing.id
     else:
         db.execute(
@@ -529,18 +545,26 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     try:
         from admin_bot import send_for_review
-        await send_for_review(user_id, name, age, gender, city, file_id)
+        if not edit_mode:
+            await send_for_review(user_id, name, age, gender, city, file_id)
     except Exception as e:
         print(f"[SETUP] admin notify failed: {e}")
 
-    sent = await ctx.bot.send_message(
-        chat_id,
-        "<b>Profile submitted!</b>\n\n"
-        "Our team will review your profile within a few hours.\n"
-        "You will get a notification once approved!\n\n"
-        "Use /help to see all commands.",
-        parse_mode="HTML"
-    )
+    if edit_mode:
+        sent = await ctx.bot.send_message(
+            chat_id,
+            f"✅ <b>Profile updated!</b>\n\nYour changes are live. Approval status preserved.",
+            parse_mode="HTML"
+        )
+    else:
+        sent = await ctx.bot.send_message(
+            chat_id,
+            "<b>Profile submitted!</b>\n\n"
+            "Our team will review your profile within a few hours.\n"
+            "You will get a notification once approved!\n\n"
+            "Use /help to see all commands.",
+            parse_mode="HTML"
+        )
     await _track_bot_message(ctx, sent.message_id)
     return ConversationHandler.END
 
@@ -1089,6 +1113,98 @@ async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     sent = await update.message.reply_text(s(lang, "boost_active"), parse_mode="HTML", reply_markup=keyboard)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
+
+
+async def cmd_block(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Block a user by Telegram ID or name search — /block <id>"""
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if not user:
+        await update.message.reply_text("No profile yet. Use /start to create one.")
+        return
+    if not ctx.args:
+        await update.message.reply_text("Usage: /block <user_id>")
+        return
+    try:
+        target_id = int(ctx.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user ID.")
+        return
+    if target_id == user.id:
+        await update.message.reply_text("You can't block yourself.")
+        return
+    from database import get_conn
+    db = get_conn()
+    db.execute("INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id) VALUES (?,?)", (user.id, target_id))
+    db.execute("DELETE FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)", (user.id, target_id, target_id, user.id))
+    db.commit()
+    db.close()
+    from database import log_audit
+    log_audit(tg_id, "block_user", target_id)
+    await update.message.reply_text("🚫 User blocked. They can no longer see your profile or message you.")
+
+
+async def cmd_filters(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Set age/distance filters — /filters <min_age> <max_age> <max_distance_km>"""
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if not user:
+        await update.message.reply_text("No profile yet. Use /start to create one.")
+        return
+    if not ctx.args:
+        from database import get_conn
+        db = get_conn()
+        row = db.execute("SELECT min_age, max_age, max_distance FROM users WHERE id=?", (user.id,)).fetchone()
+        db.close()
+        ma, xa, md = (row if row else (0, 0, 0))
+        await update.message.reply_text(
+            f"🎯 <b>Your Filters</b>\n\n"
+            f"Min age: {ma or 'any'}\n"
+            f"Max age: {xa or 'any'}\n"
+            f"Max distance: {md or 'any'} km\n\n"
+            f"Usage: /filters <min> <max> <km>\nExample: /filters 20 35 50",
+            parse_mode="HTML"
+        )
+        return
+    try:
+        min_age = max(0, min(100, int(ctx.args[0])))
+        max_age = max(0, min(100, int(ctx.args[1]) if len(ctx.args) > 1 else 0))
+        max_distance = max(0, min(500, int(ctx.args[2]) if len(ctx.args) > 2 else 0))
+    except ValueError:
+        await update.message.reply_text("Usage: /filters <min_age> <max_age> <max_distance_km>")
+        return
+    from database import get_conn
+    db = get_conn()
+    db.execute("UPDATE users SET min_age=?, max_age=?, max_distance=? WHERE id=?", (min_age, max_age, max_distance, user.id))
+    db.commit()
+    db.close()
+    await update.message.reply_text(
+        f"✅ Filters updated!\n\nMin age: {min_age or 'any'}\nMax age: {max_age or 'any'}\nMax distance: {max_distance or 'any'} km",
+        parse_mode="HTML"
+    )
+
+
+async def cmd_edit_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Re-enter setup to edit profile while preserving approval status."""
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    lang = (user.language if user else _lang(update)) or "en"
+    if not user:
+        await update.message.reply_text("No profile yet. Use /start to create one.")
+        return
+    await _cleanup_chat(ctx, update.effective_chat.id)
+    # Mark that this is an edit session so setup_photo preserves approval.
+    _save_setup_data(tg_id, data={"_edit_mode": True})
+    m = await update.message.reply_text(
+        "✏️ <b>Edit Profile</b>\n\nWhat would you like to change?\n\n"
+        "Send your new <b>name</b> (or type /cancel to abort):",
+        parse_mode="HTML"
+    )
+    _save_msg_id(tg_id, m.message_id)
+    await _track_bot_message(ctx, m.message_id)
+    return SETUP_NAME
 
 
 # ── Callbacks ─────────────────────────────────────────────────────────────────

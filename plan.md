@@ -1,7 +1,7 @@
 # YourMeet — Complete Plan (Updated)
 
 ## Overview
-Full redesign of YourMeet dating app with multilingual support, improved UX, and streamlined bot + web app flow.
+Full redesign of YourMeet dating app with multilingual support and streamlined bot flow.
 
 ---
 
@@ -9,13 +9,9 @@ Full redesign of YourMeet dating app with multilingual support, improved UX, and
 - **Backend:** FastAPI (Python)
 - **Bot:** Python Telegram Bot (PTB)
 - **Database:** Turso (libsql)
-- **Frontend:** Telegram Mini App (TMA)
 - **Hosting:** Render
 - **Payments:** Telegram Stars (XTR)
-- **Translation:** OpenRouter API — Google Gemma 4 31B (`google/gemma-4-31b-it:free`)
-- **Vibe Check Questions:** OpenRouter API — same model
-- **Map:** Leaflet.js + CartoDB Dark Matter tiles (free, no key)
-- **Map Animation:** leaflet-ant-path (animated arrow)
+- **Vibe Check Questions:** Groq API — `llama-3.3-70b-versatile`
 - **Chat:** Telegram Bot forwarding (no extra service needed)
 
 ---
@@ -40,30 +36,10 @@ Full redesign of YourMeet dating app with multilingual support, improved UX, and
 
 ---
 
-## Translation Strategy
-
-### Bot Messages
+## Bot Messages
 - Manually written in `strings.py` for all 14 languages
 - All strings including `btn_upgrade` present in all 14 languages
 - Language stored in DB per user
-
-### Web App UI
-- Base language: English
-- On first open, detect language from `Telegram.WebApp.initDataUnsafe.user.language_code`
-- If `en` → no translation needed
-- If other → call `/api/translate` endpoint
-- Backend calls OpenRouter Gemma 4 31B to translate all UI strings at once
-- Translated strings cached in `localStorage` as `ym_strings_<lang>_v1.0`
-- On next visit → load from cache, no API call
-
-### Translation Endpoint
-```
-POST /api/translate
-Body: { "lang": "ru", "strings": { "key": "English text", ... } }
-Response: { "key": "Translated text", ... }
-```
-- Model: `google/gemma-4-31b-it:free` via OpenRouter
-- Key never exposed to frontend
 
 ---
 
@@ -75,28 +51,10 @@ User opens bot → /start
     ↓
 Welcome message (auto-detect language from Telegram)
     ↓
-"Open YourMeet" button → opens TMA (web app)
+Bot shows inline keyboard to start browsing
 ```
 
-### Phase 2 — TMA Profile Setup (Multi-step)
-```
-Step 1:  Name
-Step 2:  Age (18-60)
-Step 3:  Gender (Male / Female)
-Step 4:  Interested In (Male / Female / Both)
-Step 5:  Photos (min 1, max 6)
-Step 6:  Bio (min 10 chars)
-Step 7:  Interests/Hobbies (tags)
-Step 8:  Phone Number (country code + number)
-Step 9:  City (required, geocoded to lat/lng)
-Step 10: Social Handle (Instagram/Telegram — required)
-    ↓
-Profile submitted → pending approval
-    ↓
-Bot sends: "Profile under review" in user's language
-```
-
-### Phase 3 — Admin Approval
+### Phase 2 — Admin Approval
 ```
 Admin bot receives profile card with photo
     ↓
@@ -105,7 +63,7 @@ Approve / Approve+Verify / Reject (can re-register) / Ban (permanent)
 User gets notification in their language
 ```
 
-### Phase 4 — Swipe System
+### Phase 3 — Swipe System
 ```
 Before approval: 10 free swipes/day
 After approval:  30 free swipes/day
@@ -115,7 +73,7 @@ Like ❤️ / Nope 👎 / Super Like ⭐ (1/day free, unlimited premium)
     ↓
 Swipe limit checked BEFORE animation (no false swipes)
     ↓
-Cards khatam → /api/feed se naye cards load (infinite scroll)
+No more cards → "Check back later" message
     ↓
 Match → both notified via bot
     ↓
@@ -124,37 +82,11 @@ Vibe Check question sent to both via bot inline buttons
 Premium: see contact directly | Free: upgrade prompt
 ```
 
-### Phase 5 — Map Discovery
-```
-User opens Map tab → CartoDB Dark Matter map loads
-    ↓
-User taps "Find My Match"
-    ↓
-Map zooms out to world view
-    ↓
-White dot appears at user's location (browser geolocation)
-    ↓
-Animated pink dashed arrow draws from user → match city
-    ↓
-Map fits both points in view
-    ↓
-Pink pulse marker appears at destination
-    ↓
-FlyTo destination (zoom 11)
-    ↓
-Profile card slides up — name, age, city, bio, interests
-    ↓
-Like ❤️ / Skip 👎 (swipe limit applies)
-    ↓
-Skip → map resets → find next
-Like → if mutual → Match! + Vibe Check sent
-```
-
-### Phase 6 — Vibe Check (on Match) 🎯
+### Phase 4 — Vibe Check (on Match) 🎯
 ```
 Match ho → bot dono ko notify kare
     ↓
-Bot AI-generated question bheje (daily, Gemma 4 31B se)
+Bot AI-generated question bheje (daily, Groq `llama-3.3-70b-versatile` se)
 Inline buttons: Option A | Option B
     ↓
 Dono answer karein
@@ -165,7 +97,7 @@ Alag answer → "🎭 Opposites Attract!"
 Result dono ko bot pe milta hai
 ```
 
-### Phase 7 — Telegram Bot Chat (on Match)
+### Phase 5 — Telegram Bot Chat (on Match)
 ```
 Match ho → bot dono users ko notify kare
     ↓
@@ -186,7 +118,7 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 
 | Command | Description |
 |---------|-------------|
-| `/start` | Welcome → open app |
+| `/start` | Welcome → start browsing |
 | `/profile` | View your profile |
 | `/matches` | See your matches count |
 | `/stats` | Your activity stats |
@@ -198,6 +130,9 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 | `/confirmdelete` | Permanently delete account |
 | `/language` | Change language |
 | `/boost` | Boost profile (Premium only) |
+| `/block <id>` | Block a user (removes match) |
+| `/filters [min] [max] [km]` | Set age/distance filters |
+| `/editprofile` | Edit profile (preserves approval) |
 
 ---
 
@@ -206,12 +141,19 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 | Command | Description |
 |---------|-------------|
 | `/pending` | Show pending profiles (with photo) |
+| `/pendingall` | Show ALL users with status |
 | `/stats` | Full app stats |
 | `/broadcast msg` | Send to all users |
 | `/remind` | Remind incomplete profile users |
 | `/remind_blocked` | Notify rejected users |
 | `/find <name>` | Search user by name |
 | `/user <id>` | View user details |
+| `/users` | List all users |
+| `/cleanup` | Find incomplete users |
+| `/confirmcleanup` | Delete incomplete users |
+| `/deleteuser <id>` | Delete a user |
+| `/fixuser <id>` | Reset a user to pending |
+| `/auditlog [limit]` | Show recent admin actions |
 
 ### Approval Flow
 - **Approve** → `is_approved=1`, notify user, swipes reset to 30
@@ -221,78 +163,12 @@ Timer khatam → bot dono ko notify kare "Chat ended"
 
 ---
 
-## Web App Pages
-
-### 1. Profile Setup (Multi-step wizard)
-- Progress bar at top
-- One step at a time, back button on each
-- Auto-save to localStorage on each step
-- Country code selector (auto-detect from Telegram language)
-- Translated UI via Gemma 4 31B
-
-### 2. Home / Swipe Feed
-- Card-based swipe UI with drag gestures
-- Photo carousel (tap left/right to cycle)
-- Mystery Mode cards show 👻 ghost animation instead of photo
-- Like ❤️ / Nope 👎 / Super ⭐ buttons
-- Swipe limit checked before animation
-- Daily swipe counter shown
-- Infinite scroll — new cards load automatically
-- Bio translate button (per card)
-
-### 3. Map Discovery Page
-- CartoDB Dark Matter tiles (cinematic dark map)
-- Top/bottom gradient overlays for depth
-- "Find My Match" pill button with pink glow
-- Click → animated sequence:
-  1. Zoom out to world
-  2. White dot at user location
-  3. Pink animated dashed arrow to match
-  4. fitBounds to show both
-  5. Pulse marker at destination
-  6. FlyTo zoom in
-  7. Profile card slides up
-- Glassmorphism profile card with pink border
-- Like ❤️ / Skip 👎 (swipe limit applies)
-
-### 4. Matches Page
-- List of matched profiles
-- Social handle shown (premium) or locked (free)
-- Match date shown
-- Unmatch option
-- Start chat button
-
-### 5. Profile Page
-- View & edit all fields
-- Stats: like s given, received, matches
-- Premium badge, Verified badge, Approved/Pending badge
-- Edit Profile button
-- 🚀 Boost button (premium)
-- 👻 Mystery Mode toggle button (premium) — glows pink when active
-- "Who Liked You" section (premium) — avatar grid with super like indicator
-- "See Who Liked You" locked card (free) → upgrade prompt
-- Delete Account button
-
-### 6. Premium Page
-- Comparison table (Free vs Premium) — all features listed
-- "What you get" feature list with icons
-- Plan cards: 1 Month (150 ⭐) / 3 Months (350 ⭐)
-- Active premium badge with expiry date
-
-### 7. Pending Page
-- Progress steps: Submitted → Reviewing → Approved
-- Swipe preview cards while waiting
-- Profile summary
-
----
-
 ## Database Schema
 
 ```sql
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    phone TEXT UNIQUE,
     age INTEGER,
     gender TEXT,
     interested_in TEXT DEFAULT 'both',
@@ -399,7 +275,6 @@ CREATE TABLE vibe_answers (
 | Premium | Unlimited | Unlimited |
 
 - Profile edit → swipes reset to 10 (pending state)
-- Map likes use same swipe limit as feed
 
 ---
 
@@ -416,8 +291,11 @@ CREATE TABLE vibe_answers (
 | Bot chat on match | 1 minute | Unlimited |
 | Mystery Mode 👻 | ❌ | ✅ (24h) |
 | Chat History 💬 | ❌ | ✅ |
-| Map discovery | ✅ | ✅ |
 | Vibe Check 🎯 | ✅ | ✅ |
+| Who Liked You | ❌ | ✅ |
+| Profile Views | ✅ | ✅ |
+| Block User | ✅ | ✅ |
+| Chat Message Delete | ✅ | ✅ |
 
 ### Plans
 - 1 Month — 150 ⭐
@@ -429,10 +307,64 @@ CREATE TABLE vibe_answers (
 
 ---
 
+## User Features
+
+### Block
+- `/block <id>` — removes the match and hides the blocked user from your feed
+- Blocked users can no longer see your profile or message you
+
+### Filters
+- `/filters [min_age] [max_age] [max_distance_km]`
+- Applied server-side to the swipe feed (age range + distance via lat/lng)
+- View current filters with no args
+
+### Edit Profile
+- `/editprofile` — re-enters setup to edit name, age, gender, city, bio, social, photo
+- **Preserves approval status** — editing doesn't force re-review
+- New submissions (via `/start`) still reset to pending
+
+### Who Liked You (Premium)
+- Shows everyone who liked or super-liked you, excluding blocked users
+- Free users get an upgrade prompt
+
+### Profile Views
+- Tracked per user (`profile_views` column)
+- Visible on `/profile/{id}` endpoint
+
+### Chat Message Delete
+- `/chat/message/{id}/delete` — delete a message you sent
+- Replaces the text with "[message deleted]" in history
+
+### Data Export
+- `/api/export` — returns all of your data (profile, likes, matches, reports, blocks)
+- GDPR-style data portability
+
+---
+
+## Rate Limiting
+- `ratelimit.py` — sliding-window limiter per tg_id per action
+- Like: 30/min | Report: 5/min | Profile view: 60/min | Unmatch: 30/min | Delete msg: 30/min
+- Admin bot commands: 10/min per admin
+
+---
+
+## Audit Logging
+- `audit_log` table tracks all admin actions (approve, reject, ban, delete, fix, cleanup)
+- `/auditlog [limit]` command to review recent actions
+
+---
+
+## Photo Storage
+- `storage.py` — uploads photos to a private Telegram storage chat
+- Returns a `file_id` that the bot can later send to anyone
+- Requires `TELEGRAM_STORAGE_CHAT_ID` env var
+
+---
+
 ## Vibe Check Feature 🎯
 
 - Triggers automatically on every match
-- Daily question generated by Gemma 4 31B via OpenRouter
+- Daily question generated by Groq `llama-3.3-70b-versatile`
 - Question cached in `vibe_questions` table (one per day)
 - Bot sends question to both users with inline A/B buttons
 - Both answers stored in `vibe_answers` table
@@ -446,22 +378,11 @@ CREATE TABLE vibe_answers (
 ## Mystery Mode Feature 👻
 
 - Premium only
-- Toggle from profile page (👻 button)
+- Toggle via `/api/mystery/toggle`
 - Active for 24 hours, auto-expires
 - While active: photo hidden in feed, ghost animation shown
 - Name, age, city, bio, interests still visible
 - Match → photo revealed normally
-- Button glows pink when active
-
----
-
-## Security
-
-- **Telegram initData verification** — `verify_init_data()` uses `WebAppData` HMAC-SHA256
-- If initData present and invalid → 403 returned
-- If initData missing (dev mode) → allowed
-- JWT tokens for session auth (cookie-based)
-- Account delete clears all related data (likes, matches, skips, referrals, reports)
 
 ---
 
@@ -479,28 +400,6 @@ CREATE TABLE vibe_answers (
 
 ---
 
-## UI Design
-
-### Colors
-- Primary: `#E91E8C` (pink/magenta)
-- Secondary: `#9C27B0` (purple)
-- Background: `#0f0f1a`
-- Card: `#1a1a2e`
-- Surface: `#16213e`
-
-### Design Style
-- Glassmorphism cards
-- Smooth swipe animations (CSS transform)
-- Bottom navigation bar (Home, Map, Matches, Profile, Premium)
-- Toast notifications
-- Loading skeletons + spinners
-- Mobile first — designed for Telegram WebApp
-- Touch-friendly buttons (min 44px)
-- No horizontal scroll
-- RTL support for Arabic
-
----
-
 ## Environment Variables (Render)
 
 ```
@@ -512,47 +411,8 @@ ADMIN_TG_ID=                 # Admin Telegram user ID
 BOT_USERNAME=                # e.g. Yoursmeetbot
 APP_URL=                     # e.g. https://yourmeet.onrender.com
 SECRET_KEY=                  # JWT secret
-OPENROUTER_API_KEY=          # For Gemma 4 31B (translation + vibe questions)
+GROQ_API_KEY=                # For vibe check questions (llama-3.3-70b-versatile)
 TELEGRAM_STORAGE_CHAT_ID=    # Chat ID for photo storage
-```
-
----
-
-## File Structure
-
-```
-/
-├── main.py               # FastAPI app, lifespan, webhooks, schedulers
-├── database.py           # DB connection, init, helpers
-├── strings.py            # Bot multilingual strings (14 langs, all keys)
-├── storage.py            # Photo upload to Telegram
-├── bot.py                # Main user bot (all commands + vibe callback)
-├── admin_bot.py          # Admin bot (all commands)
-├── templating.py         # Jinja2 setup with custom filters
-├── requirements.txt
-├── render.yaml
-├── routers/
-│   ├── auth.py           # TMA auth via initData verification + account delete
-│   ├── profiles.py       # Swipe, like, match, profile, feed, likes received
-│   ├── setup.py          # Multi-step profile setup + geocoding
-│   ├── map.py            # Map discovery + /api/map/like
-│   ├── chat.py           # Chat session create/end/forward/cleanup
-│   ├── payment.py        # Telegram Stars
-│   ├── translate.py      # /api/translate — Gemma 4 31B
-│   └── vibe.py           # Vibe Check + Mystery Mode
-├── templates/
-│   ├── base.html         # Base layout, TMA init, i18n init, auth
-│   ├── setup.html        # Multi-step wizard (10 steps)
-│   ├── index.html        # Swipe feed (infinite scroll, mystery support)
-│   ├── map.html          # Dark map + animated arrow discovery
-│   ├── matches.html      # Matches list
-│   ├── profile.html      # Profile view/edit + mystery toggle + who liked you
-│   ├── pending.html      # Pending approval page
-│   └── premium.html      # Premium plans (all features listed)
-└── static/
-    ├── css/
-    └── js/
-        └── i18n.js       # Translation loader + cache
 ```
 
 ---
@@ -560,9 +420,8 @@ TELEGRAM_STORAGE_CHAT_ID=    # Chat ID for photo storage
 ## Developer Info
 - **App:** YourMeet
 - **Developer:** @who_is_the-black_hat
-- **Stack:** FastAPI + Python Telegram Bot + Turso + Telegram WebApp
+- **Stack:** FastAPI + Python Telegram Bot + Turso
 - **Hosting:** Render
 - **Payments:** Telegram Stars (XTR)
-- **Translation + AI:** OpenRouter — Google Gemma 4 31B (free)
-- **Map:** Leaflet.js + CartoDB Dark Matter + leaflet-ant-path
+- **AI:** Groq — `llama-3.3-70b-versatile`
 - **Chat:** Telegram Bot forwarding (free, no extra service)

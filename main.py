@@ -1,9 +1,11 @@
 import os
 import re
 import hmac
+import json
 import httpx
 import uvicorn
 from contextlib import asynccontextmanager
+from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, Response
 from dotenv import load_dotenv
@@ -121,6 +123,44 @@ app.include_router(profiles.router)
 app.include_router(chat.router)
 app.include_router(payment.router)
 app.include_router(vibe.router)
+
+
+@app.get("/api/export")
+async def export_data(request: Request, db=Depends(get_db)):
+    """Export all of the current user's data (GDPR-style data portability)."""
+    user = await auth.get_current_user(request, db=db)
+    if not user:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    cols = ", ".join(auth.USER_COLS)
+    row = db.execute(f"SELECT {cols} FROM users WHERE id=?", (user.id,)).fetchone()
+    u = auth.row_to_user(row)
+    profile = {
+        "id": u.id, "name": u.name, "age": u.age, "gender": u.gender,
+        "interested_in": getattr(u, "interested_in", "both"),
+        "bio": getattr(u, "bio", ""), "city": getattr(u, "city", ""),
+        "photos": json.loads(getattr(u, "photos", "[]") or "[]"),
+        "interests": json.loads(getattr(u, "interests", "[]") or "[]"),
+        "social_handle": getattr(u, "social_handle", ""),
+        "language": getattr(u, "language", "en"),
+        "is_verified": u.is_verified, "is_premium": u.is_premium,
+        "profile_views": getattr(u, "profile_views", 0),
+        "created_at": getattr(u, "created_at", ""),
+    }
+    likes_given = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (user.id,)).fetchall()]
+    likes_received = [r[0] for r in db.execute("SELECT from_user FROM likes WHERE to_user=?", (user.id,)).fetchall()]
+    matches = [r[0] for r in db.execute("SELECT id FROM matches WHERE user1_id=? OR user2_id=?", (user.id, user.id)).fetchall()]
+    reports = [r[0] for r in db.execute("SELECT reported_id FROM reports WHERE reporter_id=?", (user.id,)).fetchall()]
+    blocks = [r[0] for r in db.execute("SELECT blocked_id FROM user_blocks WHERE blocker_id=?", (user.id,)).fetchall()]
+    db.close()
+    return JSONResponse({
+        "profile": profile,
+        "likes_given_to": likes_given,
+        "likes_received_from": likes_received,
+        "match_ids": matches,
+        "reported_users": reports,
+        "blocked_users": blocks,
+        "exported_at": datetime.utcnow().isoformat(),
+    })
 
 
 @app.get("/photo/{file_id:path}")

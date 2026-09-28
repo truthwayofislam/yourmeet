@@ -197,7 +197,6 @@ def init_db():
         """CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            phone TEXT UNIQUE,
             age INTEGER,
             gender TEXT,
             interested_in TEXT DEFAULT 'both',
@@ -291,6 +290,31 @@ def init_db():
             message TEXT NOT NULL,
             created_at TEXT DEFAULT (datetime('now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS user_blocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            blocker_id INTEGER NOT NULL,
+            blocked_id INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(blocker_id, blocked_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS user_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            viewer_id INTEGER NOT NULL,
+            viewed_id INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tg_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target_id INTEGER,
+            detail TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id)",
+        "CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id)",
+        "CREATE INDEX IF NOT EXISTS idx_user_views_viewed ON user_views(viewed_id)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_tg ON audit_log(tg_id)",
         "CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)",
         "CREATE INDEX IF NOT EXISTS idx_users_tg ON users(telegram_id)",
         "CREATE INDEX IF NOT EXISTS idx_users_gender ON users(gender)",
@@ -346,6 +370,10 @@ def init_db():
         "ALTER TABLE users ADD COLUMN terms_accepted INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN setup_msg_id INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN setup_data TEXT DEFAULT '{}'",
+        "ALTER TABLE users ADD COLUMN min_age INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN max_age INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN max_distance INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN profile_views INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(alter)
@@ -358,16 +386,31 @@ def init_db():
 # ── Row helpers ──────────────────────────────────────────────────────────────
 
 USER_COLS = [
-    "id", "name", "phone", "age", "gender", "interested_in",
+    "id", "name", "age", "gender", "interested_in",
     "bio", "city", "lat", "lng", "photo", "photos", "interests",
     "social_handle", "telegram_id", "language", "is_premium",
     "premium_until", "is_approved", "is_verified", "is_rejected",
     "is_blocked", "is_admin", "daily_swipes", "swipes_reset_date",
     "super_likes_left", "boosted_until", "referral_count", "created_at",
-    "mystery_until", "terms_accepted",
+    "mystery_until", "terms_accepted", "setup_msg_id", "setup_data",
+    "min_age", "max_age", "max_distance", "profile_views",
 ]
 
 USER_SELECT = ", ".join(USER_COLS)
+
+
+def log_audit(tg_id: str, action: str, target_id: int = None, detail: str = ""):
+    """Insert an audit log entry. Best-effort — never raises."""
+    try:
+        db = get_conn()
+        db.execute(
+            "INSERT INTO audit_log (tg_id, action, target_id, detail) VALUES (?,?,?,?)",
+            (str(tg_id), action, target_id, detail),
+        )
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f"[AUDIT] log failed: {e}")
 
 
 def row_to_user(row):

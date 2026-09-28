@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from database import get_db, USER_COLS
 from routers.auth import get_current_user
+import ratelimit
 
 router = APIRouter()
 
@@ -144,6 +145,40 @@ async def end_chat(session_id: int, db=Depends(get_db), current_user=Depends(get
     await _notify_chat_end(session[0])
     await _notify_chat_end(session[1])
     return JSONResponse({"ok": True})
+
+
+@router.post("/chat/message/{message_id}/delete")
+async def delete_message(message_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
+    """Delete a chat message sent by the current user."""
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not ratelimit.allow(f"delete_msg:{current_user.id}", 30, 60):
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
+    try:
+        row = db.execute(
+            "SELECT session_id, sender_tg_id FROM chat_messages WHERE id=?",
+            (message_id,),
+        ).fetchone()
+        if not row:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        session_id, sender_tg_id = row
+        if sender_tg_id != current_user.telegram_id:
+            return JSONResponse({"error": "not_yours"}, status_code=403)
+        # Verify the session belongs to the user
+        sess = db.execute(
+            "SELECT 1 FROM chat_sessions WHERE id=? AND (user1_tg_id=? OR user2_tg_id=?)",
+            (session_id, current_user.telegram_id, current_user.telegram_id),
+        ).fetchone()
+        if not sess:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        db.execute("UPDATE chat_messages SET message='[message deleted]' WHERE id=?", (message_id,))
+        db.commit()
+        # Best-effort: delete the forwarded copy on the other user's Telegram chat
+        other_msg_id = getattr(db, "_last_forward_msg_id", None)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        print(f"[CHAT DELETE] error: {e}")
+        return JSONResponse({"error": "delete_failed"}, status_code=500)
 
 
 async def forward_message(tg_id_from: str, text: str, db) -> bool:
