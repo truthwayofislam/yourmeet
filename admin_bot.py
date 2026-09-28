@@ -253,10 +253,12 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db = _get_db()
     total = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     approved = db.execute("SELECT COUNT(*) FROM users WHERE is_approved=1").fetchone()[0]
-    pending = db.execute("SELECT COUNT(*) FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0 AND photo!='' AND age IS NOT NULL AND gender IS NOT NULL").fetchone()[0]
+    pending = db.execute("SELECT COUNT(*) FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0 AND (photo IS NOT NULL AND photo!='') AND age IS NOT NULL AND gender IS NOT NULL").fetchone()[0]
     premium = db.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
     matches = db.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
     likes = db.execute("SELECT COUNT(*) FROM likes").fetchone()[0]
+    active_chats = db.execute("SELECT COUNT(*) FROM chat_sessions WHERE is_active=1").fetchone()[0]
+    db.close()
     text = (
         f"📊 <b>App Stats</b>\n\n"
         f"👥 Total users: {total}\n"
@@ -264,7 +266,8 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         f"⏳ Pending: {pending}\n"
         f"👑 Premium: {premium}\n"
         f"💕 Matches: {matches}\n"
-        f"❤️ Total likes: {likes}"
+        f"❤️ Total likes: {likes}\n"
+        f"💬 Active chats: {active_chats}"
     )
     await update.message.reply_text(text, parse_mode="HTML")
 
@@ -277,7 +280,11 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     msg = " ".join(ctx.args)
     db = _get_db()
-    tg_ids = [r[0] for r in db.execute("SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND is_blocked=0").fetchall()]
+    tg_ids = [r[0] for r in db.execute("SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND is_blocked=0 AND is_approved=1").fetchall()]
+    db.close()
+    if not tg_ids:
+        await update.message.reply_text("No approved users to broadcast to.")
+        return
     sent, failed = 0, 0
     import asyncio
     for tg_id in tg_ids:
@@ -295,8 +302,12 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     db = _get_db()
     rows = db.execute(
-        "SELECT telegram_id, language FROM users WHERE photo='' AND is_blocked=0 AND telegram_id IS NOT NULL"
+        "SELECT telegram_id, language FROM users WHERE (photo IS NULL OR photo='') AND is_blocked=0 AND telegram_id IS NOT NULL"
     ).fetchall()
+    db.close()
+    if not rows:
+        await update.message.reply_text("✅ No incomplete users to remind.")
+        return
     sent = 0
     import asyncio
     for tg_id, lang in rows:
@@ -304,7 +315,7 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         try:
             await ctx.bot.send_message(
                 chat_id=tg_id,
-                text="👋 Hey! You haven't completed your profile yet. Open the app to finish setup and start matching! 💕",
+                text="👋 Hey! You haven't completed your profile yet. Send /start to finish setup and start matching! 💕",
             )
             sent += 1
             await asyncio.sleep(0.05)
@@ -318,15 +329,19 @@ async def cmd_remind_blocked(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     db = _get_db()
     rows = db.execute(
-        "SELECT telegram_id, language FROM users WHERE is_rejected=1 AND telegram_id IS NOT NULL"
+        "SELECT telegram_id, language FROM users WHERE is_rejected=1 AND is_blocked=0 AND telegram_id IS NOT NULL"
     ).fetchall()
+    db.close()
+    if not rows:
+        await update.message.reply_text("✅ No rejected users to notify.")
+        return
     sent = 0
     import asyncio
     for tg_id, lang in rows:
         try:
             await ctx.bot.send_message(
                 chat_id=tg_id,
-                text="ℹ️ Your profile was previously rejected. You can update your profile and resubmit for review.",
+                text="ℹ️ Your profile was previously rejected. Send /start to update your profile and resubmit for review.",
             )
             sent += 1
             await asyncio.sleep(0.05)
@@ -339,14 +354,21 @@ async def cmd_find(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
     if not ctx.args:
-        await update.message.reply_text("Usage: /find <name>")
+        await update.message.reply_text("Usage: /find <name or telegram_id>")
         return
-    name = " ".join(ctx.args)
+    query_str = " ".join(ctx.args)
     db = _get_db()
+    # Try exact telegram_id match first
     rows = db.execute(
-        "SELECT id, name, age, city, is_approved, is_blocked, telegram_id FROM users WHERE name LIKE ? LIMIT 5",
-        (f"%{name}%",)
+        "SELECT id, name, age, city, is_approved, is_blocked, telegram_id FROM users WHERE telegram_id=? LIMIT 1",
+        (query_str,)
     ).fetchall()
+    if not rows:
+        rows = db.execute(
+            "SELECT id, name, age, city, is_approved, is_blocked, telegram_id FROM users WHERE name LIKE ? LIMIT 5",
+            (f"%{query_str}%",)
+        ).fetchall()
+    db.close()
     if not rows:
         await update.message.reply_text("No users found.")
         return

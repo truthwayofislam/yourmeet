@@ -636,6 +636,10 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_browse(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
 
@@ -984,6 +988,10 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
 
 async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user or not user.photo:
@@ -1005,11 +1013,16 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    chat_id = update.effective_chat.id
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user:
-        await _cleanup_chat(ctx, update.effective_chat.id)
-        sent = await update.message.reply_text("No profile yet. Use /start to create one.")
+        await _cleanup_chat(ctx, chat_id)
+        sent = await ctx.bot.send_message(chat_id, "No profile yet. Use /start to create one.")
         await _track_bot_message(ctx, sent.message_id)
         return
     from database import get_conn, row_to_user, USER_COLS
@@ -1021,8 +1034,8 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ).fetchall()
     db.close()
     if not rows:
-        await _cleanup_chat(ctx, update.effective_chat.id)
-        sent = await update.message.reply_text("💔 No matches yet. Use /browse to find people!")
+        await _cleanup_chat(ctx, chat_id)
+        sent = await ctx.bot.send_message(chat_id, "💔 No matches yet. Use /browse to find people!")
         await _track_bot_message(ctx, sent.message_id)
         return
     text = f"💕 <b>Your Matches ({len(rows)})</b>\n\n"
@@ -1041,15 +1054,19 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"💔 Unmatch", callback_data=f"unmatch:{match_id}"
             )])
     db2.close()
-    await _cleanup_chat(ctx, update.effective_chat.id)
+    await _cleanup_chat(ctx, chat_id)
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else _main_keyboard()
-    sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    sent = await ctx.bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=reply_markup)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
 
 
 async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     user = _get_user(tg_id)
     if not user:
         await _cleanup_chat(ctx, update.effective_chat.id)
@@ -1078,6 +1095,10 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     await _cleanup_chat(ctx, update.effective_chat.id)
@@ -1092,6 +1113,10 @@ async def cmd_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     bot_username = os.getenv("BOT_USERNAME", "").strip().strip("'\"")
     if not bot_username:
         try:
@@ -1117,6 +1142,10 @@ async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     await _cleanup_chat(ctx, update.effective_chat.id)
     sent = await update.message.reply_text(
         "📖 <b>YourMeet Commands</b>\n\nTap a button below, or type any command.",
@@ -1128,6 +1157,10 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Yes, Delete", callback_data="cmd:confirmdelete")],
@@ -1157,6 +1190,10 @@ async def cmd_confirm_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     langs = [
         ("🇬🇧 English", "en"), ("🇪🇸 Español", "es"), ("🇷🇺 Русский", "ru"),
         ("🇰🇷 한국어", "ko"), ("🇨🇳 中文", "zh"), ("🇮🇩 Indonesia", "id"),
@@ -1176,6 +1213,10 @@ async def cmd_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user or not user.is_premium:
@@ -1230,6 +1271,10 @@ async def cmd_block(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_filters(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     """Set age/distance filters — /filters <min_age> <max_age> <max_distance_km>"""
     tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
     if not user:
@@ -1584,6 +1629,11 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         }
         handler = handlers.get(cmd)
         if handler:
+            # Delete the keyboard button tap message so chat stays clean
+            try:
+                await update.message.delete()
+            except Exception:
+                pass
             fake_update = Update.de_json(
                 {"update_id": update.update_id, "message": {
                     "message_id": update.message.message_id,
