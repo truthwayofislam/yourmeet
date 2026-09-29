@@ -16,8 +16,8 @@ APP_URL = os.getenv("APP_URL", "")
 # Conversation states
 (
     SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_INTERESTED_IN,
-    SETUP_CITY, SETUP_BIO, SETUP_SOCIAL, SETUP_PHOTO,
-) = range(8)
+    SETUP_CITY, SETUP_BIO, SETUP_SOCIAL, SETUP_LOOKING_FOR, SETUP_PHOTO,
+) = range(9)
 
 
 def build_bot() -> Application:
@@ -37,6 +37,7 @@ def build_bot() -> Application:
             SETUP_CITY:          [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
             SETUP_BIO:           [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_bio)],
             SETUP_SOCIAL:        [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
+            SETUP_LOOKING_FOR:   [CallbackQueryHandler(setup_looking_for, pattern=r"^lf:")],
             SETUP_PHOTO:         [MessageHandler(filters.PHOTO, setup_photo)],
         },
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
@@ -506,11 +507,35 @@ async def setup_social(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     d = s["data"]
     d["social_handle"] = social
     _save_setup_data(tg_id, data=d)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💚 Dating", callback_data="lf:dating"),
+         InlineKeyboardButton("🔥 Sexting", callback_data="lf:sexting")],
+        [InlineKeyboardButton("🤝 Relationship", callback_data="lf:relationship"),
+         InlineKeyboardButton("❓ Any / Open", callback_data="lf:any")],
+    ])
     await _edit_setup_msg(
         ctx, chat_id, tg_id,
+        "What are you <b>looking for</b>?",
+        parse_mode="HTML",
+        reply_markup=keyboard,
+    )
+    return SETUP_LOOKING_FOR
+
+
+async def setup_looking_for(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """What kind of relationship are you looking for? (inline buttons)."""
+    query = update.callback_query
+    await query.answer()
+    tg_id = str(update.effective_user.id)
+    s = await _get_setup_data(tg_id)
+    d = s["data"]
+    d["looking_for"] = query.data.split(":")[1]
+    _save_setup_data(tg_id, data=d)
+    await _edit_setup_msg(
+        ctx, update.effective_chat.id, tg_id,
         "Almost done! Send your best <b>profile photo</b>\n\n"
         "<i>Make sure your face is clearly visible.</i>",
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     return SETUP_PHOTO
 
@@ -541,6 +566,7 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     city = d.get("city", "")
     bio = d.get("bio", "")
     social = d.get("social_handle", "")
+    looking_for = d.get("looking_for", "any")
 
     if not age or not gender:
         sent = await ctx.bot.send_message(chat_id, "Something went wrong. Please use /start to begin again.")
@@ -578,28 +604,28 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if edit_mode:
             db.execute(
                 """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-                   lat=?, lng=?, social_handle=?, photo=?, photos=?,
+                   lat=?, lng=?, social_handle=?, photo=?, photos=?, looking_for=?,
                    terms_accepted=1 WHERE id=?""",
                 (name, age, gender, interested_in, bio, city,
-                 lat, lng, social, file_id, photos_json, existing.id),
+                 lat, lng, social, file_id, photos_json, looking_for, existing.id),
             )
         else:
             db.execute(
                 """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-                   lat=?, lng=?, social_handle=?, photo=?, photos=?,
+                   lat=?, lng=?, social_handle=?, photo=?, photos=?, looking_for=?,
                    is_approved=0, is_rejected=0, terms_accepted=1 WHERE id=?""",
                 (name, age, gender, interested_in, bio, city,
-                 lat, lng, social, file_id, photos_json, existing.id),
+                 lat, lng, social, file_id, photos_json, looking_for, existing.id),
             )
         user_id = existing.id
     else:
         db.execute(
             """INSERT INTO users
                (name, age, gender, interested_in, bio, city, lat, lng,
-                social_handle, photo, photos, telegram_id, is_approved, terms_accepted)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,1)""",
+                social_handle, photo, photos, telegram_id, looking_for, is_approved, terms_accepted)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)""",
             (name, age, gender, interested_in, bio, city,
-             lat, lng, social, file_id, photos_json, tg_id),
+             lat, lng, social, file_id, photos_json, tg_id, looking_for),
         )
         row = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
         user_id = row[0]
@@ -771,6 +797,10 @@ async def _send_next_profile(message, user, ctx=None):
         f"<b>{profile.name}, {profile.age}</b> 📍 {profile.city or '-'}\n\n"
         f"{profile.bio or ''}\n"
     )
+    lf = getattr(profile, "looking_for", "any") or "any"
+    lf_label = {"dating": "💚 Dating", "sexting": "🔥 Sexting",
+                "relationship": "🤝 Relationship", "any": "❓ Any"}.get(lf, lf)
+    caption += f"\n🎯 Looking for: {lf_label}"
     if interests:
         caption += f"\n🏷 {' · '.join(interests[:5])}"
     if profile.is_verified:
@@ -1008,8 +1038,12 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     premium = "✅" if user.is_premium else "❌"
     status = "Approved ✅" if user.is_approved else ("Rejected ❌" if user.is_rejected else "Pending ⏳")
+    looking_for = getattr(user, "looking_for", "any") or "any"
+    lf_label = {"dating": "💚 Dating", "sexting": "🔥 Sexting",
+                "relationship": "🤝 Relationship", "any": "❓ Any"}.get(looking_for, looking_for)
     text = s(lang, "your_profile", name=user.name, age=user.age,
              gender=user.gender or "-", city=user.city or "-",
+             looking_for=lf_label,
              premium=premium, status=status)
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = _main_keyboard()

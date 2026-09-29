@@ -233,6 +233,7 @@ def init_db():
             referral_count INTEGER DEFAULT 0,
             mystery_until TEXT DEFAULT '',
             terms_accepted INTEGER DEFAULT 0,
+            looking_for TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now'))
         )""",
         """CREATE TABLE IF NOT EXISTS likes (
@@ -384,6 +385,7 @@ def init_db():
         "ALTER TABLE users ADD COLUMN max_age INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN max_distance INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN profile_views INTEGER DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN looking_for TEXT DEFAULT ''",
         "ALTER TABLE chat_sessions ADD COLUMN missed_notified INTEGER DEFAULT 0",
     ]:
         try:
@@ -404,8 +406,8 @@ USER_COLS = [
     "is_blocked", "is_admin", "daily_swipes", "swipes_reset_date",
     "super_likes_left", "boosted_until", "referral_count", "created_at",
     "mystery_until", "terms_accepted", "setup_msg_id", "setup_data",
-    "min_age", "max_age", "max_distance", "profile_views",
-]
+"min_age", "max_age", "max_distance", "profile_views", "looking_for",
+    ]
 
 USER_SELECT = ", ".join(USER_COLS)
 
