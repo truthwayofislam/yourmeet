@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service — YourMeet</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    /* Gradient background blobs */
+    body::before {
+      content: "";
+      position: fixed;
+      top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(255,75,110,0.15) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      bottom: -200px; right: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(120,80,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      margin-bottom: 24px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, #ff4b6e, #ff8c42);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 4px 20px rgba(255,75,110,0.4);
+    }
+    .logo-text {
+      font-size: 26px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ff4b6e, #ff8c42);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .header .subtitle {
+      color: #888;
+      font-size: 15px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(255,75,110,0.15);
+      border: 1px solid rgba(255,75,110,0.3);
+      color: #ff4b6e;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 16px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    /* Card */
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 36px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .section-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .icon-pink  { background: rgba(255,75,110,0.15); }
+    .icon-blue  { background: rgba(80,150,255,0.15); }
+    .icon-green { background: rgba(50,200,120,0.15); }
+    .icon-orange{ background: rgba(255,140,66,0.15); }
+    .icon-purple{ background: rgba(160,80,255,0.15); }
+    .icon-red   { background: rgba(255,60,60,0.15); }
+    .icon-teal  { background: rgba(0,200,180,0.15); }
+
+    p {
+      color: #b0b0b0;
+      font-size: 15px;
+      line-height: 1.75;
+      margin-bottom: 12px;
+    }
+    p:last-child { margin-bottom: 0; }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    ul li {
+      color: #b0b0b0;
+      font-size: 15px;
+      line-height: 1.7;
+      padding: 6px 0 6px 24px;
+      position: relative;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    ul li:last-child { border-bottom: none; }
+    ul li::before {
+      content: "›";
+      position: absolute;
+      left: 6px;
+      color: #ff4b6e;
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .highlight-box {
+      background: rgba(255,75,110,0.08);
+      border: 1px solid rgba(255,75,110,0.2);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-top: 16px;
+    }
+    .highlight-box p {
+      color: #ffb3c0;
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.06);
+      margin: 20px 0;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 48px;
+      padding-top: 32px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .footer p {
+      color: #555;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: #ff4b6e;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    .footer-links a:hover { opacity: 0.7; }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #ff4b6e, #ff8c42);
+      color: #fff;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 28px;
+      border-radius: 50px;
+      margin-top: 24px;
+      box-shadow: 0 4px 20px rgba(255,75,110,0.35);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .back-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 28px rgba(255,75,110,0.5);
+    }
+
+    @media (max-width: 600px) {
+      .card { padding: 24px 18px; }
+      .header h1 { font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="header">
+      <a class="logo" href="#">
+        <div class="logo-icon">💕</div>
+        <span class="logo-text">YourMeet</span>
+      </a>
+      <div class="badge">Legal</div>
+      <h1>Terms of Service</h1>
+      <p class="subtitle">Last updated: June 2025 &nbsp;·&nbsp; Effective immediately</p>
+    </div>
+
+    <!-- 1. Acceptance -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-pink">✅</div>
+        1. Acceptance of Terms
+      </div>
+      <p>By accessing or using YourMeet ("the App"), you confirm that you are at least <strong style="color:#fff">18 years of age</strong> and agree to be bound by these Terms of Service.</p>
+      <p>If you do not agree to these terms, please do not use the App. Continued use of the App constitutes acceptance of any updates to these terms.</p>
+    </div>
+
+    <!-- 2. Eligibility -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-blue">👤</div>
+        2. Eligibility
+      </div>
+      <ul>
+        <li>You must be 18 years of age or older to use YourMeet</li>
+        <li>You must have a valid Telegram account</li>
+        <li>You must not be prohibited from using the service under applicable law</li>
+        <li>You must not have been previously banned from YourMeet</li>
+        <li>You must provide accurate and truthful information during registration</li>
+      </ul>
+    </div>
+
+    <!-- 3. User Conduct -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-red">🚫</div>
+        3. Prohibited Conduct
+      </div>
+      <p>You agree NOT to:</p>
+      <ul>
+        <li>Upload photos of anyone other than yourself</li>
+        <li>Impersonate any person or entity</li>
+        <li>Harass, abuse, threaten, or intimidate other users</li>
+        <li>Share explicit, offensive, or illegal content</li>
+        <li>Use the App for commercial solicitation or spam</li>
+        <li>Attempt to extract personal data of other users</li>
+        <li>Use automated bots or scripts to interact with the App</li>
+        <li>Engage in any activity that violates applicable laws</li>
+      </ul>
+      <div class="highlight-box">
+        <p>⚠️ Violations may result in immediate and permanent account termination without notice or refund.</p>
+      </div>
+    </div>
+
+    <!-- 4. Profile & Content -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-orange">📸</div>
+        4. Profile & Content
+      </div>
+      <p>All profiles are reviewed by our moderation team before becoming visible to other users. We reserve the right to reject or remove any profile or content that violates these terms.</p>
+      <ul>
+        <li>Profile photos must clearly show your face</li>
+        <li>Photos must not contain nudity or explicit content</li>
+        <li>Bio and information must be truthful and appropriate</li>
+        <li>You grant YourMeet a license to display your content within the App</li>
+      </ul>
+    </div>
+
+    <!-- 5. Premium -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-purple">👑</div>
+        5. Premium Subscriptions & Payments
+      </div>
+      <p>YourMeet offers optional Premium subscriptions paid via Telegram Stars (XTR).</p>
+      <ul>
+        <li>Payments are processed through Telegram's payment system</li>
+        <li>Subscriptions are non-refundable once activated</li>
+        <li>Premium features are available for the duration of the subscription period</li>
+        <li>We reserve the right to modify pricing with reasonable notice</li>
+        <li>Telegram Stars purchases are subject to Telegram's own terms</li>
+      </ul>
+    </div>
+
+    <!-- 6. Privacy -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-green">🔒</div>
+        6. Privacy
+      </div>
+      <p>Your privacy is important to us. Please review our <a href="/privacy" style="color:#ff4b6e;text-decoration:none;font-weight:600">Privacy Policy</a> to understand how we collect, use, and protect your information.</p>
+      <p>By using YourMeet, you consent to the collection and use of your data as described in our Privacy Policy.</p>
+    </div>
+
+    <!-- 7. Disclaimers -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-teal">⚠️</div>
+        7. Disclaimers & Limitation of Liability
+      </div>
+      <p>YourMeet is provided "as is" without warranties of any kind. We do not guarantee:</p>
+      <ul>
+        <li>Continuous, uninterrupted access to the App</li>
+        <li>The accuracy of user-provided information</li>
+        <li>The outcome of any interactions between users</li>
+        <li>That the App will be free from errors or security vulnerabilities</li>
+      </ul>
+      <p style="margin-top:14px">To the maximum extent permitted by law, YourMeet shall not be liable for any indirect, incidental, or consequential damages arising from your use of the App.</p>
+    </div>
+
+    <!-- 8. Termination -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-red">🗑️</div>
+        8. Account Termination
+      </div>
+      <p>You may delete your account at any time using the <strong style="color:#fff">/delete</strong> command in the App. We may suspend or terminate your account at our discretion if you violate these Terms.</p>
+      <p>Upon termination, your data will be permanently deleted from our systems within 30 days.</p>
+    </div>
+
+    <!-- 9. Changes -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-blue">📋</div>
+        9. Changes to Terms
+      </div>
+      <p>We may update these Terms from time to time. Continued use of the App after changes constitutes acceptance of the new Terms. We will notify users of significant changes through the App.</p>
+    </div>
+
+    <!-- 10. Contact -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-pink">💬</div>
+        10. Contact
+      </div>
+      <p>If you have any questions about these Terms, please contact us through the App or reach out to our support team on Telegram.</p>
+    </div>
+
+    <div class="footer">
+      <p>© 2025 YourMeet. All rights reserved.</p>
+      <div class="footer-links">
+        <a href="/terms">Terms of Service</a>
+        <a href="/privacy">Privacy Policy</a>
+      </div>
+      <a class="back-btn" href="https://t.me/Yoursmeetbot">
+        💕 Open YourMeet
+      </a>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -7,7 +7,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI, Depends, Request, HTTPException
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, HTMLResponse
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -254,6 +254,18 @@ async def admin_webhook(token: str, request: Request):
 @app.api_route("/ping", methods=["GET", "HEAD"])
 def ping():
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/terms", response_class=HTMLResponse)
+def terms():
+    with open("static/terms.html", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy():
+    with open("static/privacy.html", encoding="utf-8") as f:
+        return f.read()
 
 
 if __name__ == "__main__":

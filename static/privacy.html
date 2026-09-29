@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — YourMeet</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(80,150,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      bottom: -200px; right: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(255,75,110,0.10) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      margin-bottom: 24px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, #ff4b6e, #ff8c42);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 4px 20px rgba(255,75,110,0.4);
+    }
+    .logo-text {
+      font-size: 26px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ff4b6e, #ff8c42);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .header .subtitle {
+      color: #888;
+      font-size: 15px;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(80,150,255,0.15);
+      border: 1px solid rgba(80,150,255,0.3);
+      color: #5096ff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 16px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 36px;
+      margin-bottom: 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+    }
+    .section-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .icon-pink   { background: rgba(255,75,110,0.15); }
+    .icon-blue   { background: rgba(80,150,255,0.15); }
+    .icon-green  { background: rgba(50,200,120,0.15); }
+    .icon-orange { background: rgba(255,140,66,0.15); }
+    .icon-purple { background: rgba(160,80,255,0.15); }
+    .icon-red    { background: rgba(255,60,60,0.15); }
+    .icon-teal   { background: rgba(0,200,180,0.15); }
+
+    p {
+      color: #b0b0b0;
+      font-size: 15px;
+      line-height: 1.75;
+      margin-bottom: 12px;
+    }
+    p:last-child { margin-bottom: 0; }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    ul li {
+      color: #b0b0b0;
+      font-size: 15px;
+      line-height: 1.7;
+      padding: 6px 0 6px 24px;
+      position: relative;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    ul li:last-child { border-bottom: none; }
+    ul li::before {
+      content: "›";
+      position: absolute;
+      left: 6px;
+      color: #5096ff;
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+    .data-table th {
+      text-align: left;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.06);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .data-table th:first-child { border-radius: 8px 0 0 0; }
+    .data-table th:last-child  { border-radius: 0 8px 0 0; }
+    .data-table td {
+      color: #b0b0b0;
+      font-size: 14px;
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      vertical-align: top;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+
+    .highlight-box {
+      background: rgba(80,150,255,0.08);
+      border: 1px solid rgba(80,150,255,0.2);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-top: 16px;
+    }
+    .highlight-box p {
+      color: #a0c4ff;
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .rights-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .right-item {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .right-item .ri { font-size: 20px; }
+    .right-item .rt { font-size: 14px; color: #ccc; font-weight: 600; }
+    .right-item .rd { font-size: 13px; color: #888; margin-top: 2px; }
+
+    .footer {
+      text-align: center;
+      margin-top: 48px;
+      padding-top: 32px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .footer p {
+      color: #555;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: #ff4b6e;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: opacity 0.2s;
+    }
+    .footer-links a:hover { opacity: 0.7; }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #ff4b6e, #ff8c42);
+      color: #fff;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 28px;
+      border-radius: 50px;
+      margin-top: 24px;
+      box-shadow: 0 4px 20px rgba(255,75,110,0.35);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .back-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 28px rgba(255,75,110,0.5);
+    }
+
+    @media (max-width: 600px) {
+      .card { padding: 24px 18px; }
+      .header h1 { font-size: 26px; }
+      .rights-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="header">
+      <a class="logo" href="#">
+        <div class="logo-icon">💕</div>
+        <span class="logo-text">YourMeet</span>
+      </a>
+      <div class="badge">Privacy</div>
+      <h1>Privacy Policy</h1>
+      <p class="subtitle">Last updated: June 2025 &nbsp;·&nbsp; We respect your privacy</p>
+    </div>
+
+    <!-- Overview -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-blue">🔒</div>
+        Our Commitment to Privacy
+      </div>
+      <p>YourMeet is built on Telegram and takes your privacy seriously. This policy explains what data we collect, why we collect it, and how you can control it.</p>
+      <div class="highlight-box">
+        <p>🛡️ We never sell your personal data to third parties. Your information is used solely to operate and improve YourMeet.</p>
+      </div>
+    </div>
+
+    <!-- Data We Collect -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-orange">📊</div>
+        Data We Collect
+      </div>
+      <table class="data-table">
+        <tr>
+          <th>Data Type</th>
+          <th>What We Collect</th>
+          <th>Purpose</th>
+        </tr>
+        <tr>
+          <td><strong style="color:#fff">Identity</strong></td>
+          <td>Name, age, gender, city</td>
+          <td>Profile creation & matching</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#fff">Telegram</strong></td>
+          <td>Telegram user ID, language</td>
+          <td>Account identification</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#fff">Photos</strong></td>
+          <td>Profile photo (Telegram file_id)</td>
+          <td>Profile display & moderation</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#fff">Location</strong></td>
+          <td>City name, approximate coordinates</td>
+          <td>Distance-based matching</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#fff">Activity</strong></td>
+          <td>Likes, matches, swipes</td>
+          <td>Matching algorithm</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#fff">Messages</strong></td>
+          <td>Chat messages (Premium users)</td>
+          <td>Message history feature</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#fff">Social</strong></td>
+          <td>Optional social handle</td>
+          <td>Shared with matches only</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- How We Use Data -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-green">⚙️</div>
+        How We Use Your Data
+      </div>
+      <ul>
+        <li>To create and display your profile to potential matches</li>
+        <li>To power the matching and swiping algorithm</li>
+        <li>To send notifications about matches and messages via Telegram</li>
+        <li>To process Premium subscription payments</li>
+        <li>To moderate content and enforce our Terms of Service</li>
+        <li>To improve the App's features and performance</li>
+        <li>To prevent fraud, abuse, and unauthorized access</li>
+      </ul>
+    </div>
+
+    <!-- Data Sharing -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-purple">🤝</div>
+        Data Sharing
+      </div>
+      <p>We do <strong style="color:#fff">not</strong> sell your data. We share limited data only in these cases:</p>
+      <ul>
+        <li><strong style="color:#fff">With other users:</strong> Your profile (name, age, city, photo, bio) is shown to potential matches</li>
+        <li><strong style="color:#fff">Social handle:</strong> Shared only after a mutual match, never before</li>
+        <li><strong style="color:#fff">Telegram:</strong> Messages are routed through Telegram's infrastructure</li>
+        <li><strong style="color:#fff">Legal requirements:</strong> If required by law or to protect safety</li>
+      </ul>
+    </div>
+
+    <!-- Data Storage -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-teal">🗄️</div>
+        Data Storage & Security
+      </div>
+      <p>Your data is stored in a secure cloud database. Photos are stored as Telegram file references — we do not store raw image files on our servers.</p>
+      <ul>
+        <li>Database is encrypted at rest</li>
+        <li>All API communications use HTTPS/TLS</li>
+        <li>Access to user data is restricted to authorized systems only</li>
+        <li>We regularly review and update our security practices</li>
+      </ul>
+    </div>
+
+    <!-- Your Rights -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-pink">⚖️</div>
+        Your Rights
+      </div>
+      <div class="rights-grid">
+        <div class="right-item">
+          <div class="ri">👁️</div>
+          <div>
+            <div class="rt">Access</div>
+            <div class="rd">Export all your data via /export command</div>
+          </div>
+        </div>
+        <div class="right-item">
+          <div class="ri">✏️</div>
+          <div>
+            <div class="rt">Correction</div>
+            <div class="rd">Update your profile anytime via /editprofile</div>
+          </div>
+        </div>
+        <div class="right-item">
+          <div class="ri">🗑️</div>
+          <div>
+            <div class="rt">Deletion</div>
+            <div class="rd">Delete all data via /delete command</div>
+          </div>
+        </div>
+        <div class="right-item">
+          <div class="ri">🚫</div>
+          <div>
+            <div class="rt">Objection</div>
+            <div class="rd">Block users or restrict your visibility</div>
+          </div>
+        </div>
+      </div>
+      <div class="highlight-box" style="margin-top:20px">
+        <p>🗑️ When you delete your account, all your data including profile, photos, matches, and messages is permanently removed within 30 days.</p>
+      </div>
+    </div>
+
+    <!-- Cookies -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-orange">🍪</div>
+        Cookies & Tracking
+      </div>
+      <p>YourMeet operates primarily through Telegram and does not use traditional browser cookies for tracking. If you access any web features of the App, we may use session tokens stored in cookies solely for authentication purposes.</p>
+      <p>We do not use third-party advertising trackers or analytics services that collect personal data.</p>
+    </div>
+
+    <!-- Children -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-red">🔞</div>
+        Children's Privacy
+      </div>
+      <p>YourMeet is strictly for users aged <strong style="color:#fff">18 and older</strong>. We do not knowingly collect data from anyone under 18. If we discover a user is underage, their account will be immediately terminated and all data deleted.</p>
+      <p>If you believe a minor is using the App, please report it immediately through the App.</p>
+    </div>
+
+    <!-- Changes -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-blue">📋</div>
+        Changes to This Policy
+      </div>
+      <p>We may update this Privacy Policy from time to time. We will notify users of significant changes through the App. Continued use of YourMeet after changes constitutes acceptance of the updated policy.</p>
+    </div>
+
+    <!-- Contact -->
+    <div class="card">
+      <div class="section-title">
+        <div class="section-icon icon-green">💬</div>
+        Contact Us
+      </div>
+      <p>For any privacy-related questions or requests, please contact us through the YourMeet bot on Telegram. We aim to respond to all privacy requests within 72 hours.</p>
+    </div>
+
+    <div class="footer">
+      <p>© 2025 YourMeet. All rights reserved.</p>
+      <div class="footer-links">
+        <a href="/terms">Terms of Service</a>
+        <a href="/privacy">Privacy Policy</a>
+      </div>
+      <a class="back-btn" href="https://t.me/Yoursmeetbot">
+        💕 Open YourMeet
+      </a>
+    </div>
+
+  </div>
+</body>
+</html>
