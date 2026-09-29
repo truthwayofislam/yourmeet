@@ -284,9 +284,12 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
+    if not _admin_rate_limit(update, limit=5, window=60):
+        await update.message.reply_text("⏳ Too many commands. Please wait a moment.")
+        return
     db = _get_db()
     rows = db.execute(
-        "SELECT telegram_id, language FROM users WHERE (photo IS NULL OR photo='') AND is_blocked=0 AND telegram_id IS NOT NULL"
+        "SELECT telegram_id, language FROM users WHERE (photo IS NULL OR photo='') AND is_blocked=0 AND is_rejected=0 AND is_approved=0 AND telegram_id IS NOT NULL"
     ).fetchall()
     db.close()
     if not rows:
@@ -305,11 +308,16 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.05)
         except Exception:
             pass
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "remind", detail=f"sent={sent}")
     await update.message.reply_text(f"✅ Reminded {sent} incomplete users.")
 
 
 async def cmd_remind_blocked(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
+        return
+    if not _admin_rate_limit(update, limit=5, window=60):
+        await update.message.reply_text("⏳ Too many commands. Please wait a moment.")
         return
     db = _get_db()
     rows = db.execute(
@@ -331,6 +339,8 @@ async def cmd_remind_blocked(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.05)
         except Exception:
             pass
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "remind_blocked", detail=f"sent={sent}")
     await update.message.reply_text(f"✅ Notified {sent} rejected users.")
 
 
