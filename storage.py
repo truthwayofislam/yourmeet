@@ -11,7 +11,8 @@ import httpx
 
 
 def _bot_token() -> str:
-    return os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    # Admin bot is the one with access to storage channel
+    return os.getenv("ADMIN_BOT_TOKEN", "").strip().strip("'\"")
 
 
 def _storage_chat_id() -> str:

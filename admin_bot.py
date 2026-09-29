@@ -126,12 +126,8 @@ async def _send_pending_profile(bot, chat_id: str, user):
     )
     keyboard = _approval_keyboard(user.id)
     if user.photo:
-        # file_ids are bot-specific — use main bot (which owns the storage file_id)
-        main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
-        from telegram import Bot as TGBot
-        send_bot = TGBot(token=main_bot_token) if main_bot_token else bot
         try:
-            await send_bot.send_photo(
+            await bot.send_photo(
                 chat_id=chat_id,
                 photo=user.photo,
                 caption=text,
@@ -636,12 +632,10 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
     keyboard = _approval_keyboard(user_id)
     try:
         from telegram import Bot
-        # Use main bot token to send — it owns the file_id from storage channel
-        main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
-        send_bot = Bot(token=main_bot_token) if main_bot_token else Bot(token=ADMIN_BOT_TOKEN)
+        bot = Bot(token=ADMIN_BOT_TOKEN)
         if photo:
             try:
-                await send_bot.send_photo(
+                await bot.send_photo(
                     chat_id=ADMIN_TG_ID, photo=photo,
                     caption=text, parse_mode="HTML",
                     reply_markup=keyboard,
@@ -649,9 +643,7 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
                 return
             except Exception as e:
                 print(f"[ADMIN BOT] send_for_review photo failed: {e}")
-        # Fallback: text only via admin bot
-        admin_bot = Bot(token=ADMIN_BOT_TOKEN)
-        await admin_bot.send_message(
+        await bot.send_message(
             chat_id=ADMIN_TG_ID, text=text, parse_mode="HTML",
             reply_markup=keyboard
         )
