@@ -945,7 +945,8 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
         already = db.execute(
             "SELECT id FROM likes WHERE from_user=? AND to_user=?", (user.id, target_id)
         ).fetchone()
-        if not already:
+        liked_new = already is None
+        if liked_new:
             try:
                 db.execute(
                     "INSERT INTO likes (from_user, to_user, is_super) VALUES (?,?,?)",
@@ -957,6 +958,12 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
                         db.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (user.id,))
             except DuplicateError:
                 pass  # concurrent duplicate — benign, continue
+
+        # Don't notify the target if they blocked the liker.
+        target_blocked_liker = db.execute(
+            "SELECT 1 FROM user_blocks WHERE blocker_id=? AND blocked_id=?",
+            (target_id, user.id),
+        ).fetchone() is not None
 
         mutual = db.execute(
             "SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, user.id)
@@ -1018,6 +1025,17 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
         except Exception as e:
             print(f"[LIKE] notify failed: {e}")
         return True
+
+    # One-sided like — notify the target (contact details hidden for free users).
+    if liked_new and target and target.telegram_id and not target_blocked_liker:
+        try:
+            from main import bot_app
+            if bot_app and target.is_premium:
+                await notify_like(bot_app.bot, target, user, premium=True, is_super=is_super)
+            else:
+                await notify_like(bot_app.bot, target, user, premium=False, is_super=is_super)
+        except Exception as e:
+            print(f"[LIKE] notify_like failed: {e}")
     return False
 
 
@@ -1706,6 +1724,43 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ── Notify helpers ────────────────────────────────────────────────────────────
+
+async def notify_like(bot, target, liker, premium: bool, is_super: bool = False):
+    """Notify a user that someone liked them.
+
+    Free users see name/bio/city but contact details (photo, social handle)
+    stay hidden. Premium users see everything.
+    """
+    if not target.telegram_id:
+        return
+    lang = (target.language or "en") or "en"
+    name = liker.name or "Someone"
+    age = liker.age or "-"
+    city = liker.city or "-"
+    bio = (liker.bio or "")[:120]
+    super_mark = " ⭐" if getattr(liker, "_is_super_like", False) else ""
+    if premium:
+        text = (
+            f"🔔 <b>{name}, {age}</b> 📍 {city}{super_mark} just liked you!\n\n"
+            f"{bio}\n\n"
+            f"Open the app to see who and reply!"
+        )
+    else:
+        text = (
+            f"🔔 <b>{name}</b> just liked you{super_mark}!\n\n"
+            f"{bio}\n"
+            f"📍 {city}\n\n"
+            f"🔒 <i>See who and reply — upgrade to Premium.</i>"
+        )
+    try:
+        await bot.send_message(
+            chat_id=target.telegram_id,
+            text=text,
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        print(f"[BOT] notify_like failed: {e}")
+
 
 async def notify_match(bot, user, matched_with):
     if not user.telegram_id:
