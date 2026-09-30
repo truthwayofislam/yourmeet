@@ -85,6 +85,7 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_superlike, pattern=r"^superlike:"))
     app.add_handler(CallbackQueryHandler(cb_next, pattern=r"^next$"))
     app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:"))
+    app.add_handler(CallbackQueryHandler(cb_block_user, pattern=r"^blockuser:"))
     app.add_handler(CallbackQueryHandler(cb_chat_match, pattern=r"^chat_match:"))
     app.add_handler(CommandHandler("about", cmd_about))
     app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:"))
@@ -178,7 +179,12 @@ def _main_keyboard():
 
 
 def _browse_keyboard(target_id: int, super_left: int):
-    sl_text = f"⭐ Super Like ({super_left})" if super_left > 0 else "⭐ Super Like (0)"
+    if super_left >= 999999:
+        sl_text = "⭐ Super Like (∞)"
+    elif super_left > 0:
+        sl_text = f"⭐ Super Like ({super_left})"
+    else:
+        sl_text = "⭐ Super Like (0)"
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("❤️ Like", callback_data=f"like:{target_id}"),
@@ -806,14 +812,17 @@ async def _send_next_profile(message, user, ctx=None):
         age_sql = "AND age <= ?"
         age_params = (max_age,)
 
+    # When a distance filter is set, candidates are rejected in Python —
+    # a LIMIT 10 page can die entirely to far-away profiles, so widen it.
+    fetch_limit = 50 if max_distance else 10
     rows = db.execute(
         f"""SELECT {cols} FROM users
             WHERE id NOT IN ({placeholders})
             AND {gender_sql} {age_sql}
             AND is_blocked=0 AND is_rejected=0 AND is_approved=1
             ORDER BY CASE WHEN boosted_until > datetime('now') THEN 0 ELSE 1 END, RANDOM()
-            LIMIT 10""",
-        (*excluded, *gender_params, *age_params),
+            LIMIT ?""",
+        (*excluded, *gender_params, *age_params, fetch_limit),
     ).fetchall()
     db.close()
 
@@ -1062,6 +1071,7 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
         ).fetchone()
 
         match_id = None
+        new_match = False
         if mutual:
             existing_match = db.execute(
                 "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
@@ -1077,8 +1087,9 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
                         (user.id, target_id, target_id, user.id)
                     ).fetchone()
                     match_id = match_row[0] if match_row else None
+                    new_match = match_id is not None
                 except DuplicateError:
-                    # Concurrent request created the match — fetch it.
+                    # Concurrent request created the match — it will notify; don't.
                     match_row = db.execute(
                         "SELECT id FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
                         (user.id, target_id, target_id, user.id)
@@ -1097,6 +1108,11 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
     cols = ", ".join(USER_COLS)
     target = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone())
     db.close()
+
+    if match_id and target and not new_match:
+        # Re-like of an already-matched profile (old card, /likes Like-back):
+        # stay silent — re-sending match notifications was a spam vector.
+        return False
 
     if match_id and target:
         try:
@@ -1201,11 +1217,12 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if other_row:
             other = row_to_user(other_row)
             text += f"• <b>{esc(other.name)}</b>, {other.age} — {esc(other.city) or '-'}\n"
-            buttons.append([InlineKeyboardButton(
-                f"💬 Chat with {other.name}", callback_data=f"chat_match:{match_id}"
-            ), InlineKeyboardButton(
-                f"💔 Unmatch", callback_data=f"unmatch:{match_id}"
-            )])
+            # Short labels: the list text above already shows the names.
+            buttons.append([
+                InlineKeyboardButton("💬 Chat", callback_data=f"chat_match:{match_id}"),
+                InlineKeyboardButton("💔 Unmatch", callback_data=f"unmatch:{match_id}"),
+                InlineKeyboardButton("🚫 Block", callback_data=f"blockuser:{other_id}"),
+            ])
     db2.close()
     await _cleanup_chat(ctx, chat_id)
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else _main_keyboard()
@@ -1235,10 +1252,11 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ).fetchone()[0]
     db.close()
     lang = user.language or "en"
+    swipes_display = "∞" if user.is_premium else user.daily_swipes
     await _cleanup_chat(ctx, update.effective_chat.id)
     sent = await update.message.reply_text(
         s(lang, "your_stats", given=given, received=received,
-          matches=matches, swipes=user.daily_swipes),
+          matches=matches, swipes=swipes_display),
         parse_mode="HTML",
         reply_markup=_main_keyboard()
     )
@@ -1461,8 +1479,9 @@ async def cmd_likes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         """SELECT l.from_user, l.is_super FROM likes l
            WHERE l.to_user=?
            AND l.from_user NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id=?)
+           AND l.from_user NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id=?)
            ORDER BY l.id DESC LIMIT 10""",
-        (user.id, user.id),
+        (user.id, user.id, user.id),
     ).fetchall()
     db.close()
     if not rows:
@@ -1502,7 +1521,10 @@ async def cmd_block(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("No profile yet. Use /start to create one.")
         return
     if not ctx.args:
-        await update.message.reply_text("Usage: /block <user_id>")
+        await update.message.reply_text(
+            "Usage: /block <user_id>\n\n"
+            "💡 Tip: open /matches and tap the 🚫 Block button to block a match directly."
+        )
         return
     try:
         target_id = int(ctx.args[0])
@@ -1719,6 +1741,41 @@ async def cb_unmatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _track_bot_message(ctx, sent.message_id)
 
 
+async def cb_block_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """🚫 Block button from the matches list — block + unmatch + close chat."""
+    query = update.callback_query
+    await query.answer("🚫 Blocked")
+    target_id = int(query.data.split(":")[1])
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    if not user or target_id == user.id:
+        return
+    from database import get_conn, log_audit
+    db = get_conn()
+    db.execute("INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id) VALUES (?,?)", (user.id, target_id))
+    db.execute(
+        "DELETE FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)",
+        (user.id, target_id, target_id, user.id),
+    )
+    db.execute(
+        "UPDATE chat_sessions SET is_active=0 WHERE "
+        "((user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)) AND is_active=1",
+        (user.id, target_id, target_id, user.id),
+    )
+    db.commit()
+    db.close()
+    log_audit(tg_id, "block_user", target_id)
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    sent = await query.message.reply_text(
+        "🚫 User blocked. They can no longer see your profile or message you.",
+        reply_markup=_main_keyboard(),
+    )
+    await _track_bot_message(ctx, sent.message_id)
+
+
 async def cb_buy(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1803,7 +1860,10 @@ async def cb_vibe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         import json as _json
         body = _json.loads(result.body) if hasattr(result, "body") else {}
-        if body.get("already_answered"):
+        if body.get("error"):
+            sent = await query.message.reply_text("⚠️ Couldn't record your answer — please try again.")
+            await _track_bot_message(ctx, sent.message_id)
+        elif body.get("already_answered"):
             sent = await query.message.reply_text("✅ You already answered this vibe check!")
             await _track_bot_message(ctx, sent.message_id)
         elif body.get("waiting"):

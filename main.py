@@ -162,12 +162,40 @@ async def _notify_missed_chats():
 async def _expire_premium():
     try:
         db = get_conn()
+        rows = db.execute(
+            "SELECT telegram_id FROM users "
+            "WHERE is_premium=1 AND premium_until != '' AND premium_until < datetime('now')"
+        ).fetchall()
         db.execute(
             "UPDATE users SET is_premium=0, super_likes_left=1, daily_swipes=30 "
             "WHERE is_premium=1 AND premium_until != '' AND premium_until < datetime('now')"
         )
         db.commit()
         db.close()
+        if not rows:
+            return
+        # Tell users their premium expired — silence reads like a billing bug.
+        token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+        if not token:
+            return
+        import httpx
+        for (tg_id,) in rows:
+            if not tg_id:
+                continue
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{token}/sendMessage",
+                        json={
+                            "chat_id": tg_id,
+                            "text": "⏰ <b>Your Premium has expired.</b>\n\n"
+                                    "You're back on the free plan (30 swipes/day).\n"
+                                    "Renew anytime with /premium — unlimited swipes & chat are waiting! 👑",
+                            "parse_mode": "HTML",
+                        },
+                    )
+            except Exception:
+                pass
     except Exception as e:
         print(f"[SCHEDULER] expire_premium error: {e}")
 
