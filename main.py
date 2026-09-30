@@ -102,6 +102,7 @@ async def lifespan(app: FastAPI):
                 BotCommand("pending", "Show pending profiles"),
                 BotCommand("pendingall", "Show all users with status"),
                 BotCommand("stats", "Full app stats"),
+                BotCommand("reports", "Show recent user reports"),
                 BotCommand("broadcast", "Send to all users"),
                 BotCommand("remind", "Remind incomplete users"),
                 BotCommand("remind_blocked", "Notify rejected users"),

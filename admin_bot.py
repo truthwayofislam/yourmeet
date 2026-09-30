@@ -27,6 +27,7 @@ def build_admin_bot() -> Application:
     app.add_handler(CommandHandler("pending", cmd_pending))
     app.add_handler(CommandHandler("pendingall", cmd_pending_all))
     app.add_handler(CommandHandler("stats", cmd_stats))
+    app.add_handler(CommandHandler("reports", cmd_reports))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CommandHandler("remind", cmd_remind))
     app.add_handler(CommandHandler("remind_blocked", cmd_remind_blocked))
@@ -230,6 +231,41 @@ async def cmd_fix_user(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ User #{user_id} ({row[1]}) reset to pending.\n"
         f"Was: approved={row[2]} rejected={row[3]} blocked={row[4]}"
+    )
+
+
+async def cmd_reports(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Show recent user reports — /reports [limit]"""
+    if not _is_admin(update):
+        return
+    limit = 15
+    if ctx.args:
+        try:
+            limit = max(1, min(50, int(ctx.args[0])))
+        except ValueError:
+            pass
+    db = _get_db()
+    rows = db.execute(
+        """SELECT r.reporter_id, r.reported_id, r.reason, r.created_at,
+                  u1.name, u2.name
+           FROM reports r
+           LEFT JOIN users u1 ON u1.id = r.reporter_id
+           LEFT JOIN users u2 ON u2.id = r.reported_id
+           ORDER BY r.id DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    db.close()
+    if not rows:
+        await update.message.reply_text("✅ No reports yet.")
+        return
+    lines = []
+    for reporter_id, reported_id, reason, created_at, rname, tname in rows:
+        lines.append(
+            f"🚨 #{reported_id} <b>{esc(tname) or '?'}</b> — {esc(reason)}"
+            f" | by #{reporter_id} {esc(rname) or '?'} | {(created_at or '')[:16]}"
+        )
+    await update.message.reply_text(
+        "🚨 <b>Recent Reports</b>\n\n" + "\n".join(lines), parse_mode="HTML"
     )
 
 

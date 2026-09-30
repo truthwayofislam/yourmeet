@@ -13,7 +13,9 @@ import ratelimit
 router = APIRouter()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-MODEL = "llama-3.3-70b-versatile"
+# llama-3.3-70b-versatile was deprecated/removed by Groq — every request 404s
+# and vibe questions silently fall back to the two hardcoded defaults.
+MODEL = "openai/gpt-oss-120b"
 
 
 def _parse_dt(value) -> datetime | None:

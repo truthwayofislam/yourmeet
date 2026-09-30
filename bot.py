@@ -80,6 +80,8 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
     app.add_handler(CallbackQueryHandler(cb_filter, pattern=r"^filter:"))
     app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:"))
+    app.add_handler(CallbackQueryHandler(cb_report, pattern=r"^report:\d+$"))
+    app.add_handler(CallbackQueryHandler(cb_report_reason, pattern=r"^reportreason:"))
     app.add_handler(CallbackQueryHandler(cb_like, pattern=r"^like:"))
     app.add_handler(CallbackQueryHandler(cb_skip, pattern=r"^skip:"))
     app.add_handler(CallbackQueryHandler(cb_superlike, pattern=r"^superlike:"))
@@ -191,6 +193,7 @@ def _browse_keyboard(target_id: int, super_left: int):
             InlineKeyboardButton("👎 Skip", callback_data=f"skip:{target_id}"),
         ],
         [InlineKeyboardButton(sl_text, callback_data=f"superlike:{target_id}")],
+        [InlineKeyboardButton("⚠️ Report", callback_data=f"report:{target_id}")],
     ])
 
 
@@ -964,6 +967,117 @@ async def cb_superlike(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             )
             await _track_bot_message(ctx, sent.message_id)
     await _send_next_profile(query.message, user, ctx)
+
+
+REPORT_REASONS = ["fake_profile", "spam", "underage", "harassment", "inappropriate", "other"]
+_REPORT_LABELS = {
+    "fake_profile": "👤 Fake profile",
+    "spam": "📢 Spam",
+    "underage": "🔞 Underage",
+    "harassment": "😠 Harassment",
+    "inappropriate": "🚫 Inappropriate",
+    "other": "❓ Other",
+}
+
+
+async def cb_report(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """⚠️ Report button on a browse card — show the reason picker."""
+    query = update.callback_query
+    await query.answer()
+    target_id = int(query.data.split(":")[1])
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    if not user or target_id == user.id:
+        return
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(label, callback_data=f"reportreason:{target_id}:{reason}")]
+        for reason, label in _REPORT_LABELS.items()
+    ])
+    sent = await query.message.reply_text(
+        "🚨 Why are you reporting this profile?",
+        reply_markup=keyboard,
+    )
+    await _track_bot_message(ctx, sent.message_id)
+
+
+async def cb_report_reason(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Reason picked — save report, auto-ban at 3+, ping the admin bot."""
+    query = update.callback_query
+    parts = query.data.split(":")
+    if len(parts) != 3:
+        await query.answer()
+        return
+    target_id = int(parts[1])
+    reason = parts[2]
+    if reason not in REPORT_REASONS:
+        await query.answer()
+        return
+    tg_id = str(update.effective_user.id)
+    user = _get_user(tg_id)
+    if not user or target_id == user.id:
+        await query.answer()
+        return
+    if not ratelimit.allow(f"report:{user.id}", 5, 60):
+        await query.answer("⏳ Too many reports — please slow down.", show_alert=True)
+        return
+
+    from database import get_conn, log_audit
+    db = get_conn()
+    already = db.execute(
+        "SELECT id FROM reports WHERE reporter_id=? AND reported_id=?",
+        (user.id, target_id),
+    ).fetchone()
+    if already:
+        db.close()
+        await query.answer("You already reported this profile.", show_alert=True)
+        return
+    db.execute(
+        "INSERT INTO reports (reporter_id, reported_id, reason) VALUES (?,?,?)",
+        (user.id, target_id, reason),
+    )
+    db.commit()
+    row = db.execute("SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)).fetchone()
+    count = row[0] if row else 0
+    auto_banned = False
+    if count >= 3:
+        db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (target_id,))
+        db.commit()
+        auto_banned = True
+    trow = db.execute("SELECT name FROM users WHERE id=?", (target_id,)).fetchone()
+    db.close()
+    log_audit(tg_id, "report_user", target_id, reason)
+
+    await query.answer("✅ Report sent — thank you for keeping YourMeet safe!")
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await _notify_admin_report(
+        ctx.bot, user, target_id, (trow[0] if trow else "?"), reason, count, auto_banned
+    )
+
+
+async def _notify_admin_report(bot, reporter, target_id, target_name, reason, count, auto_banned):
+    """Best-effort ping to the admin chat about a new report."""
+    admin_tg_id = os.getenv("ADMIN_TG_ID", "").strip()
+    admin_token = os.getenv("ADMIN_BOT_TOKEN", "").strip().strip("'\"")
+    if not admin_tg_id or not admin_token:
+        return
+    label = _REPORT_LABELS.get(reason, reason)
+    text = (
+        f"🚨 <b>New Report</b>\n\n"
+        f"👤 Reported: #{target_id} {esc(target_name)}\n"
+        f"❓ Reason: {label}\n"
+        f"🙋 By: #{reporter.id} {esc(reporter.name)}\n"
+        f"📊 Total reports on this user: {count}"
+    )
+    if auto_banned:
+        text += "\n\n🚫 <b>Auto-banned (3+ reports).</b> Review with /pendingall or /fixuser."
+    try:
+        from telegram import Bot
+        await Bot(token=admin_token).send_message(chat_id=admin_tg_id, text=text, parse_mode="HTML")
+    except Exception as e:
+        print(f"[BOT] admin report notify failed: {e}")
 
 
 async def cb_skip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
