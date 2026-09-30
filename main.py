@@ -1,6 +1,7 @@
 import os
 import re
 import hmac
+import hashlib
 import json
 import httpx
 import uvicorn
@@ -21,6 +22,15 @@ _FILE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
 
 def _valid_file_id(file_id: str) -> bool:
     return bool(file_id) and bool(_FILE_ID_RE.match(file_id))
+
+
+def _webhook_secret(token: str) -> str:
+    """Stable per-bot secret for Telegram's X-Telegram-Bot-Api-Secret-Token header.
+
+    Telegram echoes this value on every webhook request, so even someone who
+    discovers the webhook URL cannot forge updates without the derived secret.
+    """
+    return hashlib.sha256(("yourmeet-wh:" + token).encode()).hexdigest()
 
 from database import init_db, get_conn, get_db
 from routers import auth, profiles, chat, payment, vibe
@@ -45,6 +55,7 @@ async def lifespan(app: FastAPI):
         await bot_app.initialize()
         await bot_app.bot.set_webhook(
             f"{APP_URL}/webhook/{BOT_TOKEN}",
+            secret_token=_webhook_secret(BOT_TOKEN),
             drop_pending_updates=True,
         )
         # Register the command menu so Telegram shows commands in autocomplete.
@@ -79,6 +90,7 @@ async def lifespan(app: FastAPI):
         await admin_bot_app.initialize()
         await admin_bot_app.bot.set_webhook(
             f"{APP_URL}/admin-webhook/{ADMIN_BOT_TOKEN}",
+            secret_token=_webhook_secret(ADMIN_BOT_TOKEN),
             drop_pending_updates=True,
         )
         try:
@@ -233,7 +245,15 @@ async def proxy_photo(file_id: str, request: Request, db=Depends(get_db)):
 
 @app.post("/webhook/{token}")
 async def webhook(token: str, request: Request):
-    if not BOT_TOKEN or not hmac.compare_digest(token, BOT_TOKEN) or not bot_app:
+    if (
+        not BOT_TOKEN
+        or not hmac.compare_digest(token, BOT_TOKEN)
+        or not bot_app
+        or not hmac.compare_digest(
+            request.headers.get("X-Telegram-Bot-Api-Secret-Token", ""),
+            _webhook_secret(BOT_TOKEN),
+        )
+    ):
         return JSONResponse({"error": "invalid"}, status_code=403)
     from telegram import Update
     update = Update.de_json(await request.json(), bot_app.bot)
@@ -243,7 +263,15 @@ async def webhook(token: str, request: Request):
 
 @app.post("/admin-webhook/{token}")
 async def admin_webhook(token: str, request: Request):
-    if not ADMIN_BOT_TOKEN or not hmac.compare_digest(token, ADMIN_BOT_TOKEN) or not admin_bot_app:
+    if (
+        not ADMIN_BOT_TOKEN
+        or not hmac.compare_digest(token, ADMIN_BOT_TOKEN)
+        or not admin_bot_app
+        or not hmac.compare_digest(
+            request.headers.get("X-Telegram-Bot-Api-Secret-Token", ""),
+            _webhook_secret(ADMIN_BOT_TOKEN),
+        )
+    ):
         return JSONResponse({"error": "invalid"}, status_code=403)
     from telegram import Update
     update = Update.de_json(await request.json(), admin_bot_app.bot)

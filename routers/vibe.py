@@ -7,6 +7,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from database import get_db, get_conn
 from routers.auth import get_current_user
+from textsafe import esc
+import ratelimit
 
 router = APIRouter()
 
@@ -117,6 +119,18 @@ async def _process_vibe_answer(match_id: int, answer: str, db, current_user):
     if not match:
         return JSONResponse({"error": "match_not_found"}, status_code=404)
 
+    if not ratelimit.allow(f"vibe:{current_user.id}", 10, 60):
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
+
+    # Answer is final: re-answering would re-trigger result notifications to
+    # both users every time (notification spam loop).
+    already = db.execute(
+        "SELECT answer FROM vibe_answers WHERE match_id=? AND user_id=?",
+        (match_id, current_user.id),
+    ).fetchone()
+    if already:
+        return JSONResponse({"ok": True, "already_answered": True})
+
     # Save answer
     try:
         db.execute(
@@ -192,10 +206,10 @@ async def send_vibe_question_to_match(bot, match_id: int, user1, user2):
         return
     text = (
         f"🎯 <b>Vibe Check!</b>\n\n"
-        f"<b>{q['question']}</b>\n\n"
+        f"<b>{esc(q['question'])}</b>\n\n"
         f"Reply with your choice:\n"
-        f"A — {q['option_a']}\n"
-        f"B — {q['option_b']}\n\n"
+        f"A — {esc(q['option_a'])}\n"
+        f"B — {esc(q['option_b'])}\n\n"
         f"<i>Your match will see the result once both answer!</i>"
     )
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -218,18 +232,18 @@ async def _notify_vibe_result(bot, user, other_user, question, my_choice, other_
     if matched:
         text = (
             f"✨ <b>Vibe Match!</b>\n\n"
-            f"You and <b>{other_user.name}</b> both chose the same!\n\n"
-            f"❓ {question}\n"
-            f"✅ You both: <b>{my_choice}</b>\n\n"
+            f"You and <b>{esc(other_user.name)}</b> both chose the same!\n\n"
+            f"❓ {esc(question)}\n"
+            f"✅ You both: <b>{esc(my_choice)}</b>\n\n"
             f"Great minds think alike! 💕"
         )
     else:
         text = (
             f"🎭 <b>Opposites Attract!</b>\n\n"
-            f"You and <b>{other_user.name}</b> chose differently!\n\n"
-            f"❓ {question}\n"
-            f"You: <b>{my_choice}</b>\n"
-            f"{other_user.name}: <b>{other_choice}</b>\n\n"
+            f"You and <b>{esc(other_user.name)}</b> chose differently!\n\n"
+            f"❓ {esc(question)}\n"
+            f"You: <b>{esc(my_choice)}</b>\n"
+            f"{esc(other_user.name)}: <b>{esc(other_choice)}</b>\n\n"
             f"Different vibes, same spark! 💕"
         )
     try:

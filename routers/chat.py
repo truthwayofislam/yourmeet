@@ -131,9 +131,13 @@ async def end_chat(session_id: int, db=Depends(get_db), current_user=Depends(get
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     try:
+        # Ownership check: a user may only end a session they belong to,
+        # otherwise any authenticated user could kill anyone's active chat.
         session = db.execute(
-            "SELECT user1_tg_id, user2_tg_id FROM chat_sessions WHERE id=? AND is_active=1",
-            (session_id,),
+            """SELECT user1_tg_id, user2_tg_id FROM chat_sessions
+               WHERE id=? AND is_active=1
+               AND (user1_tg_id=? OR user2_tg_id=?)""",
+            (session_id, current_user.telegram_id, current_user.telegram_id),
         ).fetchone()
         if not session:
             return JSONResponse({"ok": True})
@@ -181,19 +185,33 @@ async def delete_message(message_id: int, db=Depends(get_db), current_user=Depen
         return JSONResponse({"error": "delete_failed"}, status_code=500)
 
 
-async def forward_message(tg_id_from: str, text: str, db) -> bool:
-    """Called by bot when user sends message — forward to other user in active session."""
+async def forward_message(tg_id_from: str, text: str, db, preferred_tg: str = None) -> bool:
+    """Called by bot when user sends message — forward to other user in active session.
+
+    preferred_tg: telegram_id of the partner picked via "Chat with X". Falls
+    back to the most recent active session when unset or that chat is over.
+    """
     # Sanitize message
     if not text or not text.strip():
         return False
     text = text.strip()[:1000]  # Max 1000 chars
-    session = db.execute(
-        """SELECT id, user1_tg_id, user2_tg_id, expires_at, is_premium_chat
-           FROM chat_sessions
-           WHERE (user1_tg_id=? OR user2_tg_id=?) AND is_active=1
-           ORDER BY created_at DESC LIMIT 1""",
-        (tg_id_from, tg_id_from),
-    ).fetchone()
+    session = None
+    if preferred_tg:
+        session = db.execute(
+            """SELECT id, user1_tg_id, user2_tg_id, expires_at, is_premium_chat
+               FROM chat_sessions
+               WHERE ((user1_tg_id=? AND user2_tg_id=?) OR (user1_tg_id=? AND user2_tg_id=?))
+               AND is_active=1 LIMIT 1""",
+            (tg_id_from, preferred_tg, preferred_tg, tg_id_from),
+        ).fetchone()
+    if not session:
+        session = db.execute(
+            """SELECT id, user1_tg_id, user2_tg_id, expires_at, is_premium_chat
+               FROM chat_sessions
+               WHERE (user1_tg_id=? OR user2_tg_id=?) AND is_active=1
+               ORDER BY created_at DESC LIMIT 1""",
+            (tg_id_from, tg_id_from),
+        ).fetchone()
 
     if not session:
         return False
@@ -305,6 +323,7 @@ async def notify_missed_chats(db):
                FROM chat_sessions cs
                WHERE cs.created_at <= ?
                AND cs.is_premium_chat = 0
+               AND cs.is_active = 0
                AND cs.missed_notified = 0
                AND NOT EXISTS (
                    SELECT 1 FROM chat_messages cm WHERE cm.session_id = cs.id
@@ -315,7 +334,7 @@ async def notify_missed_chats(db):
         if not token:
             return
         import httpx
-        for session_id, tg1, tg2 in sessions:
+        for session_id, tg1, tg2, _created_at in sessions:
             for tg_id in [tg1, tg2]:
                 if not tg_id:
                     continue
@@ -348,13 +367,20 @@ async def _notify_chat_start(tg_id: str, other_name: str, duration: str, lang: s
     token = os.getenv("TELEGRAM_BOTS_KEY", "")
     if not tg_id or not token:
         return
-    text = f"💬 *Chat started with {other_name}!*\n\n⏱ Duration: *{duration}*\n\nSend your messages here — they'll be forwarded directly."
+    from textsafe import esc
+    # HTML + escaping: with Markdown, a crafted name like "*Admin* [click](url)"
+    # would render fake markup / phishing links in the other user's Telegram.
+    text = (
+        f"💬 <b>Chat started with {esc(other_name)}!</b>\n\n"
+        f"⏱ Duration: <b>{duration}</b>\n\n"
+        f"Send your messages here — they'll be forwarded directly."
+    )
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             await client.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": tg_id, "text": text, "parse_mode": "Markdown"},
+                json={"chat_id": tg_id, "text": text, "parse_mode": "HTML"},
             )
     except Exception:
         pass

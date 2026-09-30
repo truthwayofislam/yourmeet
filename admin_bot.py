@@ -13,6 +13,8 @@ ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
 ADMIN_TG_ID = os.getenv("ADMIN_TG_ID", "").strip()
 APP_URL = os.getenv("APP_URL", "")
 
+from textsafe import esc
+
 _rate_store: dict = {}
 _rate_lock = threading.Lock()
 
@@ -114,13 +116,13 @@ async def _send_pending_profile(bot, chat_id: str, user):
         interests = []
     text = (
         f"\U0001f464 <b>Pending Profile #{user.id}</b>\n\n"
-        f"Nickname: {user.name}\n"
+        f"Nickname: {esc(user.name)}\n"
         f"Age: {user.age}\n"
-        f"Gender: {user.gender}\n"
-        f"City: {user.city or '-'}\n"
-        f"Bio: {user.bio or '-'}\n"
-        f"Interests: {', '.join(interests) or '-'}\n"
-        f"Social: {user.social_handle or '-'}\n"
+        f"Gender: {esc(user.gender)}\n"
+        f"City: {esc(user.city) or '-'}\n"
+        f"Bio: {esc(user.bio) or '-'}\n"
+        f"Interests: {', '.join(esc(i) for i in interests) or '-'}\n"
+        f"Social: {esc(user.social_handle) or '-'}\n"
         f"Language: {user.language or 'en'}\n"
         f"Joined: {(user.created_at or '')[:10]}"
     )
@@ -652,7 +654,7 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
         photo = ""
     text = (
         f"\U0001f514 <b>New Profile Submitted</b>\n\n"
-        f"ID: {user_id} | {name}, {age} | {gender} | {city or '-'}"
+        f"ID: {user_id} | {esc(name)}, {age} | {esc(gender)} | {esc(city) or '-'}"
     )
     keyboard = _approval_keyboard(user_id)
     try:

@@ -25,6 +25,12 @@ def allow(key: str, limit: int = 30, window: int = 60) -> bool:
     """Return True if the action is allowed, False if rate-limited."""
     now = time.time()
     with _lock:
+        # Periodically prune stale keys — without this the store grows
+        # unbounded (one entry per user/IP) and leaks memory on long uptimes.
+        if len(_store) > 4096:
+            stale = [k for k, v in _store.items() if not v or now - v[-1] > 3600]
+            for k in stale:
+                del _store[k]
         stamps = _store.get(key, [])
         # Drop timestamps outside the window
         stamps = [t for t in stamps if now - t < window]

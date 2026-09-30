@@ -14,7 +14,7 @@ STRINGS = {
         "chat_ended": "⏰ <b>Chat session ended.</b>\n\nUpgrade to Premium for unlimited chat! 👑",
         "premium_activated": "👑 <b>Premium Activated!</b>\n\nYour premium is active until <b>{date}</b>.\n\nEnjoy unlimited swipes, super likes & more! 🚀",
         "no_profile": "❌ You don't have a profile yet. Open the app to create one!",
-        "your_profile": "👤 <b>Your Profile</b>\n\n📛 Name: {name}\n🎂 Age: {age}\n⚡ Gender: {gender}\n🏙 City: {city}\n🎯 Looking for: {looking_for}\n🎯 Looking for: {looking_for}\n💎 Premium: {premium}\n✅ Status: {status}",
+        "your_profile": "👤 <b>Your Profile</b>\n\n📛 Name: {name}\n🎂 Age: {age}\n⚡ Gender: {gender}\n🏙 City: {city}\n🎯 Looking for: {looking_for}\n💎 Premium: {premium}\n✅ Status: {status}",
         "your_matches": "💕 You have <b>{count}</b> match(es) so far!",
         "your_stats": "📊 <b>Your Stats</b>\n\n❤️ Likes given: {given}\n💌 Likes received: {received}\n💕 Matches: {matches}\n🔥 Swipes left today: {swipes}",
         "premium_info": "👑 <b>YourMeet Premium</b>\n\n✅ Unlimited swipes\n✅ Unlimited super likes\n✅ See who liked you\n✅ Contact details on match\n✅ Profile boost (30 min)\n✅ Priority in feed\n✅ Unlimited bot chat\n\n💰 <b>Plans:</b>\n• 1 Month — 150 ⭐\n• 3 Months — 350 ⭐",

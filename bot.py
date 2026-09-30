@@ -9,6 +9,8 @@ from telegram.ext import (
     MessageHandler, ConversationHandler, filters, ContextTypes,
 )
 from strings import get as s
+from textsafe import esc
+import ratelimit
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOTS_KEY", "")
 APP_URL = os.getenv("APP_URL", "")
@@ -27,6 +29,12 @@ def build_bot() -> Application:
         entry_points=[
             CommandHandler("start", cmd_start),
             CallbackQueryHandler(cb_setup_start, pattern=r"^setup:start$"),
+            # MUST be a conversation entry point: cb_terms_accept returns
+            # SETUP_NAME, which only starts the conversation when the handler
+            # belongs to it. As a standalone handler the return is ignored and
+            # the user's first message falls through to handle_message,
+            # leaving every new signup stuck at the name step.
+            CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"),
             CommandHandler("editprofile", cmd_edit_profile),
         ],
         states={
@@ -38,7 +46,12 @@ def build_bot() -> Application:
             SETUP_BIO:           [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_bio)],
             SETUP_SOCIAL:        [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
             SETUP_LOOKING_FOR:   [CallbackQueryHandler(setup_looking_for, pattern=r"^lf:")],
-            SETUP_PHOTO:         [MessageHandler(filters.PHOTO, setup_photo)],
+            SETUP_PHOTO:         [
+                MessageHandler(filters.PHOTO, setup_photo),
+                # Text at the photo step must NOT fall through to chat routing
+                # — guide the user back instead of a dead end.
+                MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo_remind),
+            ],
         },
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
         allow_reentry=True,
@@ -72,7 +85,6 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:"))
     app.add_handler(CallbackQueryHandler(cb_chat_match, pattern=r"^chat_match:"))
     app.add_handler(CommandHandler("about", cmd_about))
-    app.add_handler(CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"))
     app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:"))
     from telegram.ext import PreCheckoutQueryHandler
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
@@ -372,6 +384,15 @@ async def _edit_setup_msg(ctx, chat_id, tg_id, text, parse_mode=None, reply_mark
     await _track_bot_message(ctx, m.message_id)
 
 
+# Reply-keyboard labels a user may tap mid-setup — these must never be
+# accepted as profile field values.
+_UI_BUTTONS = {
+    "🔍 Browse", "💕 Matches", "👤 Profile", "📊 Stats", "👑 Premium",
+    "📖 Commands", "🌐 Language", "🚀 Boost", "🎯 Filters", "✏️ Edit",
+    "🚫 Block", "🗑 Delete",
+}
+
+
 async def setup_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
@@ -383,11 +404,14 @@ async def setup_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if len(name) < 2:
         await _edit_setup_msg(ctx, chat_id, tg_id, "Name too short. Please enter your real name:")
         return SETUP_NAME
+    if name in _UI_BUTTONS:
+        await _edit_setup_msg(ctx, chat_id, tg_id, "That's a keyboard button 🙂 Please <b>type</b> your name:", parse_mode="HTML")
+        return SETUP_NAME
     s = await _get_setup_data(tg_id)
     d = s["data"]
     d["name"] = name
     _save_setup_data(tg_id, data=d)
-    await _edit_setup_msg(ctx, chat_id, tg_id, f"Nice, <b>{name}</b>! How old are you?", parse_mode="HTML")
+    await _edit_setup_msg(ctx, chat_id, tg_id, f"Nice, <b>{esc(name)}</b>! How old are you?", parse_mode="HTML")
     return SETUP_AGE
 
 
@@ -540,6 +564,21 @@ async def setup_looking_for(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return SETUP_PHOTO
 
 
+async def setup_photo_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """User typed text at the photo step — redirect instead of dead-ending."""
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    tg_id = str(update.effective_user.id)
+    await _edit_setup_msg(
+        ctx, update.effective_chat.id, tg_id,
+        "📷 That was text — please send a <b>photo</b> to finish your profile:",
+        parse_mode="HTML",
+    )
+    return SETUP_PHOTO
+
+
 async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
@@ -597,11 +636,14 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     photos_json = json.dumps([file_id])
 
     # In edit mode, preserve the user's approval status so editing a profile
-    # doesn't force them back into the review queue.
+    # doesn't force them back into the review queue — EXCEPT rejected users,
+    # whose new profile must go back into the review queue, otherwise they
+    # stay rejected forever no matter how many times they edit.
     edit_mode = bool(d.get("_edit_mode"))
+    resubmit = edit_mode and bool(existing and existing.is_rejected)
 
     if existing:
-        if edit_mode:
+        if edit_mode and not resubmit:
             db.execute(
                 """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
                    lat=?, lng=?, social_handle=?, photo=?, photos=?, looking_for=?,
@@ -639,12 +681,20 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     try:
         from admin_bot import send_for_review
-        if not edit_mode:
+        if not edit_mode or resubmit:
             await send_for_review(user_id, name, age, gender, city, file_id)
     except Exception as e:
         print(f"[SETUP] admin notify failed: {e}")
 
-    if edit_mode:
+    if resubmit:
+        sent = await ctx.bot.send_message(
+            chat_id,
+            "✅ <b>Profile updated &amp; resubmitted!</b>\n\n"
+            "Your new profile is in the review queue — you'll be notified once approved!",
+            parse_mode="HTML",
+            reply_markup=_main_keyboard(),
+        )
+    elif edit_mode:
         sent = await ctx.bot.send_message(
             chat_id,
             f"✅ <b>Profile updated!</b>\n\nYour changes are live. Approval status preserved.",
@@ -726,7 +776,9 @@ async def _send_next_profile(message, user, ctx=None):
     liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (user.id,)).fetchall()]
     skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (user.id,)).fetchall()]
     blocked = [r[0] for r in db.execute("SELECT blocked_id FROM user_blocks WHERE blocker_id=?", (user.id,)).fetchall()]
-    excluded = list(set(liked + skipped + blocked + [user.id]))
+    # Also hide profiles of users who blocked ME — they must not be swipable.
+    blocked_me = [r[0] for r in db.execute("SELECT blocker_id FROM user_blocks WHERE blocked_id=?", (user.id,)).fetchall()]
+    excluded = list(set(liked + skipped + blocked + blocked_me + [user.id]))
     placeholders = ",".join("?" * len(excluded))
 
     interested_in = getattr(user, "interested_in", "both") or "both"
@@ -794,27 +846,43 @@ async def _send_next_profile(message, user, ctx=None):
         interests = []
 
     caption = (
-        f"<b>{profile.name}, {profile.age}</b> 📍 {profile.city or '-'}\n\n"
-        f"{profile.bio or ''}\n"
+        f"<b>{esc(profile.name)}, {profile.age}</b> 📍 {esc(profile.city) or '-'}\n\n"
+        f"{esc(profile.bio or '')}\n"
     )
     lf = getattr(profile, "looking_for", "any") or "any"
     lf_label = {"dating": "💚 Dating", "sexting": "🔥 Sexting",
                 "relationship": "🤝 Relationship", "any": "❓ Any"}.get(lf, lf)
     caption += f"\n🎯 Looking for: {lf_label}"
     if interests:
-        caption += f"\n🏷 {' · '.join(interests[:5])}"
+        caption += f"\n🏷 {' · '.join(esc(i) for i in interests[:5])}"
     if profile.is_verified:
         caption += "\n✅ Verified"
 
     keyboard = _browse_keyboard(profile.id, super_left)
 
+    # Mystery Mode (Premium): hide the photo while active.
+    from datetime import datetime as _dt
+    mystery_active = False
     try:
-        sent = await message.reply_photo(
-            photo=profile.photo,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=keyboard,
-        )
+        mu = getattr(profile, "mystery_until", "") or ""
+        mystery_active = bool(mu) and _dt.strptime(mu, "%Y-%m-%d %H:%M:%S") > _dt.utcnow()
+    except ValueError:
+        mystery_active = False
+
+    try:
+        if mystery_active:
+            sent = await message.reply_text(
+                caption + "\n\n🙈 <i>Mystery Mode — photo hidden</i>",
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+        else:
+            sent = await message.reply_photo(
+                photo=profile.photo,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
         if ctx:
             ctx.user_data["last_keyboard_msg_id"] = sent.message_id
             await _track_bot_message(ctx, sent.message_id)
@@ -849,7 +917,7 @@ async def cb_like(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         db.close()
         if target:
             sent = await query.message.reply_text(
-                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{target.name}</b> liked each other! 💕\n\n"
+                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{esc(target.name)}</b> liked each other! 💕\n\n"
                 f"Start chatting — just send a message here!",
                 parse_mode="HTML"
             )
@@ -879,7 +947,7 @@ async def cb_superlike(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         db.close()
         if target:
             sent = await query.message.reply_text(
-                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{target.name}</b> liked each other! 💕",
+                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{esc(target.name)}</b> liked each other! 💕",
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
@@ -965,7 +1033,15 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
             (target_id, user.id),
         ).fetchone() is not None
 
-        mutual = db.execute(
+        if target_blocked_liker:
+            # A block must be final: drop the target's stale like toward the
+            # liker so it can never produce a new match or chat session later.
+            db.execute(
+                "DELETE FROM likes WHERE from_user=? AND to_user=?",
+                (target_id, user.id),
+            )
+
+        mutual = None if target_blocked_liker else db.execute(
             "SELECT id FROM likes WHERE from_user=? AND to_user=?", (target_id, user.id)
         ).fetchone()
 
@@ -1059,8 +1135,8 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     looking_for = getattr(user, "looking_for", "any") or "any"
     lf_label = {"dating": "💚 Dating", "sexting": "🔥 Sexting",
                 "relationship": "🤝 Relationship", "any": "❓ Any"}.get(looking_for, looking_for)
-    text = s(lang, "your_profile", name=user.name, age=user.age,
-             gender=user.gender or "-", city=user.city or "-",
+    text = s(lang, "your_profile", name=esc(user.name), age=user.age,
+             gender=user.gender or "-", city=esc(user.city) or "-",
              looking_for=lf_label,
              premium=premium, status=status)
     await _cleanup_chat(ctx, update.effective_chat.id)
@@ -1106,7 +1182,7 @@ async def cmd_matches(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         other_row = db2.execute(f"SELECT {cols} FROM users WHERE id=?", (other_id,)).fetchone()
         if other_row:
             other = row_to_user(other_row)
-            text += f"• <b>{other.name}</b>, {other.age} — {other.city or '-'}\n"
+            text += f"• <b>{esc(other.name)}</b>, {other.age} — {esc(other.city) or '-'}\n"
             buttons.append([InlineKeyboardButton(
                 f"💬 Chat with {other.name}", callback_data=f"chat_match:{match_id}"
             ), InlineKeyboardButton(
@@ -1470,9 +1546,13 @@ async def cb_chat_match(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.close()
     if not other:
         return
+    # Pin this match as the message target: forward_message would otherwise
+    # always route to the MOST RECENT active session, so with multiple matches
+    # "Chat with X" would send messages to the wrong person.
+    ctx.user_data["chat_target_tg"] = other.telegram_id
     sent = await query.message.reply_text(
-        f"💬 <b>Chatting with {other.name}</b>\n\n"
-        f"Just send your message here and it will be forwarded to {other.name}!",
+        f"💬 <b>Chatting with {esc(other.name)}</b>\n\n"
+        f"Just send your message here and it will be forwarded to {esc(other.name)}!",
         parse_mode="HTML",
         reply_markup=_main_keyboard(),
     )
@@ -1489,16 +1569,22 @@ async def cb_unmatch(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     from database import get_conn
     db = get_conn()
-    db.execute(
-        "DELETE FROM matches WHERE id=? AND (user1_id=? OR user2_id=?)",
-        (match_id, user.id, user.id)
-    )
-    # Also close any active chat session for this match
-    db.execute(
-        "UPDATE chat_sessions SET is_active=0 WHERE "
-        "(user1_id=? OR user2_id=?) AND is_active=1",
-        (user.id, user.id)
-    )
+    match = db.execute(
+        "SELECT user1_id, user2_id FROM matches WHERE id=? AND (user1_id=? OR user2_id=?)",
+        (match_id, user.id, user.id),
+    ).fetchone()
+    if match:
+        other_id = match[1] if match[0] == user.id else match[0]
+        db.execute(
+            "DELETE FROM matches WHERE id=? AND (user1_id=? OR user2_id=?)",
+            (match_id, user.id, user.id),
+        )
+        # Close only the chat sessions of THIS pair — not the user's other chats.
+        db.execute(
+            "UPDATE chat_sessions SET is_active=0 WHERE "
+            "((user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)) AND is_active=1",
+            (user.id, other_id, other_id, user.id),
+        )
     db.commit()
     db.close()
     try:
@@ -1596,7 +1682,10 @@ async def cb_vibe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         import json as _json
         body = _json.loads(result.body) if hasattr(result, "body") else {}
-        if body.get("waiting"):
+        if body.get("already_answered"):
+            sent = await query.message.reply_text("✅ You already answered this vibe check!")
+            await _track_bot_message(ctx, sent.message_id)
+        elif body.get("waiting"):
             sent = await query.message.reply_text("✅ Answer recorded! Waiting for your match...")
             await _track_bot_message(ctx, sent.message_id)
         elif "matched_vibe" in body:
@@ -1633,12 +1722,30 @@ async def cb_language(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ── Payments ──────────────────────────────────────────────────────────────────
 
 async def pre_checkout(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    await update.pre_checkout_query.answer(ok=True)
+    query = update.pre_checkout_query
+    payload = query.invoice_payload or ""
+    parts = payload.split(":")
+    from routers.payment import PLANS
+    if len(parts) != 3 or parts[0] != "premium" or parts[1] not in PLANS:
+        await query.answer(ok=False, error_message="Invalid purchase. Please try again with /premium.")
+        return
+    await query.answer(ok=True)
 
 
 async def successful_payment(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     tg_id = str(update.effective_user.id)
-    payload = update.message.successful_payment.invoice_payload
+    payment = update.message.successful_payment
+    payload = payment.invoice_payload
+    plan = payload.split(":")[1] if payload.count(":") >= 2 else ""
+    from routers.payment import PLANS
+    # Defense in depth: Telegram echoes the invoice's own payload and amount,
+    # but never activate premium unless the paid amount matches the plan price.
+    if plan not in PLANS or payment.currency != "XTR" or payment.total_amount != PLANS[plan]["stars"]:
+        print(
+            f"[PAYMENT] rejected: plan={plan} currency={payment.currency} "
+            f"amount={payment.total_amount} expected={PLANS.get(plan, {}).get('stars')}"
+        )
+        return
     from database import get_conn
     db = get_conn()
     from routers.payment import handle_successful_payment
@@ -1713,7 +1820,17 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     from database import get_conn
     db = get_conn()
     from routers.chat import forward_message
-    forwarded = await forward_message(tg_id, text, db)
+
+    # Throttle chat forwarding — without this a user can flood their match
+    # (and Telegram's API) with unlimited messages per minute.
+    if not ratelimit.allow(f"msg:{tg_id}", 25, 60):
+        db.close()
+        sent = await update.message.reply_text("⏳ You're sending messages too fast. Please slow down a little!")
+        await _track_bot_message(ctx, sent.message_id)
+        return
+    forwarded = await forward_message(
+        tg_id, text, db, preferred_tg=ctx.user_data.get("chat_target_tg")
+    )
     db.close()
     if not forwarded:
         await _cleanup_chat(ctx, update.effective_chat.id)
@@ -1741,15 +1858,15 @@ async def notify_like(bot, target, liker, premium: bool, is_super: bool = False)
     super_mark = " ⭐" if getattr(liker, "_is_super_like", False) else ""
     if premium:
         text = (
-            f"🔔 <b>{name}, {age}</b> 📍 {city}{super_mark} just liked you!\n\n"
-            f"{bio}\n\n"
+            f"🔔 <b>{esc(name)}, {age}</b> 📍 {esc(city)}{super_mark} just liked you!\n\n"
+            f"{esc(bio)}\n\n"
             f"Open the app to see who and reply!"
         )
     else:
         text = (
-            f"🔔 <b>{name}</b> just liked you{super_mark}!\n\n"
-            f"{bio}\n"
-            f"📍 {city}\n\n"
+            f"🔔 <b>{esc(name)}</b> just liked you{super_mark}!\n\n"
+            f"{esc(bio)}\n"
+            f"📍 {esc(city)}\n\n"
             f"🔒 <i>See who and reply — upgrade to Premium.</i>"
         )
     try:
@@ -1769,7 +1886,7 @@ async def notify_match(bot, user, matched_with):
     try:
         await bot.send_message(
             chat_id=user.telegram_id,
-            text=s(lang, "match_notify", name=matched_with.name),
+            text=s(lang, "match_notify", name=esc(matched_with.name)),
             parse_mode="HTML",
         )
     except Exception as e:

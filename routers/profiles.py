@@ -47,7 +47,9 @@ def _get_feed(db, user, limit=10):
         liked = [r[0] for r in db.execute("SELECT to_user FROM likes WHERE from_user=?", (user.id,)).fetchall()]
         skipped = [r[0] for r in db.execute("SELECT skipped_id FROM skips WHERE user_id=?", (user.id,)).fetchall()]
         blocked = [r[0] for r in db.execute("SELECT blocked_id FROM user_blocks WHERE blocker_id=?", (user.id,)).fetchall()]
-        excluded = list(set(liked + skipped + blocked + [user.id]))
+        # Also hide profiles of users who blocked ME — they must not be swipable.
+        blocked_me = [r[0] for r in db.execute("SELECT blocker_id FROM user_blocks WHERE blocked_id=?", (user.id,)).fetchall()]
+        excluded = list(set(liked + skipped + blocked + blocked_me + [user.id]))
         placeholders = ",".join("?" * len(excluded))
         interested_in = getattr(user, "interested_in", "both") or "both"
         if interested_in == "both":
@@ -100,6 +102,8 @@ def _get_feed(db, user, limit=10):
 async def skip_user(target_id: int, db=Depends(get_db), current_user=Depends(get_current_user)):
     if not current_user:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not ratelimit.allow(f"skip:{current_user.id}", 60, 60):
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
     db.execute("INSERT OR IGNORE INTO skips (user_id, skipped_id) VALUES (?,?)", (current_user.id, target_id))
     db.commit()
     return JSONResponse({"ok": True})
@@ -125,6 +129,8 @@ async def block_user(target_id: int, db=Depends(get_db), current_user=Depends(ge
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if target_id == current_user.id:
         return JSONResponse({"error": "invalid_target"}, status_code=400)
+    if not ratelimit.allow(f"block:{current_user.id}", 20, 60):
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
     db.execute("INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id) VALUES (?,?)", (current_user.id, target_id))
     # Remove any existing match so the blocked user is no longer reachable
     db.execute("DELETE FROM matches WHERE (user1_id=? AND user2_id=?) OR (user1_id=? AND user2_id=?)", (current_user.id, target_id, target_id, current_user.id))
@@ -179,6 +185,10 @@ async def view_profile(user_id: int, request: Request, db=Depends(get_db), curre
     if not row:
         return JSONResponse({"error": "not_found"}, status_code=404)
     u = row_to_user(row)
+    # Only approved (visible) profiles may be fetched — banned/rejected/pending
+    # profiles must not be enumerable by ID. Own profile stays viewable.
+    if user_id != current_user.id and not u.is_approved:
+        return JSONResponse({"error": "not_found"}, status_code=404)
     # Track profile views
     db.execute("INSERT INTO user_views (viewer_id, viewed_id) VALUES (?,?)", (current_user.id, user_id))
     db.execute("UPDATE users SET profile_views=profile_views+1 WHERE id=?", (user_id,))
@@ -214,9 +224,14 @@ async def set_filters(request: Request, db=Depends(get_db), current_user=Depends
         body = await request.json()
     except Exception:
         body = {}
-    min_age = max(0, min(100, int(body.get("min_age", 0) or 0)))
-    max_age = max(0, min(100, int(body.get("max_age", 0) or 0)))
-    max_distance = max(0, min(500, int(body.get("max_distance", 0) or 0)))
+    def _clamp_int(v, lo, hi):
+        try:
+            return max(lo, min(hi, int(v)))
+        except (TypeError, ValueError):
+            return 0
+    min_age = _clamp_int(body.get("min_age", 0), 0, 100)
+    max_age = _clamp_int(body.get("max_age", 0), 0, 100)
+    max_distance = _clamp_int(body.get("max_distance", 0), 0, 500)
     db.execute("UPDATE users SET min_age=?, max_age=?, max_distance=? WHERE id=?", (min_age, max_age, max_distance, current_user.id))
     db.commit()
     return JSONResponse({"ok": True, "min_age": min_age, "max_age": max_age, "max_distance": max_distance})
@@ -265,5 +280,4 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
             except Exception:
                 pass
             print(f"[REPORT] failed: {e}")
-    return JSONResponse({"ok": True})
     return JSONResponse({"ok": True})

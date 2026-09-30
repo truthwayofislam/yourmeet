@@ -39,7 +39,12 @@ async def get_current_user(request: Request, db=Depends(get_db)):
         row = db.execute(
             "SELECT " + cols + " FROM users WHERE id=?", (user_id,)
         ).fetchone()
-        return row_to_user(row)
+        user = row_to_user(row)
+        # Banned users must be locked out of the API immediately, even though
+        # their JWT is still valid for up to 30 days.
+        if user and user.is_blocked:
+            return None
+        return user
     except Exception:
         return None
 

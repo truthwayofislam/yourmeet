@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from database import get_db
 from routers.auth import get_current_user
+from textsafe import esc
 
 router = APIRouter()
 
@@ -50,7 +51,19 @@ async def handle_successful_payment(tg_id: str, payload: str, db):
     if plan not in PLANS:
         return
     days = PLANS[plan]["days"]
-    premium_until = (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.utcnow()
+    base = now
+    row = db.execute("SELECT premium_until FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+    if row and row[0]:
+        try:
+            existing = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+            if existing > now:
+                # Early renewal: stack the new days on top of remaining time
+                # instead of overwriting and losing paid days.
+                base = existing
+        except ValueError:
+            pass
+    premium_until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     db.execute(
         "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999 WHERE telegram_id=?",
         (premium_until, tg_id),
@@ -70,7 +83,7 @@ async def handle_successful_payment(tg_id: str, payload: str, db):
             stars = PLANS[plan]["stars"]
             text = (
                 f"💰 <b>New Premium Purchase!</b>\n\n"
-                f"👤 {name}, {age} — {city}\n"
+                f"👤 {esc(name)}, {age} — {esc(city)}\n"
                 f"📦 Plan: {plan_title}\n"
                 f"⭐ Stars: {stars}\n"
                 f"📅 Active until: {premium_until[:10]}\n"
