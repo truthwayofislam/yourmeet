@@ -273,8 +273,10 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     import asyncio
     for tg_id in tg_ids:
         try:
-            await ctx.bot.send_message(chat_id=tg_id, text=msg)
-            sent += 1
+            if await _send_remind(tg_id, msg, parse_mode=None):
+                sent += 1
+            else:
+                failed += 1
             await asyncio.sleep(0.05)
         except Exception:
             failed += 1
@@ -300,11 +302,8 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     for tg_id, lang in rows:
         lang = lang or "en"
         try:
-            await ctx.bot.send_message(
-                chat_id=tg_id,
-                text="👋 Hey! You haven't completed your profile yet. Send /start to finish setup and start matching! 💕",
-            )
-            sent += 1
+            if await _send_remind(tg_id, "👋 Hey! You haven't completed your profile yet. Send /start to finish setup and start matching! 💕"):
+                sent += 1
             await asyncio.sleep(0.05)
         except Exception:
             pass
@@ -331,11 +330,8 @@ async def cmd_remind_blocked(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     import asyncio
     for tg_id, lang in rows:
         try:
-            await ctx.bot.send_message(
-                chat_id=tg_id,
-                text="ℹ️ Your profile was previously rejected. Send /start to update your profile and resubmit for review.",
-            )
-            sent += 1
+            if await _send_remind(tg_id, "ℹ️ Your profile was previously rejected. Send /start to update your profile and resubmit for review."):
+                sent += 1
             await asyncio.sleep(0.05)
         except Exception:
             pass
@@ -627,6 +623,25 @@ async def _notify_user(bot, db, user_id: int, string_key: str):
         await notify_bot.send_message(chat_id=tg_id, text=s(lang, string_key), parse_mode="HTML")
     except Exception as e:
         print(f"[ADMIN BOT] notify failed: {e}")
+
+
+async def _send_remind(tg_id: str, text: str, parse_mode: str = "HTML") -> bool:
+    """Send a broadcast reminder via the MAIN user bot.
+
+    Users have chatted with the main bot during /start setup, so Telegram
+    allows it to message them. The admin bot has never talked to them, so
+    messages sent from ctx.bot are silently blocked by Telegram.
+    """
+    from telegram import Bot
+    main_bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    if not main_bot_token:
+        return False
+    try:
+        await Bot(token=main_bot_token).send_message(chat_id=tg_id, text=text, parse_mode=parse_mode)
+        return True
+    except Exception as e:
+        print(f"[ADMIN BOT] remind send failed to {tg_id}: {e}")
+        return False
 
 
 async def send_for_review(user_id: int, name: str, age: int, gender: str, city: str, photo: str):
