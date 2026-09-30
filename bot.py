@@ -72,6 +72,8 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("confirmdelete", cmd_confirm_delete))
     app.add_handler(CommandHandler("language", cmd_language))
     app.add_handler(CommandHandler("boost", cmd_boost))
+    app.add_handler(CommandHandler("mystery", cmd_mystery))
+    app.add_handler(CommandHandler("likes", cmd_likes))
     app.add_handler(CommandHandler("block", cmd_block))
     app.add_handler(CommandHandler("filters", cmd_filters))
     app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
@@ -918,7 +920,7 @@ async def cb_like(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if target:
             sent = await query.message.reply_text(
                 f"🎉 <b>It's a Match!</b>\n\nYou and <b>{esc(target.name)}</b> liked each other! 💕\n\n"
-                f"Start chatting — just send a message here!",
+                f"Start chatting — just send a message here!{_match_extra_text(user, target)}",
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
@@ -947,7 +949,8 @@ async def cb_superlike(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         db.close()
         if target:
             sent = await query.message.reply_text(
-                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{esc(target.name)}</b> liked each other! 💕",
+                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{esc(target.name)}</b> liked each other! 💕"
+                f"{_match_extra_text(user, target)}",
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
@@ -983,6 +986,19 @@ async def cb_next(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.answer("⏳ Profile pending approval.", show_alert=True)
         return
     await _send_next_profile(query.message, user, ctx)
+
+
+def _match_extra_text(recipient, other) -> str:
+    """Premium recipients get their match's social handle.
+
+    The setup flow promises users their handle is 'Shared only after
+    matching' and premium_info advertises 'Contact details on match' —
+    but the bot never actually sent it (only a dead HTTP endpoint did).
+    """
+    handle = (getattr(other, "social_handle", "") or "").strip()
+    if recipient.is_premium and handle:
+        return f"\n\n📞 <b>{esc(other.name)}'s social:</b> {esc(handle)}"
+    return ""
 
 
 async def _do_like(user, target_id: int, is_super: bool) -> bool:
@@ -1139,6 +1155,8 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
              gender=user.gender or "-", city=esc(user.city) or "-",
              looking_for=lf_label,
              premium=premium, status=status)
+    if user.is_premium and getattr(user, "premium_until", ""):
+        text += f"\n\n📅 Premium valid till: {esc(user.premium_until[:10])}"
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = _main_keyboard()
     sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
@@ -1283,7 +1301,10 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         pass
     await _cleanup_chat(ctx, update.effective_chat.id)
     sent = await update.message.reply_text(
-        "📖 <b>YourMeet Commands</b>\n\nTap a button below, or type any command.",
+        "📖 <b>YourMeet Commands</b>\n\n"
+        "/likes — See who liked you (Premium) ⭐\n"
+        "/mystery — Hide your photo 24h (Premium) 🙈\n\n"
+        "Tap a button below, or type any command.",
         parse_mode="HTML",
         reply_markup=_main_keyboard(),
     )
@@ -1369,6 +1390,105 @@ async def cmd_boost(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = _main_keyboard()
     sent = await update.message.reply_text(s(lang, "boost_active"), parse_mode="HTML", reply_markup=keyboard)
+    ctx.user_data["last_keyboard_msg_id"] = sent.message_id
+    await _track_bot_message(ctx, sent.message_id)
+
+
+async def cmd_mystery(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Premium only — toggle Mystery Mode for 24h (hides photo in browse).
+
+    The display side lives in _send_next_profile; the old toggle was an
+    HTTP-only endpoint that died with the mini app.
+    """
+    tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    user = _get_user(tg_id)
+    if not user or not user.is_premium:
+        sent = await update.message.reply_text("🙈 Mystery Mode is a Premium feature. Use /premium to upgrade!")
+        return
+    from datetime import datetime as _dt, timedelta
+    from database import get_conn
+    db = get_conn()
+    now = _dt.utcnow()
+    current = getattr(user, "mystery_until", "") or ""
+    active = False
+    try:
+        active = bool(current) and _dt.strptime(current, "%Y-%m-%d %H:%M:%S") > now
+    except ValueError:
+        active = False
+    if active:
+        db.execute("UPDATE users SET mystery_until='' WHERE id=?", (user.id,))
+        msg = "🙈 <b>Mystery Mode OFF.</b>\n\nYour photo is visible in browse again."
+    else:
+        until = (now + timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+        db.execute("UPDATE users SET mystery_until=? WHERE id=?", (until, user.id))
+        msg = (
+            "🙈 <b>Mystery Mode ON for 24 hours!</b>\n\n"
+            "Your photo is now hidden in browse — people still see your name, age and bio.\n"
+            "Run /mystery again to turn it off."
+        )
+    db.commit()
+    db.close()
+    await _cleanup_chat(ctx, update.effective_chat.id)
+    sent = await update.message.reply_text(msg, parse_mode="HTML", reply_markup=_main_keyboard())
+    ctx.user_data["last_keyboard_msg_id"] = sent.message_id
+    await _track_bot_message(ctx, sent.message_id)
+
+
+async def cmd_likes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Premium only — see who liked you, with a Like-back button per user.
+
+    The old endpoint was HTTP-only and died with the mini app; this restores
+    the advertised 'See who liked you' premium benefit in bot-only mode.
+    """
+    tg_id = str(update.effective_user.id)
+    chat_id = update.effective_chat.id
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    user = _get_user(tg_id)
+    if not user or not user.is_premium:
+        sent = await update.message.reply_text("⭐ Who liked you is a Premium feature. Use /premium to upgrade!")
+        return
+    from database import get_conn, row_to_user, USER_COLS
+    cols = ", ".join(USER_COLS)
+    db = get_conn()
+    rows = db.execute(
+        """SELECT l.from_user, l.is_super FROM likes l
+           WHERE l.to_user=?
+           AND l.from_user NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id=?)
+           ORDER BY l.id DESC LIMIT 10""",
+        (user.id, user.id),
+    ).fetchall()
+    db.close()
+    if not rows:
+        await _cleanup_chat(ctx, chat_id)
+        sent = await update.message.reply_text(
+            "💔 No likes yet — keep browsing with /browse!",
+            reply_markup=_main_keyboard(),
+        )
+        ctx.user_data["last_keyboard_msg_id"] = sent.message_id
+        await _track_bot_message(ctx, sent.message_id)
+        return
+    text = "⭐ <b>Who Liked You</b>\n\n"
+    buttons = []
+    db2 = get_conn()
+    for from_id, is_super in rows:
+        r = db2.execute(f"SELECT {cols} FROM users WHERE id=?", (from_id,)).fetchone()
+        u = row_to_user(r)
+        if not u:
+            continue
+        star = " ⭐ SUPER" if is_super else ""
+        text += f"• <b>{esc(u.name)}</b>, {u.age} — {esc(u.city) or '-'}{star}\n"
+        buttons.append([InlineKeyboardButton(f"❤️ Like back — {u.name}", callback_data=f"like:{u.id}")])
+    db2.close()
+    await _cleanup_chat(ctx, chat_id)
+    markup = InlineKeyboardMarkup(buttons) if buttons else _main_keyboard()
+    sent = await ctx.bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=markup)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
 
@@ -1500,6 +1620,7 @@ async def cb_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "filters": cmd_filters, "editprofile": cmd_edit_profile,
         "delete": cmd_delete, "confirmdelete": cmd_confirm_delete,
         "about": cmd_about, "help": cmd_help,
+        "mystery": cmd_mystery, "likes": cmd_likes,
     }
     handler = handlers.get(cmd)
     if not handler:
@@ -1846,7 +1967,8 @@ async def notify_like(bot, target, liker, premium: bool, is_super: bool = False)
     """Notify a user that someone liked them.
 
     Free users see name/bio/city but contact details (photo, social handle)
-    stay hidden. Premium users see everything.
+    stay hidden. Premium users see everything. Super likes are clearly
+    marked — the whole point of a super like is that the recipient knows.
     """
     if not target.telegram_id:
         return
@@ -1855,16 +1977,34 @@ async def notify_like(bot, target, liker, premium: bool, is_super: bool = False)
     age = liker.age or "-"
     city = liker.city or "-"
     bio = (liker.bio or "")[:120]
-    super_mark = " ⭐" if getattr(liker, "_is_super_like", False) else ""
-    if premium:
+    # NOTE: read the is_super PARAMETER — liker._is_super_like was never set
+    # anywhere, so the ⭐ mark never rendered and super likes looked identical
+    # to normal likes in the notification.
+    if is_super:
+        if premium:
+            text = (
+                f"⭐ <b>SUPER LIKE!</b>\n\n"
+                f"<b>{esc(name)}, {age}</b> 📍 {esc(city)} super liked your profile!\n\n"
+                f"{esc(bio)}\n\n"
+                f"They liked you FIRST — open the app and match instantly!"
+            )
+        else:
+            text = (
+                f"⭐ <b>SUPER LIKE!</b>\n\n"
+                f"<b>{esc(name)}</b> super liked your profile!\n\n"
+                f"{esc(bio)}\n"
+                f"📍 {esc(city)}\n\n"
+                f"🔒 <i>See who and reply — upgrade to Premium.</i>"
+            )
+    elif premium:
         text = (
-            f"🔔 <b>{esc(name)}, {age}</b> 📍 {esc(city)}{super_mark} just liked you!\n\n"
+            f"🔔 <b>{esc(name)}, {age}</b> 📍 {esc(city)} just liked you!\n\n"
             f"{esc(bio)}\n\n"
             f"Open the app to see who and reply!"
         )
     else:
         text = (
-            f"🔔 <b>{esc(name)}</b> just liked you{super_mark}!\n\n"
+            f"🔔 <b>{esc(name)}</b> just liked you!\n\n"
             f"{esc(bio)}\n"
             f"📍 {esc(city)}\n\n"
             f"🔒 <i>See who and reply — upgrade to Premium.</i>"
@@ -1883,10 +2023,11 @@ async def notify_match(bot, user, matched_with):
     if not user.telegram_id:
         return
     lang = user.language or "en"
+    text = s(lang, "match_notify", name=esc(matched_with.name)) + _match_extra_text(user, matched_with)
     try:
         await bot.send_message(
             chat_id=user.telegram_id,
-            text=s(lang, "match_notify", name=esc(matched_with.name)),
+            text=text,
             parse_mode="HTML",
         )
     except Exception as e:

@@ -65,7 +65,8 @@ async def handle_successful_payment(tg_id: str, payload: str, db):
             pass
     premium_until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     db.execute(
-        "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999 WHERE telegram_id=?",
+        "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999, "
+        "daily_swipes=999999 WHERE telegram_id=?",
         (premium_until, tg_id),
     )
     db.commit()

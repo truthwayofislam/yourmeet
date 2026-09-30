@@ -68,6 +68,8 @@ async def lifespan(app: FastAPI):
                 BotCommand("profile", "View your profile"),
                 BotCommand("stats", "Your activity stats"),
                 BotCommand("premium", "Upgrade to Premium"),
+                BotCommand("likes", "See who liked you (Premium)"),
+                BotCommand("mystery", "Mystery Mode (Premium)"),
                 BotCommand("share", "Invite friends"),
                 BotCommand("language", "Change language"),
                 BotCommand("boost", "Boost your profile (Premium)"),
