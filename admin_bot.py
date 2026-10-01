@@ -580,7 +580,7 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     log_audit(str(update.effective_user.id), "grant_premium", user_id, f"{days}d until {until[:10]}")
     await update.message.reply_text(
         f"👑 User #{user_id} granted <b>{days} day(s)</b> of premium (until {until[:10]}).\n"
-        f"🎁 Their referral offer: <b>{days} free day(s)</b> per 3 friends who join.",
+        f"🎁 Their referral offer (one-time): <b>{days} free day(s)</b> after their first 3 friends join.",
         parse_mode="HTML",
     )
     if tg_id:

@@ -2308,6 +2308,12 @@ async def _handle_referral(new_tg_id: str, referrer_tg_id: str, bot=None):
                     "daily_swipes=999999 WHERE id=?",
                     (until, referrer.id),
                 )
+                # One-time offer: consume it so it can never fire again.
+                # (Admin re-gifting later creates a fresh offer.)
+                db.execute(
+                    "UPDATE users SET referral_reward_days=0 WHERE id=?",
+                    (referrer.id,),
+                )
                 rewarded = True
         db.commit()
         if rewarded and bot and referrer.telegram_id:
@@ -2317,7 +2323,8 @@ async def _handle_referral(new_tg_id: str, referrer_tg_id: str, bot=None):
                     text=(
                         "🎉 <b>3 friends joined with your link!</b>\n\n"
                         f"👑 <b>{reward_days} day(s) of Premium added!</b> (until {until[:10]})\n\n"
-                        "Keep sharing — every 3 friends = same reward again! 🚀"
+                        "That was your one-time referral bonus! 💪\n"
+                        "Keep sharing — every 3 friends still = +10 bonus swipes!"
                     ),
                     parse_mode="HTML",
                 )
