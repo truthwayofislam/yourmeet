@@ -128,6 +128,7 @@ async def _send_pending_profile(bot, chat_id: str, user):
         f"Interests: {', '.join(esc(i) for i in interests) or '-'}\n"
         f"Social: {esc(user.social_handle) or '-'}\n"
         f"Language: {user.language or 'en'}\n"
+        f"Referrals: {getattr(user, 'referral_count', 0) or 0}\n"
         f"Joined: {(user.created_at or '')[:10]}"
     )
     keyboard = _approval_keyboard(user.id)

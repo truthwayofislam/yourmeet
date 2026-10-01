@@ -688,7 +688,7 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     ref_id = d.get("pending_ref") or ctx.user_data.get("pending_ref")
     if ref_id:
-        await _handle_referral(tg_id, ref_id, bot=ctx.bot)
+        _handle_referral(tg_id, ref_id)
 
     try:
         from admin_bot import send_for_review
@@ -2249,17 +2249,12 @@ async def notify_match(bot, user, matched_with):
 
 # ── Referral ──────────────────────────────────────────────────────────────────
 
-async def _handle_referral(new_tg_id: str, referrer_tg_id: str, bot=None):
-    """Referral reward: every 3 completed signups via the link = +1 day premium.
-
-    This is the growth loop — gifted premium makes users (esp. girls) more
-    visible/attractive, which makes them share more.
-    """
+def _handle_referral(new_tg_id: str, referrer_tg_id: str):
     if new_tg_id == referrer_tg_id:
         return
-    from database import get_conn
-    db = get_conn()
     try:
+        from database import get_conn
+        db = get_conn()
         new_user = _get_user(new_tg_id)
         referrer = _get_user(referrer_tg_id)
         if not new_user or not referrer:
@@ -2278,43 +2273,9 @@ async def _handle_referral(new_tg_id: str, referrer_tg_id: str, bot=None):
             "SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (referrer.id,)
         ).fetchone()[0]
         db.execute("UPDATE users SET referral_count=? WHERE id=?", (count, referrer.id))
-        rewarded = False
-        until = ""
         if count % 3 == 0:
             db.execute("UPDATE users SET daily_swipes=daily_swipes+10 WHERE id=?", (referrer.id,))
-            # Every 3 friends = +1 day premium (stacks on remaining time).
-            from datetime import datetime as _dt, timedelta
-            base = _dt.utcnow()
-            try:
-                existing_p = _dt.strptime(referrer.premium_until or "", "%Y-%m-%d %H:%M:%S")
-                if existing_p > base:
-                    base = existing_p
-            except (ValueError, TypeError):
-                pass
-            until = (base + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-            db.execute(
-                "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999, daily_swipes=999999 WHERE id=?",
-                (until, referrer.id),
-            )
-            rewarded = True
         db.commit()
-        if rewarded and bot and referrer.telegram_id:
-            try:
-                await bot.send_message(
-                    chat_id=referrer.telegram_id,
-                    text=(
-                        "🎉 <b>3 friends joined with your link!</b>\n\n"
-                        f"👑 <b>+1 day Premium unlocked!</b> (until {until[:10]})\n\n"
-                        "Keep sharing — every 3 friends = +1 more day! 🚀"
-                    ),
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                print(f"[BOT] referral reward notify failed: {e}")
+        db.close()
     except Exception as e:
         print(f"[BOT] referral failed: {e}")
-    finally:
-        try:
-            db.close()
-        except Exception:
-            pass
