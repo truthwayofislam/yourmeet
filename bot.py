@@ -818,15 +818,23 @@ async def _send_next_profile(message, user, ctx=None):
     # When a distance filter is set, candidates are rejected in Python —
     # a LIMIT 10 page can die entirely to far-away profiles, so widen it.
     fetch_limit = 50 if max_distance else 10
+    # Reciprocity tiering: boosted > already-likes-you > everyone else.
+    # People who liked you surfacing first directly raises match rate.
     rows = db.execute(
         f"""SELECT {cols} FROM users
             WHERE id NOT IN ({placeholders})
             AND {gender_sql} {age_sql}
             AND is_blocked=0 AND is_rejected=0 AND is_approved=1
-            ORDER BY CASE WHEN boosted_until > datetime('now') THEN 0 ELSE 1 END, RANDOM()
+            ORDER BY CASE
+                WHEN boosted_until > datetime('now') THEN 0
+                WHEN id IN (SELECT from_user FROM likes WHERE to_user=?) THEN 1
+                ELSE 2 END, RANDOM()
             LIMIT ?""",
-        (*excluded, *gender_params, *age_params, fetch_limit),
+        (*excluded, *gender_params, *age_params, user.id, fetch_limit),
     ).fetchall()
+    liked_me = {r[0] for r in db.execute(
+        "SELECT from_user FROM likes WHERE to_user=?", (user.id,)
+    ).fetchall()}
     db.close()
 
     # Apply distance filter in Python
@@ -871,6 +879,8 @@ async def _send_next_profile(message, user, ctx=None):
         caption += f"\n🏷 {' · '.join(esc(i) for i in interests[:5])}"
     if profile.is_verified:
         caption += "\n✅ Verified"
+    if profile.id in liked_me:
+        caption += "\n💙 <i>Already likes you — like back for an instant match!</i>"
 
     keyboard = _browse_keyboard(profile.id, super_left)
 
@@ -1038,11 +1048,14 @@ async def cb_report_reason(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.commit()
     row = db.execute("SELECT COUNT(*) FROM reports WHERE reported_id=?", (target_id,)).fetchone()
     count = row[0] if row else 0
-    auto_banned = False
+    flagged = False
     if count >= 3:
-        db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (target_id,))
+        # Hide from the feed and hand to admin review instead of an instant
+        # ban — three coordinated fake reports must not permanently ban an
+        # innocent user (brigading). Admin approves or bans via /user <id>.
+        db.execute("UPDATE users SET is_approved=0 WHERE id=?", (target_id,))
         db.commit()
-        auto_banned = True
+        flagged = True
     trow = db.execute("SELECT name FROM users WHERE id=?", (target_id,)).fetchone()
     db.close()
     log_audit(tg_id, "report_user", target_id, reason)
@@ -1053,11 +1066,11 @@ async def cb_report_reason(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
     await _notify_admin_report(
-        ctx.bot, user, target_id, (trow[0] if trow else "?"), reason, count, auto_banned
+        ctx.bot, user, target_id, (trow[0] if trow else "?"), reason, count, flagged
     )
 
 
-async def _notify_admin_report(bot, reporter, target_id, target_name, reason, count, auto_banned):
+async def _notify_admin_report(bot, reporter, target_id, target_name, reason, count, flagged_for_review):
     """Best-effort ping to the admin chat about a new report."""
     admin_tg_id = os.getenv("ADMIN_TG_ID", "").strip()
     admin_token = os.getenv("ADMIN_BOT_TOKEN", "").strip().strip("'\"")
@@ -1071,8 +1084,12 @@ async def _notify_admin_report(bot, reporter, target_id, target_name, reason, co
         f"🙋 By: #{reporter.id} {esc(reporter.name)}\n"
         f"📊 Total reports on this user: {count}"
     )
-    if auto_banned:
-        text += "\n\n🚫 <b>Auto-banned (3+ reports).</b> Review with /pendingall or /fixuser."
+    if flagged_for_review:
+        text += (
+            "\n\n⚠️ <b>Profile HIDDEN from feed (3+ reports) — REVIEW NEEDED.</b>\n"
+            "Approve or ban via /user <id> — no auto-ban, fake report brigades "
+            "must not be able to ban innocent users."
+        )
     try:
         from telegram import Bot
         await Bot(token=admin_token).send_message(chat_id=admin_tg_id, text=text, parse_mode="HTML")
@@ -1594,7 +1611,7 @@ async def cmd_likes(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
            WHERE l.to_user=?
            AND l.from_user NOT IN (SELECT blocked_id FROM user_blocks WHERE blocker_id=?)
            AND l.from_user NOT IN (SELECT blocker_id FROM user_blocks WHERE blocked_id=?)
-           ORDER BY l.id DESC LIMIT 10""",
+           ORDER BY l.is_super DESC, l.id DESC LIMIT 10""",
         (user.id, user.id, user.id),
     ).fetchall()
     db.close()
@@ -1984,15 +2001,22 @@ async def cb_vibe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             sent = await query.message.reply_text("✅ Answer recorded! Waiting for your match...")
             await _track_bot_message(ctx, sent.message_id)
         elif "matched_vibe" in body:
+            compat = body.get("compatibility") or {}
+            extra = ""
+            if compat.get("percent") is not None:
+                extra = (
+                    f"\n\n💞 Vibe compatibility: <b>{compat['percent']}%</b> "
+                    f"({compat['matched']} of {compat['asked']} matched)"
+                )
             if body["matched_vibe"]:
                 sent = await query.message.reply_text(
-                    f"✨ Vibe Match! You both chose: <b>{body.get('my_choice', '')}</b> 💕",
+                    f"✨ Vibe Match! You both chose: <b>{body.get('my_choice', '')}</b> 💕{extra}",
                     parse_mode="HTML"
                 )
                 await _track_bot_message(ctx, sent.message_id)
             else:
                 sent = await query.message.reply_text(
-                    f"🎭 You: <b>{body.get('my_choice', '')}</b> | Match: <b>{body.get('other_choice', '')}</b>",
+                    f"🎭 You: <b>{body.get('my_choice', '')}</b> | Match: <b>{body.get('other_choice', '')}</b>{extra}",
                     parse_mode="HTML"
                 )
                 await _track_bot_message(ctx, sent.message_id)

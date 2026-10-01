@@ -124,30 +124,34 @@ async def _process_vibe_answer(match_id: int, answer: str, db, current_user):
     if not ratelimit.allow(f"vibe:{current_user.id}", 10, 60):
         return JSONResponse({"error": "rate_limited"}, status_code=429)
 
-    # Answer is final: re-answering would re-trigger result notifications to
-    # both users every time (notification spam loop).
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    # One answer per user per DAY: the date check keeps the spam guard while
+    # letting users answer each new day's question (a bare user_id check would
+    # block them forever after day one).
     already = db.execute(
-        "SELECT answer FROM vibe_answers WHERE match_id=? AND user_id=?",
-        (match_id, current_user.id),
+        "SELECT answer FROM vibe_answers WHERE match_id=? AND user_id=? AND date=?",
+        (match_id, current_user.id, today),
     ).fetchone()
     if already:
         return JSONResponse({"ok": True, "already_answered": True})
 
-    # Save answer
+    # Save answer (stamped with today's date so comparisons stay same-day)
     try:
         db.execute(
-            "INSERT OR REPLACE INTO vibe_answers (match_id, user_id, answer) VALUES (?,?,?)",
-            (match_id, current_user.id, answer),
+            "INSERT OR REPLACE INTO vibe_answers (match_id, user_id, answer, date) VALUES (?,?,?,?)",
+            (match_id, current_user.id, answer, today),
         )
         db.commit()
     except Exception:
         pass
 
-    # Check if both answered
+    # Both must have answered TODAY — a stale answer from a previous day must
+    # never be compared against today's question.
     other_id = match[1] if match[0] == current_user.id else match[0]
     other_answer_row = db.execute(
-        "SELECT answer FROM vibe_answers WHERE match_id=? AND user_id=?",
-        (match_id, other_id),
+        "SELECT answer FROM vibe_answers WHERE match_id=? AND user_id=? AND date=?",
+        (match_id, other_id, today),
     ).fetchone()
 
     if not other_answer_row:
@@ -158,8 +162,38 @@ async def _process_vibe_answer(match_id: int, answer: str, db, current_user):
     other_answer = other_answer_row[0]
     matched_vibe = my_answer == other_answer
 
+    # Running compatibility score for this pair — exactly one comparison per
+    # day per pair (both-answered-today is the only path here).
+    try:
+        score_row = db.execute(
+            "SELECT asked, matched FROM vibe_scores WHERE match_id=?", (match_id,)
+        ).fetchone()
+        if score_row:
+            db.execute(
+                "UPDATE vibe_scores SET asked=asked+1, matched=matched+? WHERE match_id=?",
+                (1 if matched_vibe else 0, match_id),
+            )
+            asked, matched = score_row[0] + 1, score_row[1] + (1 if matched_vibe else 0)
+        else:
+            db.execute(
+                "INSERT INTO vibe_scores (match_id, asked, matched) VALUES (?,?,?)",
+                (match_id, 1, 1 if matched_vibe else 0),
+            )
+            asked, matched = 1, 1 if matched_vibe else 0
+        db.commit()
+    except Exception as e:
+        print(f"[VIBE] score update failed: {e}")
+        asked, matched = 0, 0
+
+    percent = round(100 * matched / asked) if asked else None
+    compat_text = ""
+    if percent is not None:
+        compat_text = (
+            f"\n\n💞 <b>Vibe compatibility: {percent}%</b> "
+            f"({matched} of {asked} questions matched)"
+        )
+
     # Get question for context
-    today = datetime.utcnow().strftime("%Y-%m-%d")
     q_row = db.execute("SELECT question, option_a, option_b FROM vibe_questions WHERE date=?", (today,)).fetchone()
     question = q_row[0] if q_row else ""
     option_a = q_row[1] if q_row else "A"
@@ -177,11 +211,11 @@ async def _process_vibe_answer(match_id: int, answer: str, db, current_user):
         if bot_app and other_user:
             await _notify_vibe_result(
                 bot_app.bot, current_user, other_user,
-                question, my_choice, other_choice, matched_vibe
+                question, my_choice, other_choice, matched_vibe, compat_text
             )
             await _notify_vibe_result(
                 bot_app.bot, other_user, current_user,
-                question, other_choice, my_choice, matched_vibe
+                question, other_choice, my_choice, matched_vibe, compat_text
             )
     except Exception as e:
         print(f"[VIBE] notify failed: {e}")
@@ -193,6 +227,11 @@ async def _process_vibe_answer(match_id: int, answer: str, db, current_user):
         "my_choice": my_choice,
         "other_choice": other_choice,
         "question": question,
+        "compatibility": {
+            "asked": asked,
+            "matched": matched,
+            "percent": percent,
+        },
     })
 
 
@@ -228,7 +267,7 @@ async def send_vibe_question_to_match(bot, match_id: int, user1, user2):
             print(f"[VIBE] send question failed: {e}")
 
 
-async def _notify_vibe_result(bot, user, other_user, question, my_choice, other_choice, matched):
+async def _notify_vibe_result(bot, user, other_user, question, my_choice, other_choice, matched, compat_text=""):
     if not user.telegram_id:
         return
     if matched:
@@ -249,7 +288,7 @@ async def _notify_vibe_result(bot, user, other_user, question, my_choice, other_
             f"Different vibes, same spark! 💕"
         )
     try:
-        await bot.send_message(chat_id=user.telegram_id, text=text, parse_mode="HTML")
+        await bot.send_message(chat_id=user.telegram_id, text=text + compat_text, parse_mode="HTML")
     except Exception as e:
         print(f"[VIBE] result notify failed: {e}")
 

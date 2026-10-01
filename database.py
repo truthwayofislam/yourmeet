@@ -291,8 +291,14 @@ def init_db():
             match_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             answer TEXT NOT NULL,
+            date TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             UNIQUE(match_id, user_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS vibe_scores (
+            match_id INTEGER PRIMARY KEY,
+            asked INTEGER DEFAULT 0,
+            matched INTEGER DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -387,11 +393,20 @@ def init_db():
         "ALTER TABLE users ADD COLUMN profile_views INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN looking_for TEXT DEFAULT ''",
         "ALTER TABLE chat_sessions ADD COLUMN missed_notified INTEGER DEFAULT 0",
+        "ALTER TABLE vibe_answers ADD COLUMN date TEXT DEFAULT ''",
     ]:
         try:
             conn.execute(alter)
         except Exception:
             pass  # column already exists
+
+    # Backfill: old vibe answer rows had no date — stamp them from created_at
+    # so same-day comparisons work after the date column is introduced.
+    try:
+        conn.execute("UPDATE vibe_answers SET date=substr(created_at,1,10) WHERE date='' OR date IS NULL")
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] vibe_answers date backfill skipped: {e}")
 
     conn.commit()
 

@@ -271,7 +271,9 @@ async def report_user(target_id: int, request: Request, db=Depends(get_db), curr
             ).fetchone()
             count = row[0] if row else 0
             if count >= 3:
-                db.execute("UPDATE users SET is_blocked=1, is_approved=0 WHERE id=?", (target_id,))
+                # Review queue, not an instant ban — coordinated fake reports
+                # must not permanently ban an innocent user (brigading).
+                db.execute("UPDATE users SET is_approved=0 WHERE id=?", (target_id,))
                 db.commit()
             log_audit(str(getattr(current_user, "telegram_id", "")), "report_user", target_id, reason)
         except Exception as e:
