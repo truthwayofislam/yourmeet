@@ -581,10 +581,19 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
     if tg_id:
+        bot_username = os.getenv("BOT_USERNAME", "").strip().strip("'\"")
+        share_line = ""
+        if bot_username:
+            link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
+            share_line = (
+                f"\n\n🎁 <b>Want more Premium?</b> Share your link with friends — "
+                f"every 3 friends = <b>+1 day Premium FREE</b>!\n{link}"
+            )
         await _send_remind(
             tg_id,
             f"👑 <b>You've been gifted {days} day(s) of Premium!</b>\n\n"
-            f"Active until <b>{until[:10]}</b> — unlimited swipes, super likes & chat! 🚀",
+            f"Active until <b>{until[:10]}</b> — unlimited swipes, super likes & chat! 🚀"
+            f"{share_line}",
         )
 
 
