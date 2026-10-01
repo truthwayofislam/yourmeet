@@ -868,7 +868,8 @@ async def _send_next_profile(message, user, ctx=None):
         extra = f"\n\n✨ <b>{new_count} new people joined this week!</b> They'll show up here soon." if new_count else ""
         sent = await message.reply_text(
             f"😔 No more profiles right now!{extra}\n\n"
-            "Check back later — or invite friends with /share 💕"
+            "Check back later — or invite friends with /share 💕",
+            parse_mode="HTML",
         )
         if ctx:
             ctx.user_data["last_keyboard_msg_id"] = sent.message_id
