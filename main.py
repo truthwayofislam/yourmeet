@@ -113,6 +113,8 @@ async def lifespan(app: FastAPI):
                 BotCommand("confirmcleanup", "Delete incomplete users"),
                 BotCommand("deleteuser", "Delete a user"),
                 BotCommand("fixuser", "Reset a user to pending"),
+                BotCommand("grantpremium", "Gift premium days (support)"),
+                BotCommand("revokepremium", "Revoke premium (support)"),
                 BotCommand("auditlog", "Show recent admin actions"),
             ])
         except Exception as e:

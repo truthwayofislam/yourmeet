@@ -3,6 +3,7 @@ import re
 import json
 import time
 import threading
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -38,6 +39,8 @@ def build_admin_bot() -> Application:
     app.add_handler(CommandHandler("deleteuser", cmd_delete_user))
     app.add_handler(CommandHandler("confirmcleanup", cmd_confirm_cleanup))
     app.add_handler(CommandHandler("fixuser", cmd_fix_user))
+    app.add_handler(CommandHandler("grantpremium", cmd_grant_premium))
+    app.add_handler(CommandHandler("revokepremium", cmd_revoke_premium))
     app.add_handler(CommandHandler("auditlog", cmd_audit_log))
     app.add_handler(CallbackQueryHandler(cb_approve, pattern=r"^approve:"))
     app.add_handler(CallbackQueryHandler(cb_verify, pattern=r"^verify:"))
@@ -524,6 +527,96 @@ async def cmd_confirm_cleanup(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         _delete_user_data(db, uid)
         log_audit(str(update.effective_user.id), "cleanup_delete_user", uid)
     await update.message.reply_text(f"✅ Deleted {len(rows)} incomplete users. Database is clean!")
+
+
+async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Gift/comp premium without payment — /grantpremium <user_id> <days>.
+
+    Support tool: lets you test the premium flow free and compensate users
+    (refunds, goodwill) without waiting for a real Stars purchase.
+    """
+    if not _is_admin(update):
+        return
+    if not _admin_rate_limit(update):
+        return
+    if len(ctx.args) < 2:
+        await update.message.reply_text("Usage: /grantpremium <user_id> <days>\nExample: /grantpremium 42 1")
+        return
+    try:
+        user_id = int(ctx.args[0])
+        days = int(ctx.args[1])
+    except ValueError:
+        await update.message.reply_text("Invalid user_id or days.")
+        return
+    if days <= 0 or days > 3650:
+        await update.message.reply_text("Days must be between 1 and 3650.")
+        return
+    db = _get_db()
+    row = db.execute("SELECT telegram_id, premium_until FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        db.close()
+        await update.message.reply_text("User not found.")
+        return
+    tg_id, prev_until = row
+    now = datetime.utcnow()
+    base = now
+    if prev_until:
+        try:
+            existing = datetime.strptime(prev_until, "%Y-%m-%d %H:%M:%S")
+            if existing > now:
+                base = existing  # stack on remaining time, same as paid renewal
+        except ValueError:
+            pass
+    until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute(
+        "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999, daily_swipes=999999 WHERE id=?",
+        (until, user_id),
+    )
+    db.commit()
+    db.close()
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "grant_premium", user_id, f"{days}d until {until[:10]}")
+    await update.message.reply_text(
+        f"👑 User #{user_id} granted <b>{days} day(s)</b> of premium (until {until[:10]}).",
+        parse_mode="HTML",
+    )
+    if tg_id:
+        await _send_remind(
+            tg_id,
+            f"👑 <b>You've been gifted {days} day(s) of Premium!</b>\n\n"
+            f"Active until <b>{until[:10]}</b> — unlimited swipes, super likes & chat! 🚀",
+        )
+
+
+async def cmd_revoke_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Revoke premium — /revokepremium <user_id>. Resets to free-plan defaults."""
+    if not _is_admin(update):
+        return
+    if not _admin_rate_limit(update):
+        return
+    if not ctx.args:
+        await update.message.reply_text("Usage: /revokepremium <user_id>")
+        return
+    try:
+        user_id = int(ctx.args[0])
+    except ValueError:
+        await update.message.reply_text("Invalid user_id.")
+        return
+    db = _get_db()
+    row = db.execute("SELECT id FROM users WHERE id=?", (user_id,)).fetchone()
+    if not row:
+        db.close()
+        await update.message.reply_text("User not found.")
+        return
+    db.execute(
+        "UPDATE users SET is_premium=0, premium_until='', super_likes_left=1, daily_swipes=30 WHERE id=?",
+        (user_id,),
+    )
+    db.commit()
+    db.close()
+    from database import log_audit
+    log_audit(str(update.effective_user.id), "revoke_premium", user_id)
+    await update.message.reply_text(f"✅ Premium revoked for user #{user_id}. Back on the free plan.")
 
 
 async def cmd_audit_log(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
