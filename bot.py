@@ -852,8 +852,23 @@ async def _send_next_profile(message, user, ctx=None):
         break
 
     if not profile:
+        # Social proof: "app khali hai" wali feeling is the #1 churn reason
+        # for tiny apps — show recent growth if there is any.
+        from database import get_conn
+        ndb = get_conn()
+        try:
+            row = ndb.execute(
+                "SELECT COUNT(*) FROM users WHERE is_approved=1 AND created_at >= datetime('now','-7 days')"
+            ).fetchone()
+            new_count = row[0] if row else 0
+        except Exception:
+            new_count = 0
+        finally:
+            ndb.close()
+        extra = f"\n\n✨ <b>{new_count} new people joined this week!</b> They'll show up here soon." if new_count else ""
         sent = await message.reply_text(
-            "😔 No more profiles right now!\n\nCheck back later or invite friends with /share"
+            f"😔 No more profiles right now!{extra}\n\n"
+            "Check back later — or invite friends with /share 💕"
         )
         if ctx:
             ctx.user_data["last_keyboard_msg_id"] = sent.message_id
