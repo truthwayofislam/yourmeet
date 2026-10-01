@@ -201,7 +201,26 @@ async def _expire_premium():
         print(f"[SCHEDULER] expire_premium error: {e}")
 
 
-app = FastAPI(title="YourMeet", lifespan=lifespan)
+# docs/redoc/openapi disabled: FastAPI exposes them publicly by default, which
+# hands outsiders a complete map of every endpoint (mini app era is over, no
+# one needs the schema).
+app = FastAPI(
+    title="YourMeet",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Basic hardening headers — the terms/privacy pages must not be framable."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
 
 app.include_router(auth.router)
 app.include_router(profiles.router)
