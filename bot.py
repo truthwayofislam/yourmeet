@@ -688,7 +688,7 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     ref_id = d.get("pending_ref") or ctx.user_data.get("pending_ref")
     if ref_id:
-        _handle_referral(tg_id, ref_id)
+        await _handle_referral(tg_id, ref_id, bot=ctx.bot)
 
     try:
         from admin_bot import send_for_review
@@ -2249,12 +2249,19 @@ async def notify_match(bot, user, matched_with):
 
 # ── Referral ──────────────────────────────────────────────────────────────────
 
-def _handle_referral(new_tg_id: str, referrer_tg_id: str):
+async def _handle_referral(new_tg_id: str, referrer_tg_id: str, bot=None):
+    """Referral handling.
+
+    Everyone: every 3 completed signups via the link = +10 bonus swipes.
+    Admin-gifted users additionally earn premium automatically: when their
+    link brings 3 users, they get the SAME number of days the admin gifted
+    them (stored in referral_reward_days). Offer amount is admin-controlled.
+    """
     if new_tg_id == referrer_tg_id:
         return
+    from database import get_conn
+    db = get_conn()
     try:
-        from database import get_conn
-        db = get_conn()
         new_user = _get_user(new_tg_id)
         referrer = _get_user(referrer_tg_id)
         if not new_user or not referrer:
@@ -2273,9 +2280,53 @@ def _handle_referral(new_tg_id: str, referrer_tg_id: str):
             "SELECT COUNT(*) FROM referrals WHERE referrer_id=?", (referrer.id,)
         ).fetchone()[0]
         db.execute("UPDATE users SET referral_count=? WHERE id=?", (count, referrer.id))
+        rewarded = False
+        reward_days = 0
+        until = ""
         if count % 3 == 0:
             db.execute("UPDATE users SET daily_swipes=daily_swipes+10 WHERE id=?", (referrer.id,))
+            rrow = db.execute(
+                "SELECT referral_reward_days FROM users WHERE id=?", (referrer.id,)
+            ).fetchone()
+            reward_days = (rrow[0] if rrow and rrow[0] else 0)
+            if reward_days > 0:
+                from datetime import datetime as _dt, timedelta
+                base = _dt.utcnow()
+                prow = db.execute(
+                    "SELECT premium_until FROM users WHERE id=?", (referrer.id,)
+                ).fetchone()
+                if prow and prow[0]:
+                    try:
+                        ex = _dt.strptime(prow[0], "%Y-%m-%d %H:%M:%S")
+                        if ex > base:
+                            base = ex
+                    except (ValueError, TypeError):
+                        pass
+                until = (base + timedelta(days=reward_days)).strftime("%Y-%m-%d %H:%M:%S")
+                db.execute(
+                    "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999, "
+                    "daily_swipes=999999 WHERE id=?",
+                    (until, referrer.id),
+                )
+                rewarded = True
         db.commit()
-        db.close()
+        if rewarded and bot and referrer.telegram_id:
+            try:
+                await bot.send_message(
+                    chat_id=referrer.telegram_id,
+                    text=(
+                        "🎉 <b>3 friends joined with your link!</b>\n\n"
+                        f"👑 <b>{reward_days} day(s) of Premium added!</b> (until {until[:10]})\n\n"
+                        "Keep sharing — every 3 friends = same reward again! 🚀"
+                    ),
+                    parse_mode="HTML",
+                )
+            except Exception as e:
+                print(f"[BOT] referral reward notify failed: {e}")
     except Exception as e:
         print(f"[BOT] referral failed: {e}")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass

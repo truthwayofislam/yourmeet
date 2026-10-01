@@ -394,6 +394,9 @@ def init_db():
         "ALTER TABLE users ADD COLUMN looking_for TEXT DEFAULT ''",
         "ALTER TABLE chat_sessions ADD COLUMN missed_notified INTEGER DEFAULT 0",
         "ALTER TABLE vibe_answers ADD COLUMN date TEXT DEFAULT ''",
+        # Premium-offer memory: how many days the admin gifted this user —
+        # their referral reward equals this when their link brings 3 users.
+        "ALTER TABLE users ADD COLUMN referral_reward_days INTEGER DEFAULT 0",
     ]:
         try:
             conn.execute(alter)

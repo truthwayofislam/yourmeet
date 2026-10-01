@@ -570,15 +570,17 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             pass
     until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     db.execute(
-        "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999, daily_swipes=999999 WHERE id=?",
-        (until, user_id),
+        "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999, "
+        "daily_swipes=999999, referral_reward_days=? WHERE id=?",
+        (until, days, user_id),
     )
     db.commit()
     db.close()
     from database import log_audit
     log_audit(str(update.effective_user.id), "grant_premium", user_id, f"{days}d until {until[:10]}")
     await update.message.reply_text(
-        f"👑 User #{user_id} granted <b>{days} day(s)</b> of premium (until {until[:10]}).",
+        f"👑 User #{user_id} granted <b>{days} day(s)</b> of premium (until {until[:10]}).\n"
+        f"🎁 Their referral offer: <b>{days} free day(s)</b> per 3 friends who join.",
         parse_mode="HTML",
     )
     if tg_id:
@@ -587,12 +589,12 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if bot_username:
             link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
             share_line = (
-                f"\n\n🎁 <b>Want more Premium?</b> Share your link with friends — "
-                f"every 3 friends = <b>+1 day Premium FREE</b>!\n{link}"
+                f"\n\n🎁 <b>Want FREE Premium again?</b> Share your link with friends — "
+                f"every 3 friends who join = <b>more Premium days for you, automatically!</b>\n{link}"
             )
         await _send_remind(
             tg_id,
-            f"👑 <b>You've been gifted {days} day(s) of Premium!</b>\n\n"
+            f"👑 <b>You've been gifted Premium!</b>\n\n"
             f"Active until <b>{until[:10]}</b> — unlimited swipes, super likes & chat! 🚀"
             f"{share_line}",
         )
@@ -619,7 +621,8 @@ async def cmd_revoke_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("User not found.")
         return
     db.execute(
-        "UPDATE users SET is_premium=0, premium_until='', super_likes_left=1, daily_swipes=30 WHERE id=?",
+        "UPDATE users SET is_premium=0, premium_until='', super_likes_left=1, daily_swipes=30, "
+        "referral_reward_days=0 WHERE id=?",
         (user_id,),
     )
     db.commit()
