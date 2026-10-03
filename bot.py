@@ -25,35 +25,41 @@ APP_URL = os.getenv("APP_URL", "")
 def build_bot() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
 
+    # The bot is strictly a PRIVATE-chat product. Without ChatType.PRIVATE
+    # filters, adding it to a group would leak: /browse would post profile
+    # cards (with buttons) into the group, and an @mention or reply-to-bot in
+    # a group would be FORWARDED to the member's private match.
+    PRIV = filters.ChatType.PRIVATE
+
     setup_conv = ConversationHandler(
         entry_points=[
-            CommandHandler("start", cmd_start),
-            CallbackQueryHandler(cb_setup_start, pattern=r"^setup:start$"),
+            CommandHandler("start", cmd_start, filters=PRIV),
+            CallbackQueryHandler(cb_setup_start, pattern=r"^setup:start$", filters=PRIV),
             # MUST be a conversation entry point: cb_terms_accept returns
             # SETUP_NAME, which only starts the conversation when the handler
             # belongs to it. As a standalone handler the return is ignored and
             # the user's first message falls through to handle_message,
             # leaving every new signup stuck at the name step.
-            CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"),
-            CommandHandler("editprofile", cmd_edit_profile),
+            CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$", filters=PRIV),
+            CommandHandler("editprofile", cmd_edit_profile, filters=PRIV),
         ],
         states={
-            SETUP_NAME:          [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_name)],
-            SETUP_AGE:           [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_age)],
-            SETUP_GENDER:        [CallbackQueryHandler(setup_gender, pattern=r"^sg:")],
-            SETUP_INTERESTED_IN: [CallbackQueryHandler(setup_interested_in, pattern=r"^si:")],
-            SETUP_CITY:          [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_city)],
-            SETUP_BIO:           [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_bio)],
-            SETUP_SOCIAL:        [MessageHandler(filters.TEXT & ~filters.COMMAND, setup_social)],
-            SETUP_LOOKING_FOR:   [CallbackQueryHandler(setup_looking_for, pattern=r"^lf:")],
+            SETUP_NAME:          [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_name)],
+            SETUP_AGE:           [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_age)],
+            SETUP_GENDER:        [CallbackQueryHandler(setup_gender, pattern=r"^sg:", filters=PRIV)],
+            SETUP_INTERESTED_IN: [CallbackQueryHandler(setup_interested_in, pattern=r"^si:", filters=PRIV)],
+            SETUP_CITY:          [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_city)],
+            SETUP_BIO:           [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_bio)],
+            SETUP_SOCIAL:        [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_social)],
+            SETUP_LOOKING_FOR:   [CallbackQueryHandler(setup_looking_for, pattern=r"^lf:", filters=PRIV)],
             SETUP_PHOTO:         [
-                MessageHandler(filters.PHOTO, setup_photo),
+                MessageHandler(filters.PHOTO & PRIV, setup_photo),
                 # Text at the photo step must NOT fall through to chat routing
                 # — guide the user back instead of a dead end.
-                MessageHandler(filters.TEXT & ~filters.COMMAND, setup_photo_remind),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_photo_remind),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cmd_cancel)],
+        fallbacks=[CommandHandler("cancel", cmd_cancel, filters=PRIV)],
         allow_reentry=True,
         per_chat=True,
         per_user=True,
@@ -61,40 +67,40 @@ def build_bot() -> Application:
     )
 
     app.add_handler(setup_conv)
-    app.add_handler(CommandHandler("profile", cmd_profile))
-    app.add_handler(CommandHandler("browse", cmd_browse))
-    app.add_handler(CommandHandler("matches", cmd_matches))
-    app.add_handler(CommandHandler("stats", cmd_stats))
-    app.add_handler(CommandHandler("premium", cmd_premium))
-    app.add_handler(CommandHandler("share", cmd_share))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("delete", cmd_delete))
-    app.add_handler(CommandHandler("confirmdelete", cmd_confirm_delete))
-    app.add_handler(CommandHandler("language", cmd_language))
-    app.add_handler(CommandHandler("boost", cmd_boost))
-    app.add_handler(CommandHandler("mystery", cmd_mystery))
-    app.add_handler(CommandHandler("likes", cmd_likes))
-    app.add_handler(CommandHandler("block", cmd_block))
-    app.add_handler(CommandHandler("filters", cmd_filters))
-    app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:"))
-    app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:"))
-    app.add_handler(CallbackQueryHandler(cb_filter, pattern=r"^filter:"))
-    app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:"))
-    app.add_handler(CallbackQueryHandler(cb_report, pattern=r"^report:\d+$"))
-    app.add_handler(CallbackQueryHandler(cb_report_reason, pattern=r"^reportreason:"))
-    app.add_handler(CallbackQueryHandler(cb_like, pattern=r"^like:"))
-    app.add_handler(CallbackQueryHandler(cb_skip, pattern=r"^skip:"))
-    app.add_handler(CallbackQueryHandler(cb_superlike, pattern=r"^superlike:"))
-    app.add_handler(CallbackQueryHandler(cb_next, pattern=r"^next$"))
-    app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:"))
-    app.add_handler(CallbackQueryHandler(cb_block_user, pattern=r"^blockuser:"))
-    app.add_handler(CallbackQueryHandler(cb_chat_match, pattern=r"^chat_match:"))
-    app.add_handler(CommandHandler("about", cmd_about))
-    app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:"))
+    app.add_handler(CommandHandler("profile", cmd_profile, filters=PRIV))
+    app.add_handler(CommandHandler("browse", cmd_browse, filters=PRIV))
+    app.add_handler(CommandHandler("matches", cmd_matches, filters=PRIV))
+    app.add_handler(CommandHandler("stats", cmd_stats, filters=PRIV))
+    app.add_handler(CommandHandler("premium", cmd_premium, filters=PRIV))
+    app.add_handler(CommandHandler("share", cmd_share, filters=PRIV))
+    app.add_handler(CommandHandler("help", cmd_help, filters=PRIV))
+    app.add_handler(CommandHandler("delete", cmd_delete, filters=PRIV))
+    app.add_handler(CommandHandler("confirmdelete", cmd_confirm_delete, filters=PRIV))
+    app.add_handler(CommandHandler("language", cmd_language, filters=PRIV))
+    app.add_handler(CommandHandler("boost", cmd_boost, filters=PRIV))
+    app.add_handler(CommandHandler("mystery", cmd_mystery, filters=PRIV))
+    app.add_handler(CommandHandler("likes", cmd_likes, filters=PRIV))
+    app.add_handler(CommandHandler("block", cmd_block, filters=PRIV))
+    app.add_handler(CommandHandler("filters", cmd_filters, filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_filter, pattern=r"^filter:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_report, pattern=r"^report:\d+$", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_report_reason, pattern=r"^reportreason:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_like, pattern=r"^like:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_skip, pattern=r"^skip:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_superlike, pattern=r"^superlike:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_next, pattern=r"^next$", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_block_user, pattern=r"^blockuser:", filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_chat_match, pattern=r"^chat_match:", filters=PRIV))
+    app.add_handler(CommandHandler("about", cmd_about, filters=PRIV))
+    app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:", filters=PRIV))
     from telegram.ext import PreCheckoutQueryHandler
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, handle_message))
     app.add_error_handler(error_handler)
     return app
 
