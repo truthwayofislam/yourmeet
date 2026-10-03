@@ -2355,9 +2355,9 @@ async def _handle_referral(new_tg_id: str, referrer_tg_id: str, bot=None):
                     chat_id=referrer.telegram_id,
                     text=(
                         "🎉 <b>3 friends joined with your link!</b>\n\n"
-                        f"👑 <b>{reward_days} day(s) of Premium added!</b> (until {until[:10]})\n\n"
-                        "That was your one-time referral bonus! 💪\n"
-                        "Keep sharing — every 3 friends still = +10 bonus swipes!"
+                        f"👑 <b>Your FREE Premium is now ACTIVATED!</b>\n"
+                        f"✨ {reward_days} day(s) — active until {until[:10]}\n\n"
+                        "Enjoy unlimited swipes, super likes & chat! 🚀"
                     ),
                     parse_mode="HTML",
                 )

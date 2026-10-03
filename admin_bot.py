@@ -553,34 +553,24 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Days must be between 1 and 3650.")
         return
     db = _get_db()
-    row = db.execute("SELECT telegram_id, premium_until FROM users WHERE id=?", (user_id,)).fetchone()
+    row = db.execute("SELECT telegram_id FROM users WHERE id=?", (user_id,)).fetchone()
     if not row:
         db.close()
         await update.message.reply_text("User not found.")
         return
-    tg_id, prev_until = row
-    now = datetime.utcnow()
-    base = now
-    if prev_until:
-        try:
-            existing = datetime.strptime(prev_until, "%Y-%m-%d %H:%M:%S")
-            if existing > now:
-                base = existing  # stack on remaining time, same as paid renewal
-        except ValueError:
-            pass
-    until = (base + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    tg_id = row[0]
     db.execute(
-        "UPDATE users SET is_premium=1, premium_until=?, super_likes_left=999999, "
-        "daily_swipes=999999, referral_reward_days=? WHERE id=?",
-        (until, days, user_id),
+        "UPDATE users SET referral_reward_days=? WHERE id=?",
+        (days, user_id),
     )
     db.commit()
     db.close()
     from database import log_audit
-    log_audit(str(update.effective_user.id), "grant_premium", user_id, f"{days}d until {until[:10]}")
+    log_audit(str(update.effective_user.id), "offer_premium", user_id, f"{days}d after first 3 friends")
     await update.message.reply_text(
-        f"👑 User #{user_id} granted <b>{days} day(s)</b> of premium (until {until[:10]}).\n"
-        f"🎁 Their referral offer (one-time): <b>{days} free day(s)</b> after their first 3 friends join.",
+        f"🎁 Offer set for user #{user_id}: <b>{days} day(s)</b> of premium will activate "
+        f"AUTOMATICALLY after their first 3 friends join.\n"
+        f"⚠️ Premium is NOT active right now — sirf offer set hua hai.",
         parse_mode="HTML",
     )
     if tg_id:
@@ -588,14 +578,13 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         share_line = ""
         if bot_username:
             link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
-            share_line = (
-                f"\n\n🎁 <b>Want FREE Premium again?</b> Share your link with friends — "
-                f"every 3 friends who join = <b>more Premium days for you, automatically!</b>\n{link}"
-            )
+            share_line = f"\n\n🔗 Your link:\n{link}"
         await _send_remind(
             tg_id,
-            f"👑 <b>You've been gifted Premium!</b>\n\n"
-            f"Active until <b>{until[:10]}</b> — unlimited swipes, super likes & chat! 🚀"
+            f"👑 <b>Special Offer for you!</b>\n\n"
+            f"Share your link with friends — when <b>3 friends join</b>, "
+            f"you'll unlock <b>FREE Premium</b> automatically!\n\n"
+            f"Unlimited swipes, super likes & chat — all yours once they join! 🚀"
             f"{share_line}",
         )
 
