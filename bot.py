@@ -786,6 +786,7 @@ async def cmd_browse(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def _send_next_profile(message, user, ctx=None):
     from database import get_conn, row_to_user, USER_COLS
     db = get_conn()
+    lang = getattr(user, "language", "en") or "en"
 
     if ctx:
         await _cleanup_chat(ctx, message.chat_id)
@@ -805,10 +806,7 @@ async def _send_next_profile(message, user, ctx=None):
 
     if not user.is_premium and user.daily_swipes <= 0:
         db.close()
-        sent = await message.reply_text(
-            "😔 You've used all your swipes for today!\n\n"
-            "👑 Upgrade to Premium for unlimited swipes with /premium"
-        )
+        sent = await message.reply_text(s(lang, "swipes_over"))
         if ctx:
             ctx.user_data["last_keyboard_msg_id"] = sent.message_id
             await _track_bot_message(ctx, sent.message_id)
@@ -897,10 +895,9 @@ async def _send_next_profile(message, user, ctx=None):
             new_count = 0
         finally:
             ndb.close()
-        extra = f"\n\n✨ <b>{new_count} new people joined this week!</b> They'll show up here soon." if new_count else ""
+        extra = f"\n\n{s(lang, 'social_proof', count=new_count)}" if new_count else ""
         sent = await message.reply_text(
-            f"😔 No more profiles right now!{extra}\n\n"
-            "Check back later — or invite friends with /share 💕",
+            s(lang, "no_more_profiles") + extra,
             parse_mode="HTML",
         )
         if ctx:
@@ -928,7 +925,7 @@ async def _send_next_profile(message, user, ctx=None):
     if profile.is_verified:
         caption += "\n✅ Verified"
     if profile.id in liked_me:
-        caption += "\n💙 <i>Already likes you — like back for an instant match!</i>"
+        caption += "\n" + s(lang, "already_likes_you")
 
     keyboard = _browse_keyboard(profile.id, super_left)
 
@@ -944,7 +941,7 @@ async def _send_next_profile(message, user, ctx=None):
     try:
         if mystery_active:
             sent = await message.reply_text(
-                caption + "\n\n🙈 <i>Mystery Mode — photo hidden</i>",
+                caption + "\n\n" + s(lang, "mystery_hidden"),
                 parse_mode="HTML",
                 reply_markup=keyboard,
             )
@@ -960,7 +957,7 @@ async def _send_next_profile(message, user, ctx=None):
             await _track_bot_message(ctx, sent.message_id)
     except Exception:
         sent = await message.reply_text(
-            caption + "\n\n<i>(Photo unavailable)</i>",
+            caption + "\n\n" + s(lang, "photo_unavailable"),
             parse_mode="HTML",
             reply_markup=keyboard,
         )
@@ -988,9 +985,9 @@ async def cb_like(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         target = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone())
         db.close()
         if target:
+            mlang = getattr(user, "language", "en") or "en"
             sent = await query.message.reply_text(
-                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{esc(target.name)}</b> liked each other! 💕\n\n"
-                f"Start chatting — just send a message here!{_match_extra_text(user, target)}",
+                s(mlang, "its_a_match", name=esc(target.name)) + _match_extra_text(user, target),
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
@@ -1018,9 +1015,9 @@ async def cb_superlike(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         target = row_to_user(db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone())
         db.close()
         if target:
+            mlang = getattr(user, "language", "en") or "en"
             sent = await query.message.reply_text(
-                f"🎉 <b>It's a Match!</b>\n\nYou and <b>{esc(target.name)}</b> liked each other! 💕"
-                f"{_match_extra_text(user, target)}",
+                s(mlang, "its_a_match", name=esc(target.name)) + _match_extra_text(user, target),
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
@@ -1047,12 +1044,14 @@ async def cb_report(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = _get_user(tg_id)
     if not user or target_id == user.id:
         return
+    rlang = getattr(user, "language", "en") or "en"
+    labels = {r: s(rlang, f"reason_{r}") for r in REPORT_REASONS}
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(label, callback_data=f"reportreason:{target_id}:{reason}")]
-        for reason, label in _REPORT_LABELS.items()
+        for reason, label in labels.items()
     ])
     sent = await query.message.reply_text(
-        "🚨 Why are you reporting this profile?",
+        s(rlang, "report_title"),
         reply_markup=keyboard,
     )
     await _track_bot_message(ctx, sent.message_id)
@@ -1076,7 +1075,7 @@ async def cb_report_reason(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         return
     if not ratelimit.allow(f"report:{user.id}", 5, 60):
-        await query.answer("⏳ Too many reports — please slow down.", show_alert=True)
+        await query.answer(s(getattr(user, "language", "en") or "en", "report_rate"), show_alert=True)
         return
 
     from database import get_conn, log_audit
@@ -1087,7 +1086,7 @@ async def cb_report_reason(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     ).fetchone()
     if already:
         db.close()
-        await query.answer("You already reported this profile.", show_alert=True)
+        await query.answer(s(getattr(user, "language", "en") or "en", "report_already"), show_alert=True)
         return
     db.execute(
         "INSERT INTO reports (reporter_id, reported_id, reason) VALUES (?,?,?)",
@@ -1108,7 +1107,7 @@ async def cb_report_reason(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     db.close()
     log_audit(tg_id, "report_user", target_id, reason)
 
-    await query.answer("✅ Report sent — thank you for keeping YourMeet safe!")
+    await query.answer(s(getattr(user, "language", "en") or "en", "report_sent"))
     try:
         await query.edit_message_reply_markup(reply_markup=None)
     except Exception:
@@ -2350,15 +2349,11 @@ async def _handle_referral(new_tg_id: str, referrer_tg_id: str, bot=None):
                 rewarded = True
         db.commit()
         if rewarded and bot and referrer.telegram_id:
+            rlang = getattr(referrer, "language", "en") or "en"
             try:
                 await bot.send_message(
                     chat_id=referrer.telegram_id,
-                    text=(
-                        "🎉 <b>3 friends joined with your link!</b>\n\n"
-                        f"👑 <b>Your FREE Premium is now ACTIVATED!</b>\n"
-                        f"✨ {reward_days} day(s) — active until {until[:10]}\n\n"
-                        "Enjoy unlimited swipes, super likes & chat! 🚀"
-                    ),
+                    text=s(rlang, "referral_activated", days=reward_days, date=until[:10]),
                     parse_mode="HTML",
                 )
             except Exception as e:

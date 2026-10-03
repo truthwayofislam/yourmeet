@@ -335,6 +335,7 @@ async def notify_missed_chats(db):
             return
         import httpx
         for session_id, tg1, tg2, _created_at in sessions:
+            from strings import get as s
             for tg_id in [tg1, tg2]:
                 if not tg_id:
                     continue
@@ -344,8 +345,8 @@ async def notify_missed_chats(db):
                             f"https://api.telegram.org/bot{token}/sendMessage",
                             json={
                                 "chat_id": tg_id,
-                                "text": "😔 *You missed a chat!*\n\nYour match was waiting but the chat window closed.\n\n👑 Upgrade to Premium for *unlimited chat time* so you never miss a connection!",
-                                "parse_mode": "Markdown",
+                                "text": s(_user_lang(tg_id), "chat_missed"),
+                                "parse_mode": "HTML",
                             },
                         )
                 except Exception as e:
@@ -363,18 +364,26 @@ async def notify_missed_chats(db):
         print(f"[CHAT MISSED] error: {e}")
 
 
+def _user_lang(tg_id: str) -> str:
+    """Fetch a user's chosen language (fallback en)."""
+    try:
+        from database import get_conn
+        c = get_conn()
+        r = c.execute("SELECT language FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
+        c.close()
+        return (r[0] if r and r[0] else "en")
+    except Exception:
+        return "en"
+
+
 async def _notify_chat_start(tg_id: str, other_name: str, duration: str, lang: str):
     token = os.getenv("TELEGRAM_BOTS_KEY", "")
     if not tg_id or not token:
         return
     from textsafe import esc
-    # HTML + escaping: with Markdown, a crafted name like "*Admin* [click](url)"
-    # would render fake markup / phishing links in the other user's Telegram.
-    text = (
-        f"💬 <b>Chat started with {esc(other_name)}!</b>\n\n"
-        f"⏱ Duration: <b>{duration}</b>\n\n"
-        f"Send your messages here — they'll be forwarded directly."
-    )
+    from strings import get as s
+    # HTML + escaping: a crafted name must not inject markup/phishing links.
+    text = s(lang or "en", "chat_started", name=esc(other_name), duration=duration)
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -390,6 +399,8 @@ async def _notify_chat_end(tg_id: str):
     token = os.getenv("TELEGRAM_BOTS_KEY", "")
     if not tg_id or not token:
         return
+    from strings import get as s
+    text = s(_user_lang(tg_id), "chat_ended")
     import httpx
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -397,8 +408,8 @@ async def _notify_chat_end(tg_id: str):
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 json={
                     "chat_id": tg_id,
-                    "text": "⏰ *Chat session ended.*\n\nUpgrade to Premium for unlimited chat! 👑",
-                    "parse_mode": "Markdown",
+                    "text": text,
+                    "parse_mode": "HTML",
                 },
             )
     except Exception:

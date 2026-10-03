@@ -553,12 +553,13 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Days must be between 1 and 3650.")
         return
     db = _get_db()
-    row = db.execute("SELECT telegram_id FROM users WHERE id=?", (user_id,)).fetchone()
+    row = db.execute("SELECT telegram_id, language FROM users WHERE id=?", (user_id,)).fetchone()
     if not row:
         db.close()
         await update.message.reply_text("User not found.")
         return
     tg_id = row[0]
+    lang = (row[1] or "en")
     db.execute(
         "UPDATE users SET referral_reward_days=? WHERE id=?",
         (days, user_id),
@@ -574,19 +575,10 @@ async def cmd_grant_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
     if tg_id:
+        from strings import get as s
         bot_username = os.getenv("BOT_USERNAME", "").strip().strip("'\"")
-        share_line = ""
-        if bot_username:
-            link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
-            share_line = f"\n\n🔗 Your link:\n{link}"
-        await _send_remind(
-            tg_id,
-            f"👑 <b>Special Offer for you!</b>\n\n"
-            f"Share your link with friends — when <b>3 friends join</b>, "
-            f"you'll unlock <b>FREE Premium</b> automatically!\n\n"
-            f"Unlimited swipes, super likes & chat — all yours once they join! 🚀"
-            f"{share_line}",
-        )
+        link = f"https://t.me/{bot_username}?start=ref_{tg_id}" if bot_username else ""
+        await _send_remind(tg_id, s(lang, "referral_offer", link=link))
 
 
 async def cmd_revoke_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
