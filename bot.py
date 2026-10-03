@@ -142,7 +142,19 @@ def _get_user(tg_id: str):
     cols = ", ".join(USER_COLS)
     row = db.execute(f"SELECT {cols} FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
     db.close()
-    return row_to_user(row)
+    user = row_to_user(row)
+    # Real-time premium expiry: the hourly sweep can lag up to 1 hour, so an
+    # expired premium must be treated as FREE immediately on any action. The
+    # sweep still flips the DB row and sends the "expired" notification.
+    if user and user.is_premium:
+        from datetime import datetime
+        try:
+            until = datetime.strptime(user.premium_until or "", "%Y-%m-%d %H:%M:%S")
+            if until <= datetime.utcnow():
+                user._data["is_premium"] = 0
+        except (ValueError, TypeError):
+            pass
+    return user
 
 
 async def _cleanup_chat(ctx, chat_id: int):
