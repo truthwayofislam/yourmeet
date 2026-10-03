@@ -22,6 +22,20 @@ APP_URL = os.getenv("APP_URL", "")
 ) = range(9)
 
 
+class PrivateCallbackQueryHandler(CallbackQueryHandler):
+    """CallbackQueryHandler restricted to private chats.
+
+    PTB 21.3's CallbackQueryHandler has no filters= parameter, so the
+    group-chat privacy lock lives in check_update instead.
+    """
+
+    def check_update(self, update: object):
+        chat = getattr(update, "effective_chat", None)
+        if chat is not None and getattr(chat, "type", None) != "private":
+            return None
+        return super().check_update(update)
+
+
 def build_bot() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -34,24 +48,24 @@ def build_bot() -> Application:
     setup_conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", cmd_start, filters=PRIV),
-            CallbackQueryHandler(cb_setup_start, pattern=r"^setup:start$", filters=PRIV),
+            PrivateCallbackQueryHandler(cb_setup_start, pattern=r"^setup:start$"),
             # MUST be a conversation entry point: cb_terms_accept returns
             # SETUP_NAME, which only starts the conversation when the handler
             # belongs to it. As a standalone handler the return is ignored and
             # the user's first message falls through to handle_message,
             # leaving every new signup stuck at the name step.
-            CallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$", filters=PRIV),
+            PrivateCallbackQueryHandler(cb_terms_accept, pattern=r"^terms:accept$"),
             CommandHandler("editprofile", cmd_edit_profile, filters=PRIV),
         ],
         states={
             SETUP_NAME:          [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_name)],
             SETUP_AGE:           [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_age)],
-            SETUP_GENDER:        [CallbackQueryHandler(setup_gender, pattern=r"^sg:", filters=PRIV)],
-            SETUP_INTERESTED_IN: [CallbackQueryHandler(setup_interested_in, pattern=r"^si:", filters=PRIV)],
+            SETUP_GENDER:        [PrivateCallbackQueryHandler(setup_gender, pattern=r"^sg:")],
+            SETUP_INTERESTED_IN: [PrivateCallbackQueryHandler(setup_interested_in, pattern=r"^si:")],
             SETUP_CITY:          [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_city)],
             SETUP_BIO:           [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_bio)],
             SETUP_SOCIAL:        [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_social)],
-            SETUP_LOOKING_FOR:   [CallbackQueryHandler(setup_looking_for, pattern=r"^lf:", filters=PRIV)],
+            SETUP_LOOKING_FOR:   [PrivateCallbackQueryHandler(setup_looking_for, pattern=r"^lf:")],
             SETUP_PHOTO:         [
                 MessageHandler(filters.PHOTO & PRIV, setup_photo),
                 # Text at the photo step must NOT fall through to chat routing
@@ -82,21 +96,21 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("likes", cmd_likes, filters=PRIV))
     app.add_handler(CommandHandler("block", cmd_block, filters=PRIV))
     app.add_handler(CommandHandler("filters", cmd_filters, filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_language, pattern=r"^lang:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_buy, pattern=r"^buy:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_filter, pattern=r"^filter:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_vibe, pattern=r"^vibe:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_report, pattern=r"^report:\d+$", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_report_reason, pattern=r"^reportreason:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_like, pattern=r"^like:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_skip, pattern=r"^skip:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_superlike, pattern=r"^superlike:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_next, pattern=r"^next$", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_block_user, pattern=r"^blockuser:", filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_chat_match, pattern=r"^chat_match:", filters=PRIV))
+    app.add_handler(PrivateCallbackQueryHandler(cb_language, pattern=r"^lang:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_buy, pattern=r"^buy:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_filter, pattern=r"^filter:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_vibe, pattern=r"^vibe:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_report, pattern=r"^report:\d+$"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_report_reason, pattern=r"^reportreason:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_like, pattern=r"^like:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_skip, pattern=r"^skip:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_superlike, pattern=r"^superlike:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_next, pattern=r"^next$"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_unmatch, pattern=r"^unmatch:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_block_user, pattern=r"^blockuser:"))
+    app.add_handler(PrivateCallbackQueryHandler(cb_chat_match, pattern=r"^chat_match:"))
     app.add_handler(CommandHandler("about", cmd_about, filters=PRIV))
-    app.add_handler(CallbackQueryHandler(cb_cmd, pattern=r"^cmd:", filters=PRIV))
+    app.add_handler(PrivateCallbackQueryHandler(cb_cmd, pattern=r"^cmd:"))
     from telegram.ext import PreCheckoutQueryHandler
     app.add_handler(PreCheckoutQueryHandler(pre_checkout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
