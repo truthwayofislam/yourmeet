@@ -630,14 +630,20 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
     photo = update.message.photo[-1]
-    file_id = photo.file_id
-
-    # Re-upload to storage channel if configured (makes file_id permanent)
+    main_file_id = photo.file_id   # MAIN bot's id — browse cards + /photo proxy need this
+    # Telegram file_ids are BOT-SCOPED: an admin-bot file_id cannot be sent by
+    # the main bot (and vice versa). Store both:
+    #   users.photo       -> main bot's id  (browse, /photo proxy)
+    #   users.photo_admin -> admin bot's id (review cards)
+    admin_file_id = ""
     try:
         from storage import store_photo_from_file_id
-        file_id = await store_photo_from_file_id(ctx.bot, file_id)
+        uploaded = await store_photo_from_file_id(ctx.bot, main_file_id)
+        if uploaded != main_file_id:
+            admin_file_id = uploaded
     except Exception as e:
-        print(f"[SETUP] storage upload failed, using original file_id: {e}")
+        print(f"[SETUP] storage upload failed: {e}")
+    file_id = main_file_id
 
     s = await _get_setup_data(tg_id)
     d = s["data"]
@@ -689,28 +695,28 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if edit_mode and not resubmit:
             db.execute(
                 """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-                   lat=?, lng=?, social_handle=?, photo=?, photos=?, looking_for=?,
+                   lat=?, lng=?, social_handle=?, photo=?, photo_admin=?, photos=?, looking_for=?,
                    terms_accepted=1 WHERE id=?""",
                 (name, age, gender, interested_in, bio, city,
-                 lat, lng, social, file_id, photos_json, looking_for, existing.id),
+                 lat, lng, social, file_id, admin_file_id, photos_json, looking_for, existing.id),
             )
         else:
             db.execute(
                 """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-                   lat=?, lng=?, social_handle=?, photo=?, photos=?, looking_for=?,
+                   lat=?, lng=?, social_handle=?, photo=?, photo_admin=?, photos=?, looking_for=?,
                    is_approved=0, is_rejected=0, terms_accepted=1 WHERE id=?""",
                 (name, age, gender, interested_in, bio, city,
-                 lat, lng, social, file_id, photos_json, looking_for, existing.id),
+                 lat, lng, social, file_id, admin_file_id, photos_json, looking_for, existing.id),
             )
         user_id = existing.id
     else:
         db.execute(
             """INSERT INTO users
                (name, age, gender, interested_in, bio, city, lat, lng,
-                social_handle, photo, photos, telegram_id, looking_for, is_approved, terms_accepted)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)""",
+                social_handle, photo, photo_admin, photos, telegram_id, looking_for, is_approved, terms_accepted)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)""",
             (name, age, gender, interested_in, bio, city,
-             lat, lng, social, file_id, photos_json, tg_id, looking_for),
+             lat, lng, social, file_id, admin_file_id, photos_json, tg_id, looking_for),
         )
         row = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
         user_id = row[0]
@@ -725,7 +731,8 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         from admin_bot import send_for_review
         if not edit_mode or resubmit:
-            await send_for_review(user_id, name, age, gender, city, file_id)
+            # Review cards are sent by the ADMIN bot — prefer its own file_id.
+            await send_for_review(user_id, name, age, gender, city, admin_file_id or file_id)
     except Exception as e:
         print(f"[SETUP] admin notify failed: {e}")
 

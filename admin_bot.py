@@ -132,11 +132,14 @@ async def _send_pending_profile(bot, chat_id: str, user):
         f"Joined: {(user.created_at or '')[:10]}"
     )
     keyboard = _approval_keyboard(user.id)
-    if user.photo:
+    # file_ids are bot-scoped: prefer the ADMIN bot's re-uploaded id, fall
+    # back to users.photo (works for pre-storage-integration profiles).
+    photo_to_send = getattr(user, "photo_admin", "") or user.photo
+    if photo_to_send:
         try:
             await bot.send_photo(
                 chat_id=chat_id,
-                photo=user.photo,
+                photo=photo_to_send,
                 caption=text,
                 parse_mode="HTML",
                 reply_markup=keyboard,

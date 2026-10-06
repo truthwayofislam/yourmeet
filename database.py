@@ -397,6 +397,9 @@ def init_db():
         # Premium-offer memory: how many days the admin gifted this user —
         # their referral reward equals this when their link brings 3 users.
         "ALTER TABLE users ADD COLUMN referral_reward_days INTEGER DEFAULT 0",
+        # Telegram file_ids are bot-scoped: browse needs the MAIN bot's id
+        # (users.photo), admin review needs the ADMIN bot's re-uploaded id.
+        "ALTER TABLE users ADD COLUMN photo_admin TEXT DEFAULT ''",
     ]:
         try:
             conn.execute(alter)
@@ -424,7 +427,8 @@ USER_COLS = [
     "is_blocked", "is_admin", "daily_swipes", "swipes_reset_date",
     "super_likes_left", "boosted_until", "referral_count", "created_at",
     "mystery_until", "terms_accepted", "setup_msg_id", "setup_data",
-"min_age", "max_age", "max_distance", "profile_views", "looking_for",
+    "min_age", "max_age", "max_distance", "profile_views", "looking_for",
+    "photo_admin",
     ]
 
 USER_SELECT = ", ".join(USER_COLS)
