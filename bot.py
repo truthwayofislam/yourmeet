@@ -1153,17 +1153,28 @@ async def _notify_admin_report(bot, reporter, target_id, target_name, reason, co
 
 async def cb_skip(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("👎 Skipped")
     target_id = int(query.data.split(":")[1])
     tg_id = str(update.effective_user.id)
     user = _get_user(tg_id)
     if not user or target_id == 0:
         return
+    slang = getattr(user, "language", "en") or "en"
     from database import get_conn
     db = get_conn()
+    # Skips consume the free daily quota too — "30 swipes" means like OR skip.
+    if not user.is_premium and user.daily_swipes <= 0:
+        db.close()
+        await query.answer(s(slang, "swipes_over"), show_alert=True)
+        return
     db.execute("INSERT OR IGNORE INTO skips (user_id, skipped_id) VALUES (?,?)", (user.id, target_id))
+    if not user.is_premium:
+        db.execute(
+            "UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=? AND daily_swipes>0",
+            (user.id,),
+        )
     db.commit()
     db.close()
+    await query.answer(s(slang, "skipped"))
     # Re-fetch so swipe counts are fresh
     user = _get_user(tg_id)
     await _send_next_profile(query.message, user, ctx)
@@ -1231,9 +1242,17 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
                     (user.id, target_id, int(is_super)),
                 )
                 if not user.is_premium:
-                    db.execute("UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=?", (user.id,))
+                    # Guards prevent the counter going negative on rapid
+                    # double-taps (Turso has no real transactions).
+                    db.execute(
+                        "UPDATE users SET daily_swipes=daily_swipes-1 WHERE id=? AND daily_swipes>0",
+                        (user.id,),
+                    )
                     if is_super:
-                        db.execute("UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=?", (user.id,))
+                        db.execute(
+                            "UPDATE users SET super_likes_left=super_likes_left-1 WHERE id=? AND super_likes_left>0",
+                            (user.id,),
+                        )
             except DuplicateError:
                 pass  # concurrent duplicate — benign, continue
 

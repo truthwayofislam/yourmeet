@@ -696,4 +696,10 @@ NEW_STRINGS = {
         "zh": "<i>（照片无法显示）</i>",
         "it": "<i>(Foto non disponibile)</i>",
     },
+    "skipped": {
+        "en": "👎 Skipped", "hi": "👎 स्किप किया", "es": "👎 Omitido", "ru": "👎 Пропущено",
+        "pt": "👎 Ignorado", "fr": "👎 Passé", "de": "👎 Übersprungen", "tr": "👎 Geçildi",
+        "id": "👎 Dilewati", "ar": "👎 تم التخطي", "ko": "👎 건너뜀", "ja": "👎 スキップしました",
+        "zh": "👎 已跳过", "it": "👎 Saltato",
+    },
 }
