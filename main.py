@@ -342,6 +342,62 @@ def terms():
         return f.read()
 
 
+# Group anti-spam bots auto-flag raw t.me bot links (?start=...). Giving
+# sharers a normal https link to OUR site bypasses that, while the page
+# itself funnels visitors into the bot with the referral intact.
+_INVITE_RE = re.compile(r"^[A-Za-z0-9_]{1,32}$")
+
+_INVITE_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YourMeet 💕 Find your match on Telegram</title>
+<meta property="og:title" content="YourMeet 💕 — Find your match on Telegram">
+<meta property="og:description" content="Swipe, match & chat — 100% FREE, right inside Telegram. No app install!">
+<meta name="theme-color" content="#ff4d6d">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#1a0b2e,#2d1b4e 50%,#4a1942);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;padding:24px}
+.card{max-width:420px;width:100%;text-align:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:40px 28px}
+.logo{font-size:64px;line-height:1}
+h1{font-size:34px;margin:12px 0 6px;background:linear-gradient(90deg,#ff4d6d,#ff9ec4);-webkit-background-clip:text;background-clip:text;color:transparent}
+.tag{font-size:16px;color:#e8d9ff;opacity:.9;line-height:1.5}
+ul{list-style:none;margin:22px 0;text-align:left;font-size:14.5px;color:#f3eaff}
+li{padding:7px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+.btn{display:block;background:linear-gradient(90deg,#ff4d6d,#ff758f);color:#fff;text-decoration:none;font-weight:700;font-size:18px;padding:16px;border-radius:16px;margin-top:10px;box-shadow:0 8px 24px rgba(255,77,109,.4)}
+.btn:active{transform:scale(.98)}
+.note{font-size:12px;color:#b9a7d9;margin-top:14px}
+a.ft{color:#cbb7ee;font-size:12px;text-decoration:none;margin:0 8px}
+</style>
+</head>
+<body><div class="card">
+<div class="logo">💕</div>
+<h1>YourMeet</h1>
+<p class="tag">Find your match on Telegram —<br>swipe, match & chat with real people nearby 🌍</p>
+<ul>
+<li>✅ 100% FREE — no app install</li>
+<li>⚡ Works right inside Telegram</li>
+<li>🔒 Verified profiles & safe chat</li>
+<li>🎯 Daily Vibe Checks & Matches</li>
+</ul>
+<a class="btn" href="__DEEP__">💕 Open YourMeet — It's FREE</a>
+<p class="note">Opens directly in your Telegram app</p>
+<p><a class="ft" href="/terms">Terms</a> · <a class="ft" href="/privacy">Privacy</a></p>
+</div></body></html>"""
+
+
+@app.get("/i/{ref}")
+async def invite_page(ref: str):
+    if not _INVITE_RE.match(ref or ""):
+        raise HTTPException(status_code=404)
+    bot_username = os.getenv("BOT_USERNAME", "").strip()
+    if not bot_username:
+        raise HTTPException(status_code=404)
+    deep_link = f"https://t.me/{bot_username}?start=ref_{ref}"
+    return HTMLResponse(_INVITE_PAGE.replace("__DEEP__", deep_link))
+
+
 @app.get("/privacy", response_class=HTMLResponse)
 def privacy():
     with open("static/privacy.html", encoding="utf-8") as f:
