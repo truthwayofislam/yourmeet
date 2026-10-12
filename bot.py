@@ -1492,28 +1492,21 @@ async def cmd_share(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.delete()
     except Exception:
         pass
-    app_url = os.getenv("APP_URL", "").strip().strip("'\"").rstrip("/")
-    if app_url:
-        # Spam-filter-safe link: group anti-spam bots flag raw t.me bot links,
-        # a normal link to our own landing page does not (referral stays intact
-        # — the page's button carries ?start=ref_).
-        link = f"{app_url}/i/{tg_id}"
-    else:
-        bot_username = os.getenv("BOT_USERNAME", "").strip().strip("'\"")
-        if not bot_username:
-            try:
-                bot_info = await ctx.bot.get_me()
-                bot_username = bot_info.username or ""
-            except Exception:
-                pass
-        if not bot_username:
-            await _cleanup_chat(ctx, update.effective_chat.id)
-            sent = await update.message.reply_text("❌ Could not generate referral link.")
-            await _track_bot_message(ctx, sent.message_id)
-            return
-        link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
+    bot_username = os.getenv("BOT_USERNAME", "").strip().strip("'\"")
+    if not bot_username:
+        try:
+            bot_info = await ctx.bot.get_me()
+            bot_username = bot_info.username or ""
+        except Exception:
+            pass
+    if not bot_username:
+        await _cleanup_chat(ctx, update.effective_chat.id)
+        sent = await update.message.reply_text("❌ Could not generate referral link.")
+        await _track_bot_message(ctx, sent.message_id)
+        return
     user = _get_user(tg_id)
     lang = (user.language if user else _lang(update)) or "en"
+    link = f"https://t.me/{bot_username}?start=ref_{tg_id}"
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔗 Share Link", url=link)],

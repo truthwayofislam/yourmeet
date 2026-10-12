@@ -42,6 +42,7 @@ def build_admin_bot() -> Application:
     app.add_handler(CommandHandler("grantpremium", cmd_grant_premium))
     app.add_handler(CommandHandler("revokepremium", cmd_revoke_premium))
     app.add_handler(CommandHandler("auditlog", cmd_audit_log))
+    app.add_handler(CommandHandler("post", cmd_post))
     app.add_handler(CallbackQueryHandler(cb_approve, pattern=r"^approve:"))
     app.add_handler(CallbackQueryHandler(cb_verify, pattern=r"^verify:"))
     app.add_handler(CallbackQueryHandler(cb_reject, pattern=r"^reject:"))
@@ -614,6 +615,64 @@ async def cmd_revoke_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     from database import log_audit
     log_audit(str(update.effective_user.id), "revoke_premium", user_id)
     await update.message.reply_text(f"✅ Premium revoked for user #{user_id}. Back on the free plan.")
+
+
+# Ready-made promo posts — /post <lang>. Text me link NAHI hota (anti-spam
+# bots links flag karte hain); poora link inline button ke andar chhupa hota hai.
+_PROMO_POSTS = {
+    "en": ("🔥 Looking for your kind of person? 💕\n\nSwipe, match & chat — 100% FREE, right inside Telegram.\nReal verified profiles. No app install needed! 👇", "💕 Open YourMeet — It's FREE"),
+    "hi": ("🔥 Apne jaisa saathi dhoondh rahe ho? 💕\n\nSwipe karo, match karo, baat karo — 100% FREE, sab kuch Telegram ke andar.\nReal verified profiles. Koi app install nahi chahiye! 👇", "💕 YourMeet kholo — FREE hai"),
+    "es": ("🔥 ¿Buscas a tu persona ideal? 💕\n\nDesliza, matchea y chatea — 100% GRATIS, dentro de Telegram.\nPerfiles reales verificados. ¡Sin instalar apps! 👇", "💕 Abrir YourMeet — Es GRATIS"),
+    "ru": ("🔥 Ищете свою половинку? 💕\n\nСвайпы, мэтчи и чат — 100% БЕСПЛАТНО прямо в Telegram.\nНастоящие проверенные анкеты. Без установки приложений! 👇", "💕 Открыть YourMeet — Бесплатно"),
+    "pt": ("🔥 Procurando sua pessoa ideal? 💕\n\nDeslize, dê match e converse — 100% GRÁTIS, dentro do Telegram.\nPerfis reais verificados. Sem instalar app! 👇", "💕 Abrir YourMeet — É GRÁTIS"),
+    "fr": ("🔥 Tu cherches l'âme sœur ? 💕\n\nSwipe, match et tchat — 100% GRATUIT, directement dans Telegram.\nVrais profils vérifiés. Aucune app à installer ! 👇", "💕 Ouvrir YourMeet — C'est GRATUIT"),
+    "de": ("🔥 Auf der Suche nach deinem Match? 💕\n\nSwipen, matchen, chatten — 100% KOSTENLOS, direkt in Telegram.\nEchte verifizierte Profile. Kein App-Download! 👇", "💕 YourMeet öffnen — Gratis"),
+    "tr": ("🔥 Hayatının aşkını mı arıyorsun? 💕\n\nKaydır, eşleş, sohbet et — %100 ÜCRETSİZ, Telegram'ın içinde.\nGerçek doğrulanmış profiller. Uygulama kurmaya gerek yok! 👇", "💕 YourMeet'i Aç — Ücretsiz"),
+    "id": ("🔥 Mencari pasanganmu? 💕\n\nSwipe, match & chat — 100% GRATIS, langsung di dalam Telegram.\nProfil asli terverifikasi. Tanpa install aplikasi! 👇", "💕 Buka YourMeet — Gratis"),
+    "ar": ("🔥 تبحث عن شريكك المثالي؟ 💕\n\nتطابق وتحدث — مجاني 100% داخل تيليجرام مباشرة.\nملفات شخصية حقيقية وموثقة. لا حاجة لتثبيت أي تطبيق! 👇", "💕 افتح YourMeet — مجانًا"),
+    "ko": ("🔥 이상형을 찾고 계신가요? 💕\n\n스와이프, 매치, 채팅 — 100% 무료, 텔레그램 안에서 바로!\n실명 인증 프로필. 앱 설치 불필요! 👇", "💕 YourMeet 열기 — 무료"),
+    "ja": ("🔥 理想の相手を探していませんか？ 💕\n\nスワイプ・マッチ・チャット — 全て無料、Telegram内で完結！\n本人確認済みのプロフィール。アプリインストール不要！ 👇", "💕 YourMeetを開く — 無料"),
+    "zh": ("🔥 在寻找心仪的对象吗？ 💕\n\n滑动、配对、聊天 — 100% 免费，直接在 Telegram 里完成。\n真实认证资料，无需安装App！ 👇", "💕 打开 YourMeet — 免费"),
+    "it": ("🔥 Cerchi la tua anima gemella? 💕\n\nScorri, fai match e chatta — 100% GRATIS, direttamente su Telegram.\nProfili reali verificati. Nessuna app da installare! 👇", "💕 Apri YourMeet — È GRATIS"),
+}
+
+
+async def cmd_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """/post <lang> — ready promo post in that language, inline button only.
+
+    Group me chahiye to is bot ko us group me add karke wahan /post <lang>
+    maro (command delete ho jayega, post wahi ban jayegi).
+    """
+    if not _is_admin(update):
+        return
+    if not _admin_rate_limit(update):
+        return
+    bot_username = os.getenv("BOT_USERNAME", "").strip()
+    if not bot_username:
+        await update.message.reply_text("BOT_USERNAME env not set.")
+        return
+    lang = (ctx.args[0].lower() if ctx.args else "en")
+    if lang not in _PROMO_POSTS:
+        langs = ", ".join(sorted(_PROMO_POSTS))
+        await update.message.reply_text(
+            f"❌ Unknown language '{lang}'.\nAvailable: {langs}"
+        )
+        return
+    text, btn_label = _PROMO_POSTS[lang]
+    deep_link = f"https://t.me/{bot_username}?start=ref_{ADMIN_TG_ID or update.effective_user.id}"
+    from telegram import InlineKeyboardMarkup
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(btn_label, url=deep_link),
+    ]])
+    is_group = update.effective_chat and update.effective_chat.type != "private"
+    if is_group:
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+        await ctx.bot.send_message(update.effective_chat.id, text, reply_markup=keyboard)
+        return
+    await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def cmd_audit_log(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
