@@ -686,7 +686,7 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
     bio_html = f'<div class="bio">{esc(bio)}</div>' if bio else ""
 
     name = esc(u.name or "Someone")
-    button_html = '<a class="edit-btn" href="https://t.me/YourMeetBot?start=editprofile" target="_blank">Edit profile</a>' if v == target_id else ''
+    button_html = '<a class="edit-btn" href="https://t.me/Yoursmeetbot?start=editprofile" target="_blank">Edit profile</a>' if v == target_id else ''
     page = (
         _PROFILE_PAGE
         .replace("__PHOTO__", photo_html)
