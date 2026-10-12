@@ -638,10 +638,10 @@ _PROMO_POSTS = {
 
 
 async def cmd_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """/post <lang> — ready promo post in that language, @bot mention only.
+    """/post <lang> — ready promo post in that language.
 
-    Na link, na button — sirf @username mention (tap karne pe seedha bot
-    khulta hai). Anti-spam bots ke liye plain text; forward-friendly bhi.
+    Text me sirf @bot mention (link-detect safe + forward-safe) + inline
+    Start button (referral attribution admin ke account pe).
     """
     if not _is_admin(update):
         return
@@ -658,17 +658,22 @@ async def cmd_post(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"❌ Unknown language '{lang}'.\nAvailable: {langs}"
         )
         return
-    text, _btn_label = _PROMO_POSTS[lang]
+    text, btn_label = _PROMO_POSTS[lang]
     text = f"{text}\n\n▶️ @{bot_username}"
+    deep_link = f"https://t.me/{bot_username}?start=ref_{ADMIN_TG_ID or update.effective_user.id}"
+    from telegram import InlineKeyboardMarkup
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(btn_label, url=deep_link),
+    ]])
     is_group = update.effective_chat and update.effective_chat.type != "private"
     if is_group:
         try:
             await update.message.delete()
         except Exception:
             pass
-        await ctx.bot.send_message(update.effective_chat.id, text)
+        await ctx.bot.send_message(update.effective_chat.id, text, reply_markup=keyboard)
         return
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def cmd_audit_log(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
