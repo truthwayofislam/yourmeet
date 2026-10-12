@@ -1,6 +1,8 @@
 import os
 import re
+import time
 import hmac
+import base64
 import hashlib
 import json
 import httpx
@@ -335,6 +337,177 @@ async def admin_webhook(token: str, request: Request):
 @app.api_route("/ping", methods=["GET", "HEAD"])
 def ping():
     return JSONResponse({"status": "ok"})
+
+
+# ── Public web profiles (/p/<id>) ────────────────────────────────────────────
+# Bot buttons link here. Links are HMAC-signed and expire in 1 hour, so a
+# leaked URL goes stale and outsiders can't enumerate profiles by id.
+
+_PROFILE_LINK_TTL = 3600
+
+
+def profile_sig(viewer_id: int, target_id: int, exp: int) -> str:
+    secret = os.getenv("SECRET_KEY", "")
+    msg = f"{viewer_id}:{target_id}:{exp}"
+    return hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
+
+
+def make_profile_link(viewer_id: int, target_id: int) -> str:
+    """Signed, time-limited /p/ URL — also imported by bot.py for buttons."""
+    exp = int(time.time()) + _PROFILE_LINK_TTL
+    return f"{APP_URL}/p/{target_id}?v={viewer_id}&e={exp}&t={profile_sig(viewer_id, target_id, exp)}"
+
+
+_PHOTO_CACHE: dict = {}
+
+
+async def _photo_b64(file_id: str) -> str:
+    """Download a profile photo via the MAIN bot's file_id, base64 for embed."""
+    now = time.time()
+    cached = _PHOTO_CACHE.get(file_id)
+    if cached and now - cached[1] < 600:
+        return cached[0]
+    token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    if not token or not _valid_file_id(file_id):
+        return ""
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}")
+            if not (r.is_success and r.json().get("ok")):
+                return ""
+            fp = r.json()["result"]["file_path"]
+            img = await client.get(f"https://api.telegram.org/file/bot{token}/{fp}")
+            if not img.is_success:
+                return ""
+            b64 = base64.b64encode(img.content).decode()
+        if len(_PHOTO_CACHE) > 64:
+            _PHOTO_CACHE.clear()
+        _PHOTO_CACHE[file_id] = (b64, now)
+        return b64
+    except Exception:
+        return ""
+
+
+_PROFILE_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__NAME__ 💕 YourMeet</title>
+<meta property="og:title" content="__NAME__ on YourMeet 💕">
+<meta name="theme-color" content="#ff4d6d">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{min-height:100vh;background:linear-gradient(160deg,#1a0b2e,#2d1b4e 50%,#4a1942);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;padding:20px;display:flex;justify-content:center}}
+.card{{max-width:430px;width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden;margin-top:24px}}
+.photo{{width:100%;aspect-ratio:4/5;object-fit:cover;display:block;background:#241238}}
+.nophoto{{width:100%;aspect-ratio:4/5;display:flex;align-items:center;justify-content:center;font-size:80px;background:linear-gradient(160deg,#3b1d5e,#57264b)}}
+.pad{{padding:22px}}
+h1{{font-size:26px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}}
+.age{{font-weight:400;opacity:.85;font-size:20px}}
+.badges{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
+.badge{{font-size:12px;background:rgba(255,255,255,.12);border-radius:999px;padding:5px 10px}}
+.meta{{margin-top:14px;font-size:15px;color:#e8d9ff;line-height:1.7}}
+.bio{{margin-top:14px;font-size:15px;line-height:1.6;color:#f3eaff;background:rgba(0,0,0,.18);border-radius:14px;padding:14px;white-space:pre-wrap}}
+.tags{{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}}
+.tag{{font-size:13px;background:rgba(255,77,109,.2);border:1px solid rgba(255,77,109,.35);padding:6px 12px;border-radius:999px}}
+.ft{{text-align:center;font-size:12px;color:#b9a7d9;padding:14px}}
+</style>
+</head>
+<body><div class="card">
+__PHOTO__
+<div class="pad">
+<h1>__NAME__ <span class="age">__AGE__</span></h1>
+<div class="badges">__BADGES__</div>
+<div class="meta">__META__</div>
+__BIO__
+__TAGS__
+</div>
+<div class="ft">💕 YourMeet — find your match on Telegram</div>
+</div></body></html>"""
+
+
+@app.get("/p/{target_id}")
+async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
+    # Signature + expiry gate — unsigned links must never reveal profiles.
+    if not hmac.compare_digest(t, profile_sig(v, target_id, e)) or e < int(time.time()):
+        raise HTTPException(status_code=404)
+
+    from database import row_to_user, USER_COLS
+    from textsafe import esc
+    db = get_conn()
+    cols = ", ".join(USER_COLS)
+    row = db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone()
+    db.close()
+    u = row_to_user(row)
+    if not u or u.is_blocked:
+        raise HTTPException(status_code=404)
+    # Others' profiles are visible only while approved; your own always works.
+    if v != target_id and not u.is_approved:
+        raise HTTPException(status_code=404)
+
+    from datetime import datetime as _dt
+    mystery = False
+    try:
+        mu = getattr(u, "mystery_until", "") or ""
+        mystery = bool(mu) and _dt.strptime(mu, "%Y-%m-%d %H:%M:%S") > _dt.utcnow()
+    except ValueError:
+        pass
+
+    photo_html = '<div class="nophoto">🙈</div>'
+    if mystery:
+        photo_html = '<div class="nophoto">🤫</div>'
+    elif getattr(u, "photo", ""):
+        b64 = await _photo_b64(u.photo)
+        if b64:
+            photo_html = f'<img class="photo" src="data:image/jpeg;base64,{b64}" alt="profile photo">'
+
+    badges = []
+    if u.is_verified:
+        badges.append('<span class="badge">✅ Verified</span>')
+    if u.is_premium:
+        badges.append('<span class="badge">👑 Premium</span>')
+    try:
+        bu = getattr(u, "boosted_until", "") or ""
+        if bu and _dt.strptime(bu, "%Y-%m-%d %H:%M:%S") > _dt.utcnow():
+            badges.append('<span class="badge">🚀 Boosted</span>')
+    except ValueError:
+        pass
+
+    lf = {"dating": "💚 Dating", "sexting": "🔥 Fun", "relationship": "🤝 Relationship", "any": "❓ Open"}.get(
+        getattr(u, "looking_for", "") or "", ""
+    )
+    meta_parts = []
+    if getattr(u, "city", ""):
+        meta_parts.append(f"📍 {esc(u.city)}")
+    if u.gender:
+        meta_parts.append("👤 " + ("👨" if u.gender == "male" else "👩" if u.gender == "female" else esc(u.gender)))
+    if lf:
+        meta_parts.append(esc(lf) if not lf.startswith(("💚", "🔥", "🤝", "❓")) else lf)
+
+    try:
+        interests = json.loads(getattr(u, "interests", "[]") or "[]")[:8]
+    except Exception:
+        interests = []
+    tags_html = (
+        '<div class="tags">' + "".join(f'<span class="tag">#{esc(i)}</span>' for i in interests) + "</div>"
+        if interests else ""
+    )
+    bio = getattr(u, "bio", "") or ""
+    bio_html = f'<div class="bio">{esc(bio)}</div>' if bio else ""
+
+    name = esc(u.name or "Someone")
+    page = (
+        _PROFILE_PAGE
+        .replace("__PHOTO__", photo_html)
+        .replace("__NAME__", name)
+        .replace("__AGE__", str(u.age or ""))
+        .replace("__BADGES__", "".join(badges))
+        .replace("__META__", " · ".join(meta_parts))
+        .replace("__BIO__", bio_html)
+        .replace("__TAGS__", tags_html)
+    )
+    return HTMLResponse(page)
 
 
 @app.get("/terms", response_class=HTMLResponse)

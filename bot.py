@@ -212,21 +212,24 @@ def _main_keyboard():
     )
 
 
-def _browse_keyboard(target_id: int, super_left: int):
+def _browse_keyboard(target_id: int, super_left: int, profile_url: str = None):
     if super_left >= 999999:
         sl_text = "⭐ Super Like (∞)"
     elif super_left > 0:
         sl_text = f"⭐ Super Like ({super_left})"
     else:
         sl_text = "⭐ Super Like (0)"
-    return InlineKeyboardMarkup([
+    rows = [
         [
             InlineKeyboardButton("❤️ Like", callback_data=f"like:{target_id}"),
             InlineKeyboardButton("👎 Skip", callback_data=f"skip:{target_id}"),
         ],
         [InlineKeyboardButton(sl_text, callback_data=f"superlike:{target_id}")],
-        [InlineKeyboardButton("⚠️ Report", callback_data=f"report:{target_id}")],
-    ])
+    ]
+    if profile_url:
+        rows.append([InlineKeyboardButton("👤 Full Profile", url=profile_url)])
+    rows.append([InlineKeyboardButton("⚠️ Report", callback_data=f"report:{target_id}")])
+    return InlineKeyboardMarkup(rows)
 
 
 # ── /start ────────────────────────────────────────────────────────────────────
@@ -934,7 +937,15 @@ async def _send_next_profile(message, user, ctx=None):
     if profile.id in liked_me:
         caption += "\n" + s(lang, "already_likes_you")
 
-    keyboard = _browse_keyboard(profile.id, super_left)
+    # Signed, 1-hour profile web link for the card's "Full Profile" button
+    profile_url = None
+    if os.getenv("APP_URL", "").strip():
+        try:
+            from main import make_profile_link
+            profile_url = make_profile_link(user.id, profile.id)
+        except Exception as e:
+            print(f"[BROWSE] profile link failed: {e}")
+    keyboard = _browse_keyboard(profile.id, super_left, profile_url)
 
     # Mystery Mode (Premium): hide the photo while active.
     from datetime import datetime as _dt
@@ -1379,7 +1390,16 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         text += f"\n\n📅 Premium valid till: {esc(user.premium_until[:10])}"
     await _cleanup_chat(ctx, update.effective_chat.id)
     keyboard = _main_keyboard()
-    sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+    if os.getenv("APP_URL", "").strip():
+        try:
+            from main import make_profile_link
+            web = make_profile_link(user.id, user.id)
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("👤 Full Profile (Web)", url=web)]])
+            sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+    else:
+        sent = await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
     ctx.user_data["last_keyboard_msg_id"] = sent.message_id
     await _track_bot_message(ctx, sent.message_id)
 
