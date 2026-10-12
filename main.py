@@ -574,6 +574,32 @@ h1 {
 .card {
     animation:fadeInUp .4s ease-out .1s both;
 }
+
+/* Edit profile button — only visible to the profile owner */
+.edit-btn {
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    margin-top:18px;
+    padding:12px 24px;
+    border-radius:999px;
+    font-size:14px;
+    font-weight:700;
+    color:#fff;
+    background:linear-gradient(135deg, #ff4d6d, #c9184a);
+    border:none;
+    cursor:pointer;
+    text-decoration:none;
+    transition:all .25s ease;
+    box-shadow:0 6px 20px rgba(255,77,109,.4);
+    letter-spacing:.3px;
+}
+.edit-btn:hover {
+    transform:translateY(-2px) scale(1.03);
+    box-shadow:0 10px 28px rgba(255,77,109,.55);
+}
+.edit-btn:active {transform:translateY(0) scale(.98)}
+.edit-btn svg {width:16px;height:16px;fill:currentColor}
 </style>
 </head>
 <body><div class="card">
@@ -584,6 +610,7 @@ __PHOTO__
 <div class="meta">__META__</div>
 __BIO__
 __TAGS__
+__BUTTON__
 </div>
 <div class="ft">💕 YourMeet — find your match on Telegram</div>
 </div></body></html>"""
@@ -659,6 +686,7 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
     bio_html = f'<div class="bio">{esc(bio)}</div>' if bio else ""
 
     name = esc(u.name or "Someone")
+    button_html = '<a class="edit-btn" href="https://t.me/YourMeetBot?start=editprofile" target="_blank">Edit profile</a>' if v == target_id else ''
     page = (
         _PROFILE_PAGE
         .replace("__PHOTO__", photo_html)
@@ -668,6 +696,7 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
         .replace("__META__", " · ".join(meta_parts))
         .replace("__BIO__", bio_html)
         .replace("__TAGS__", tags_html)
+        .replace("__BUTTON__", button_html)
     )
     return HTMLResponse(page)
 
