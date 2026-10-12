@@ -243,6 +243,17 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ref_code = ctx.args[0]
         if ref_code.startswith("ref_"):
             ctx.user_data["pending_ref"] = ref_code[4:]
+        # web → editprofile deep link: jump straight into profile editing
+        elif ref_code == "editprofile":
+            await _cleanup_chat(ctx, update.effective_chat.id)
+            m = await update.message.reply_text(
+                "✏️ <b>Edit Profile</b>\n\nWhat would you like to change?\n\n"
+                "Send your new <b>name</b> (or type /cancel to abort):",
+                parse_mode="HTML",
+            )
+            _save_setup_data(tg_id, msg_id=m.message_id, data={"_edit_mode": True})
+            await _track_bot_message(ctx, m.message_id)
+            return SETUP_NAME
 
     user = _get_user(tg_id)
     if user:
