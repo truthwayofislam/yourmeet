@@ -397,21 +397,183 @@ _PROFILE_PAGE = """<!doctype html>
 <meta property="og:title" content="__NAME__ on YourMeet 💕">
 <meta name="theme-color" content="#ff4d6d">
 <style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{min-height:100vh;background:linear-gradient(160deg,#1a0b2e,#2d1b4e 50%,#4a1942);font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;padding:20px;display:flex;justify-content:center}}
-.card{{max-width:430px;width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden;margin-top:24px}}
-.photo{{width:100%;aspect-ratio:4/5;object-fit:cover;display:block;background:#241238}}
-.nophoto{{width:100%;aspect-ratio:4/5;display:flex;align-items:center;justify-content:center;font-size:80px;background:linear-gradient(160deg,#3b1d5e,#57264b)}}
-.pad{{padding:22px}}
-h1{{font-size:26px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}}
-.age{{font-weight:400;opacity:.85;font-size:20px}}
-.badges{{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}}
-.badge{{font-size:12px;background:rgba(255,255,255,.12);border-radius:999px;padding:5px 10px}}
-.meta{{margin-top:14px;font-size:15px;color:#e8d9ff;line-height:1.7}}
-.bio{{margin-top:14px;font-size:15px;line-height:1.6;color:#f3eaff;background:rgba(0,0,0,.18);border-radius:14px;padding:14px;white-space:pre-wrap}}
-.tags{{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}}
-.tag{{font-size:13px;background:rgba(255,77,109,.2);border:1px solid rgba(255,77,109,.35);padding:6px 12px;border-radius:999px}}
-.ft{{text-align:center;font-size:12px;color:#b9a7d9;padding:14px}}
+/* Reset + base */
+* {margin:0;padding:0;box-sizing:border-box}
+
+/* Body + center layout */
+body {
+    min-height:100vh;
+    background:linear-gradient(160deg,#1a0b2e,#2d1b4e 50%,#4a1942);
+    font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+    color:#fff;
+    padding:20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding-top:40px;
+    padding-bottom:40px;
+}
+
+/* Card with enhanced shadow and border */
+.card {
+    max-width:430px;
+    width:100%;
+    background:rgba(255,255,255,.07);
+    backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:28px;
+    overflow:hidden;
+    margin-top:24px;
+    margin-bottom:24px;
+    box-shadow:0 20px 60px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.12);
+}
+
+/* Photo area with better mystery mode */
+.photo {
+    width:100%;
+    aspect-ratio:4/5;
+    object-fit:cover;
+    display:block;
+    background:#241238;
+    transition:transform .3s ease;
+}
+.card:hover .photo {transform:scale(1.02)}
+
+.nophoto {
+    width:100%;
+    aspect-ratio:4/5;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:80px;
+    background:linear-gradient(160deg,#3b1d5e,#57264b);
+    border-bottom:1px solid rgba(255,255,255,.08);
+    position:relative;
+}
+
+/* Profile content */
+.pad {
+    padding:28px 24px;
+    position:relative;
+}
+
+/* Name + age */
+h1 {
+    font-size:26px;
+    font-weight:700;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:14px;
+}
+.age {
+    font-weight:400;
+    opacity:.85;
+    font-size:20px;
+    color:#f8bbd0;
+}
+
+/* Badges with hover effect */
+.badges {
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:18px;
+}
+.badge {
+    font-size:12px;
+    background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.25);
+    border-radius:999px;
+    padding:7px 14px;
+    color:#fff;
+    font-weight:600;
+    transition:all .2s ease;
+    cursor:default;
+}
+.badge:hover {
+    background:rgba(255,255,255,.22);
+    transform:translateY(-2px);
+}
+
+/* Meta info (city, gender, looking_for) */
+.meta {
+    margin-top:14px;
+    font-size:15px;
+    color:#e8d9ff;
+    line-height:1.7;
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px 16px;
+}
+
+/* Bio section with better styling */
+.bio {
+    margin-top:18px;
+    font-size:16px;
+    line-height:1.7;
+    color:#f3eaff;
+    background:linear-gradient(135deg, rgba(0,0,0,.28), rgba(255,255,255,.06));
+    border-radius:18px;
+    padding:18px 20px;
+    white-space:pre-wrap;
+    border:1px solid rgba(255,255,255,.12);
+    position:relative;
+    box-shadow:inset 0 2px 8px rgba(0,0,0,.3);
+}
+
+/* Tags with hover */
+.tags {
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-top:18px;
+}
+.tag {
+    font-size:13px;
+    background:linear-gradient(90deg, rgba(255,77,109,.22), rgba(255,135,180,.15));
+    border:1px solid rgba(255,77,109,.35);
+    padding:8px 16px;
+    border-radius:999px;
+    color:#ffd6df;
+    font-weight:600;
+    transition:all .2s ease;
+    cursor:pointer;
+}
+.tag:hover {
+    background:rgba(255,77,109,.35);
+    transform:translateY(-1px);
+    box-shadow:0 4px 12px rgba(255,77,109,.25);
+}
+
+/* Footer with gradient */
+.ft {
+    text-align:center;
+    font-size:12px;
+    color:#b9a7d9;
+    padding:16px 14px;
+    background:rgba(0,0,0,.35);
+    border-top:1px solid rgba(255,255,255,.12);
+    backdrop-filter:blur(8px);
+}
+
+/* Mobile optimization */
+@media (max-width:480px) {
+    body {padding:12px;}
+    .card {border-radius:24px;}
+    h1 {font-size:24px;}
+    .bio {font-size:15px; padding:16px 18px;}
+}
+
+/* Subtle animations */
+@keyframes fadeInUp {
+    from {opacity:0;transform:translateY(20px)}
+    to {opacity:1;transform:translateY(0)}
+}
+.card {
+    animation:fadeInUp .4s ease-out .1s both;
+}
 </style>
 </head>
 <body><div class="card">
