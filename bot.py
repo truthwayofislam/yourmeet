@@ -243,17 +243,23 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         ref_code = ctx.args[0]
         if ref_code.startswith("ref_"):
             ctx.user_data["pending_ref"] = ref_code[4:]
-        # web → editprofile deep link: jump straight into profile editing
+        # web → editprofile deep link: jump straight into profile editing —
+        # ONLY for an existing, terms-accepted user. Without this gate the
+        # web "Edit profile" button would bypass the Terms flow entirely.
         elif ref_code == "editprofile":
-            await _cleanup_chat(ctx, update.effective_chat.id)
-            m = await update.message.reply_text(
-                "✏️ <b>Edit Profile</b>\n\nWhat would you like to change?\n\n"
-                "Send your new <b>name</b> (or type /cancel to abort):",
-                parse_mode="HTML",
-            )
-            _save_setup_data(tg_id, msg_id=m.message_id, data={"_edit_mode": True})
-            await _track_bot_message(ctx, m.message_id)
-            return SETUP_NAME
+            _u = _get_user(tg_id)
+            if _u and getattr(_u, "terms_accepted", 0):
+                await _cleanup_chat(ctx, update.effective_chat.id)
+                m = await update.message.reply_text(
+                    "✏️ <b>Edit Profile</b>\n\nWhat would you like to change?\n\n"
+                    "Send your new <b>name</b> (or type /cancel to abort):",
+                    parse_mode="HTML",
+                )
+                _save_setup_data(tg_id, msg_id=m.message_id, data={"_edit_mode": True})
+                await _track_bot_message(ctx, m.message_id)
+                return SETUP_NAME
+            # No account / terms not accepted → fall through to the normal
+            # /start flow (terms gate + signup) instead of leaking into edit.
 
     user = _get_user(tg_id)
     if user:

@@ -686,7 +686,14 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
     bio_html = f'<div class="bio">{esc(bio)}</div>' if bio else ""
 
     name = esc(u.name or "Someone")
-    button_html = '<a class="edit-btn" href="https://t.me/Yoursmeetbot?start=editprofile" target="_blank">Edit profile</a>' if v == target_id else ''
+    # Edit-profile deep link — bot username from env, never hardcoded (it
+    # changes if the bot is ever renamed/migrated).
+    _bu = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+    edit_href = f"https://t.me/{_bu}?start=editprofile" if _bu else ""
+    button_html = (
+        f'<a class="edit-btn" href="{edit_href}" target="_blank">Edit profile</a>'
+        if (v == target_id and edit_href) else ""
+    )
     page = (
         _PROFILE_PAGE
         .replace("__PHOTO__", photo_html)
