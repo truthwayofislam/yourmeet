@@ -396,6 +396,7 @@ _PROFILE_PAGE = """<!doctype html>
 <title>__NAME__ 💕 YourMeet</title>
 <meta property="og:title" content="__NAME__ on YourMeet 💕">
 <meta name="theme-color" content="#ff4d6d">
+<link rel="icon" href="/favicon.ico">
 <style>
 /* Reset + base */
 * {margin:0;padding:0;box-sizing:border-box}
@@ -706,6 +707,21 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
         .replace("__BUTTON__", button_html)
     )
     return HTMLResponse(page)
+
+
+_FAVICON = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+    '<text y="82" x="50" font-size="82" text-anchor="middle">💕</text></svg>'
+)
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return Response(
+        content=_FAVICON,
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/terms", response_class=HTMLResponse)

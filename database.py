@@ -106,57 +106,72 @@ class _ConnWrapper:
         payload = {
             "requests": [{"type": "execute", "stmt": {"sql": sql, "args": args}}]
         }
-        try:
-            loop = None
+        # Transient Turso/network timeouts are common on reads; retrying
+        # SELECTs is safe (idempotent). Writes are NEVER retried — a retried
+        # INSERT could double-apply since Turso auto-commits each request.
+        is_read = sql.strip().upper().startswith("SELECT")
+        attempts = 3 if is_read else 1
+        last_http_err = None
+        for attempt in range(attempts):
             try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                pass
-            if loop and loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(
-                        httpx.post,
+                loop = None
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    pass
+                if loop and loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(
+                            httpx.post,
+                            _build_url(),
+                            json=payload,
+                            headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
+                            timeout=20,
+                        )
+                    resp = future.result(timeout=25)
+                else:
+                    resp = httpx.post(
                         _build_url(),
                         json=payload,
                         headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                        timeout=15,
+                        timeout=20,
                     )
-                    resp = future.result(timeout=20)
-            else:
-                resp = httpx.post(
-                    _build_url(),
-                    json=payload,
-                    headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                    timeout=15,
-                )
-            resp.raise_for_status()
-            data = resp.json()
-            result = data["results"][0]
-            if result.get("type") == "error":
-                err_detail = result.get('error', {})
-                err_msg = err_detail.get('message', '') if isinstance(err_detail, dict) else str(err_detail)
-                if 'duplicate column' in err_msg:
-                    raise DuplicateError(err_msg)
-                if 'unique' in err_msg.lower() or 'constraint' in err_msg.lower():
-                    raise DuplicateError(err_msg)
-                print(f"[DB] Turso query error: {err_detail}")
+                resp.raise_for_status()
+                data = resp.json()
+                result = data["results"][0]
+                if result.get("type") == "error":
+                    err_detail = result.get('error', {})
+                    err_msg = err_detail.get('message', '') if isinstance(err_detail, dict) else str(err_detail)
+                    if 'duplicate column' in err_msg:
+                        raise DuplicateError(err_msg)
+                    if 'unique' in err_msg.lower() or 'constraint' in err_msg.lower():
+                        raise DuplicateError(err_msg)
+                    print(f"[DB] Turso query error: {err_detail}")
+                    raise ValueError("Database error. Please try again.")
+                res = result.get("response", {}).get("result", {})
+                cols = [c["name"] for c in res.get("cols", [])]
+                raw_rows = res.get("rows", [])
+                rows = [[_from_turso_val(v) for v in row] for row in raw_rows]
+                rowid = res.get("last_insert_rowid")
+                if rowid:
+                    self._last_insert_rowid = int(rowid)
+                return _TursoResult(rows, self._last_insert_rowid)
+            except httpx.TimeoutException as e:
+                last_http_err = e
+                if attempt < attempts - 1:
+                    import time as _time
+                    _time.sleep(1.5 * (attempt + 1))  # 1.5s, 3s backoff
+                    continue
+                print(f"[DB] Turso timeout (read) after {attempts} attempts: {e}")
                 raise ValueError("Database error. Please try again.")
-            res = result.get("response", {}).get("result", {})
-            cols = [c["name"] for c in res.get("cols", [])]
-            raw_rows = res.get("rows", [])
-            rows = [[_from_turso_val(v) for v in row] for row in raw_rows]
-            rowid = res.get("last_insert_rowid")
-            if rowid:
-                self._last_insert_rowid = int(rowid)
-            return _TursoResult(rows, self._last_insert_rowid)
-        except httpx.HTTPError as e:
-            try:
-                err_body = resp.text[:500]
-            except Exception:
-                err_body = 'unknown'
-            print(f"[DB] Turso error: {e} | body: {err_body}")
-            raise ValueError("Database error. Please try again.")
+            except httpx.HTTPError as e:
+                try:
+                    err_body = resp.text[:500]
+                except Exception:
+                    err_body = 'unknown'
+                print(f"[DB] Turso error: {e} | body: {err_body}")
+                raise ValueError("Database error. Please try again.")
 
     def commit(self):
         # Turso HTTP API is auto-commit — no-op
