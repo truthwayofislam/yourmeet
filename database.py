@@ -106,13 +106,16 @@ class _ConnWrapper:
         payload = {
             "requests": [{"type": "execute", "stmt": {"sql": sql, "args": args}}]
         }
-        # Transient Turso/network timeouts are common on reads; retrying
-        # SELECTs is safe (idempotent). Writes are NEVER retried — a retried
-        # INSERT could double-apply since Turso auto-commits each request.
+        # Transient Turso/network failures are common on shared hosting:
+        #   - httpx.TimeoutException  : request MAY have reached Turso → retry
+        #     reads only (a retried write could double-apply on auto-commit).
+        #   - httpx.ConnectError (DNS/conn refused) : request NEVER reached
+        #     Turso → retrying is safe even for writes.
+        # Other HTTP errors (auth, bad request) are not transient → no retry.
         is_read = sql.strip().upper().startswith("SELECT")
-        attempts = 3 if is_read else 1
-        last_http_err = None
-        for attempt in range(attempts):
+        attempt = 0
+        while True:
+            attempt += 1
             try:
                 loop = None
                 try:
@@ -157,14 +160,19 @@ class _ConnWrapper:
                 if rowid:
                     self._last_insert_rowid = int(rowid)
                 return _TursoResult(rows, self._last_insert_rowid)
+            except httpx.ConnectError as e:
+                # DNS/resolution blips ("Temporary failure in name resolution").
+                if attempt >= 3:
+                    print(f"[DB] Turso connection failed after {attempt} attempts: {e}")
+                    raise ValueError("Database error. Please try again.")
+                import time as _time
+                _time.sleep(1.5 * attempt)
             except httpx.TimeoutException as e:
-                last_http_err = e
-                if attempt < attempts - 1:
-                    import time as _time
-                    _time.sleep(1.5 * (attempt + 1))  # 1.5s, 3s backoff
-                    continue
-                print(f"[DB] Turso timeout (read) after {attempts} attempts: {e}")
-                raise ValueError("Database error. Please try again.")
+                if not is_read or attempt >= 3:
+                    print(f"[DB] Turso timeout after {attempt} attempt(s) (read={is_read}): {e}")
+                    raise ValueError("Database error. Please try again.")
+                import time as _time
+                _time.sleep(1.5 * attempt)
             except httpx.HTTPError as e:
                 try:
                     err_body = resp.text[:500]
