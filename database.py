@@ -1,9 +1,46 @@
 import os
+import time
 import asyncio
 import httpx
 
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
+
+# ── DNS last-known-good cache (Botkeep's shared containers sometimes lose
+# DNS entirely — "[Errno -3] Temporary failure in name resolution"). The
+# Turso IP is extremely stable, so once resolved we keep it and fall back
+# to the last-known-good address whenever resolution dies.
+import socket as _socket
+from urllib.parse import urlparse as _urlparse
+
+_TURSO_HOST = _urlparse(TURSO_URL.replace("libsql://", "https://")).hostname if TURSO_URL else None
+_dns_success: dict = {}   # host -> (result, timestamp)
+_dns_lastgood: dict = {}  # host -> result
+_orig_getaddrinfo = _socket.getaddrinfo
+
+
+def _turso_dns_getaddrinfo(host, *args, **kwargs):
+    if host != _TURSO_HOST:
+        return _orig_getaddrinfo(host, *args, **kwargs)
+    now = time.time()
+    fresh = _dns_success.get(host)
+    if fresh and now - fresh[1] < 300:   # healthy path: reuse for 5 minutes
+        return fresh[0]
+    try:
+        res = _orig_getaddrinfo(host, *args, **kwargs)
+        _dns_success[host] = (res, now)
+        _dns_lastgood[host] = res
+        return res
+    except _socket.gaierror:
+        last = _dns_lastgood.get(host)
+        if last is not None:
+            print(f"[DB] DNS resolve failed for {host} — using last-known-good IP")
+            return last
+        raise
+
+
+if _TURSO_HOST:
+    _socket.getaddrinfo = _turso_dns_getaddrinfo
 
 
 def _build_url():
