@@ -2,9 +2,15 @@ import os
 import time
 import asyncio
 import concurrent.futures as _cf
+from contextlib import nullcontext
 import httpx
 
 _FUTURE_TIMEOUT = _cf.TimeoutError
+_HTTP_EXECUTOR = _cf.ThreadPoolExecutor(max_workers=8, thread_name_prefix="turso-http")
+_HTTP_CLIENT = httpx.Client(
+    timeout=httpx.Timeout(12.0, connect=5.0),
+    limits=httpx.Limits(max_connections=16, max_keepalive_connections=8),
+)
 
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
@@ -151,14 +157,15 @@ class _ConnWrapper:
         #     retry-safe for reads AND writes.
         #   - httpx.ConnectTimeout (TCP/TLS handshake timed out) : connection
         #     never established → request never delivered → retry-safe for
-        #     writes too (unlike ReadTimeout where delivery is ambiguous).
-        #   - other httpx.TimeoutException : request MAY have reached Turso →
-        #     retry reads only (a retried write could double-apply).
+        #     writes too.
+        #   - ambiguous transport failures (timeouts, dropped responses) →
+        #     retry reads only; a retried write could double-apply.
         # Other HTTP errors (auth, bad request) are not transient → no retry.
         is_read = sql.strip().upper().startswith("SELECT")
         attempt = 0
         while True:
             attempt += 1
+            resp = None
             try:
                 loop = None
                 try:
@@ -166,22 +173,21 @@ class _ConnWrapper:
                 except RuntimeError:
                     pass
                 if loop and loop.is_running():
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    with nullcontext(_HTTP_EXECUTOR) as pool:
                         future = pool.submit(
-                            httpx.post,
+                            _HTTP_CLIENT.post,
                             _build_url(),
                             json=payload,
                             headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                            timeout=httpx.Timeout(20.0, connect=15.0),
+                            timeout=httpx.Timeout(12.0, connect=5.0),
                         )
-                    resp = future.result(timeout=28)
+                    resp = future.result(timeout=15)
                 else:
-                    resp = httpx.post(
+                    resp = _HTTP_CLIENT.post(
                         _build_url(),
                         json=payload,
                         headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                        timeout=httpx.Timeout(20.0, connect=15.0),
+                        timeout=httpx.Timeout(12.0, connect=5.0),
                     )
                 resp.raise_for_status()
                 data = resp.json()
@@ -208,7 +214,7 @@ class _ConnWrapper:
                 if attempt >= 3:
                     print(f"[DB] Turso connection failed after {attempt} attempts: {e}")
                     raise ValueError("Database error. Please try again.")
-                time.sleep(1.5 * attempt)
+                time.sleep(0.5 * attempt)
             except httpx.ConnectTimeout as e:
                 # TLS/TCP handshake never completed — the request was never
                 # delivered, so retrying is safe even for writes (unlike
@@ -216,22 +222,44 @@ class _ConnWrapper:
                 if attempt >= 3:
                     print(f"[DB] Turso TLS/connect timeout after {attempt} attempts: {e}")
                     raise ValueError("Database error. Please try again.")
-                time.sleep(1.5 * attempt)
+                time.sleep(0.5 * attempt)
             except httpx.TimeoutException as e:
                 if not is_read or attempt >= 3:
                     print(f"[DB] Turso timeout after {attempt} attempt(s) (read={is_read}): {e}")
                     raise ValueError("Database error. Please try again.")
-                time.sleep(1.5 * attempt)
+                time.sleep(0.5 * attempt)
+            except httpx.RemoteProtocolError as e:
+                if not is_read or attempt >= 3:
+                    print(
+                        f"[DB] Turso connection dropped after {attempt} attempt(s) "
+                        f"(read={is_read}; write outcome may be unknown): {e}"
+                    )
+                    raise ValueError("Database error. Please try again.") from e
+                print(f"[DB] Turso dropped read response; retrying ({attempt}/3): {e}")
+                time.sleep(0.5 * attempt)
+            except httpx.HTTPStatusError as e:
+                if is_read and e.response.status_code >= 500 and attempt < 3:
+                    print(
+                        f"[DB] Turso returned HTTP {e.response.status_code} "
+                        f"for read; retrying ({attempt}/3)"
+                    )
+                    time.sleep(0.5 * attempt)
+                    continue
+                print(f"[DB] Turso HTTP error: {e} | body: {e.response.text[:500]}")
+                raise ValueError("Database error. Please try again.") from e
             except _FUTURE_TIMEOUT as e:
                 # The worker thread hung past its guard — treat as transient,
                 # but never spin forever: single retry only.
                 if attempt >= 2:
                     print(f"[DB] Turso worker exceeded guard timeout twice: {e}")
                     raise ValueError("Database error. Please try again.")
-                time.sleep(1.5)
+                if not is_read:
+                    print(f"[DB] Turso worker timed out during write; outcome may be unknown: {e}")
+                    raise ValueError("Database error. Please try again.") from e
+                time.sleep(0.5)
             except httpx.HTTPError as e:
                 try:
-                    err_body = resp.text[:500]
+                    err_body = resp.text[:500] if resp is not None else "unknown"
                 except Exception:
                     err_body = 'unknown'
                 print(f"[DB] Turso error: {e} | body: {err_body}")

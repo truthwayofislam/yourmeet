@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import asyncio
 import hmac
 import base64
 import hashlib
@@ -625,10 +626,8 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
 
     from database import row_to_user, USER_COLS
     from textsafe import esc
-    db = get_conn()
     cols = ", ".join(USER_COLS)
-    row = db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone()
-    db.close()
+    row = await asyncio.to_thread(_fetch_profile_row, cols, target_id)
     u = row_to_user(row)
     if not u or u.is_blocked:
         raise HTTPException(status_code=404)
@@ -707,6 +706,14 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
         .replace("__BUTTON__", button_html)
     )
     return HTMLResponse(page)
+
+
+def _fetch_profile_row(cols: str, target_id: int):
+    db = get_conn()
+    try:
+        return db.execute(f"SELECT {cols} FROM users WHERE id=?", (target_id,)).fetchone()
+    finally:
+        db.close()
 
 
 _FAVICON = (
