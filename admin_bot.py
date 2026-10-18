@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import asyncio
 import threading
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -60,6 +61,12 @@ async def admin_error_handler(update, context):
         return
     if isinstance(err, RetryAfter):
         print(f"[ADMIN BOT] Rate limited, retry after {err.retry_after}s")
+        return
+    if isinstance(err, ValueError) and str(err).startswith("Database error."):
+        print(f"[ADMIN BOT] Database temporarily unavailable: {err}")
+        message = update.effective_message if update else None
+        if message:
+            await message.reply_text("Database temporarily unavailable. Please try again shortly.")
         return
     import traceback
     print(f"[ADMIN BOT] Unhandled error: {traceback.format_exc()}")
@@ -277,18 +284,29 @@ async def cmd_reports(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 
+def _load_stats():
+    db = _get_db()
+    try:
+        return db.execute(
+            """SELECT
+                   (SELECT COUNT(*) FROM users),
+                   (SELECT COUNT(*) FROM users WHERE is_approved=1),
+                   (SELECT COUNT(*) FROM users WHERE is_approved=0 AND is_rejected=0
+                       AND is_blocked=0 AND photo IS NOT NULL AND photo!=''
+                       AND age IS NOT NULL AND gender IS NOT NULL),
+                   (SELECT COUNT(*) FROM users WHERE is_premium=1),
+                   (SELECT COUNT(*) FROM matches),
+                   (SELECT COUNT(*) FROM likes),
+                   (SELECT COUNT(*) FROM chat_sessions WHERE is_active=1)"""
+        ).fetchone()
+    finally:
+        db.close()
+
+
 async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
-    db = _get_db()
-    total = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    approved = db.execute("SELECT COUNT(*) FROM users WHERE is_approved=1").fetchone()[0]
-    pending = db.execute("SELECT COUNT(*) FROM users WHERE is_approved=0 AND is_rejected=0 AND is_blocked=0 AND (photo IS NOT NULL AND photo!='') AND age IS NOT NULL AND gender IS NOT NULL").fetchone()[0]
-    premium = db.execute("SELECT COUNT(*) FROM users WHERE is_premium=1").fetchone()[0]
-    matches = db.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
-    likes = db.execute("SELECT COUNT(*) FROM likes").fetchone()[0]
-    active_chats = db.execute("SELECT COUNT(*) FROM chat_sessions WHERE is_active=1").fetchone()[0]
-    db.close()
+    total, approved, pending, premium, matches, likes, active_chats = await asyncio.to_thread(_load_stats)
     text = (
         f"📊 <b>App Stats</b>\n\n"
         f"👥 Total users: {total}\n"
