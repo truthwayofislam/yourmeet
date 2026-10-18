@@ -1,7 +1,10 @@
 import os
 import time
 import asyncio
+import concurrent.futures as _cf
 import httpx
+
+_FUTURE_TIMEOUT = _cf.TimeoutError
 
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
 TURSO_TOKEN = os.getenv("TURSO_DATABASE_KEY", "")
@@ -144,10 +147,13 @@ class _ConnWrapper:
             "requests": [{"type": "execute", "stmt": {"sql": sql, "args": args}}]
         }
         # Transient Turso/network failures are common on shared hosting:
-        #   - httpx.TimeoutException  : request MAY have reached Turso → retry
-        #     reads only (a retried write could double-apply on auto-commit).
-        #   - httpx.ConnectError (DNS/conn refused) : request NEVER reached
-        #     Turso → retrying is safe even for writes.
+        #   - httpx.ConnectError (DNS refused/lost) : request NEVER sent →
+        #     retry-safe for reads AND writes.
+        #   - httpx.ConnectTimeout (TCP/TLS handshake timed out) : connection
+        #     never established → request never delivered → retry-safe for
+        #     writes too (unlike ReadTimeout where delivery is ambiguous).
+        #   - other httpx.TimeoutException : request MAY have reached Turso →
+        #     retry reads only (a retried write could double-apply).
         # Other HTTP errors (auth, bad request) are not transient → no retry.
         is_read = sql.strip().upper().startswith("SELECT")
         attempt = 0
@@ -167,15 +173,15 @@ class _ConnWrapper:
                             _build_url(),
                             json=payload,
                             headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                            timeout=20,
+                            timeout=httpx.Timeout(20.0, connect=15.0),
                         )
-                    resp = future.result(timeout=25)
+                    resp = future.result(timeout=28)
                 else:
                     resp = httpx.post(
                         _build_url(),
                         json=payload,
                         headers={"Authorization": f"Bearer {TURSO_TOKEN}"},
-                        timeout=20,
+                        timeout=httpx.Timeout(20.0, connect=15.0),
                     )
                 resp.raise_for_status()
                 data = resp.json()
@@ -202,14 +208,27 @@ class _ConnWrapper:
                 if attempt >= 3:
                     print(f"[DB] Turso connection failed after {attempt} attempts: {e}")
                     raise ValueError("Database error. Please try again.")
-                import time as _time
-                _time.sleep(1.5 * attempt)
+                time.sleep(1.5 * attempt)
+            except httpx.ConnectTimeout as e:
+                # TLS/TCP handshake never completed — the request was never
+                # delivered, so retrying is safe even for writes (unlike
+                # ReadTimeout where Turso may already have applied it).
+                if attempt >= 3:
+                    print(f"[DB] Turso TLS/connect timeout after {attempt} attempts: {e}")
+                    raise ValueError("Database error. Please try again.")
+                time.sleep(1.5 * attempt)
             except httpx.TimeoutException as e:
                 if not is_read or attempt >= 3:
                     print(f"[DB] Turso timeout after {attempt} attempt(s) (read={is_read}): {e}")
                     raise ValueError("Database error. Please try again.")
-                import time as _time
-                _time.sleep(1.5 * attempt)
+                time.sleep(1.5 * attempt)
+            except _FUTURE_TIMEOUT as e:
+                # The worker thread hung past its guard — treat as transient,
+                # but never spin forever: single retry only.
+                if attempt >= 2:
+                    print(f"[DB] Turso worker exceeded guard timeout twice: {e}")
+                    raise ValueError("Database error. Please try again.")
+                time.sleep(1.5)
             except httpx.HTTPError as e:
                 try:
                     err_body = resp.text[:500]
