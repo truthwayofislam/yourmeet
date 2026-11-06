@@ -31,12 +31,13 @@ def _parse_dt(value) -> datetime | None:
 # ── Vibe Check ────────────────────────────────────────────────────────────────
 
 async def _fetch_question_from_ai() -> dict:
-    """Ask AI to generate a short fun either/or question."""
+    """Ask AI to generate a short marriage-compatibility question."""
     if not GROQ_API_KEY:
         return {"question": "Night owl or early bird?", "option_a": "🦉 Night owl", "option_b": "🐦 Early bird"}
     prompt = (
-        "Generate 1 fun, short either/or question for a dating app vibe check. "
-        "Keep it light and interesting. Return ONLY valid JSON like this: "
+        "Generate 1 short, respectful either/or question for Muslims considering marriage. "
+        "Focus on values, family life, or everyday compatibility. Avoid flirtation, intimacy, and dating language. "
+        "Return ONLY valid JSON like this: "
         '{"question": "...", "option_a": "emoji + short text", "option_b": "emoji + short text"} '
         "No explanation. Just JSON."
     )

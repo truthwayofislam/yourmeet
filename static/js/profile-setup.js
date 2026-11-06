@@ -9,6 +9,9 @@
   const result = document.getElementById("submission-result");
   const steps = Array.from(document.querySelectorAll(".form-step"));
   const stepTitles = ["About you", "Faith and family", "Your introduction"];
+  const genderInput = form.elements.gender;
+  const interestedInInput = form.elements.interested_in;
+  const matchPreference = document.getElementById("match-preference");
   const photoInput = form.elements.photo;
   const submitButton = document.getElementById("submit-profile");
   let stepIndex = 0;
@@ -30,21 +33,33 @@
     }
   }
 
+  function updateMatchPreference() {
+    if (genderInput.value === "male") {
+      interestedInInput.value = "female";
+      matchPreference.textContent = "You will be shown profiles of women seeking marriage.";
+    } else if (genderInput.value === "female") {
+      interestedInInput.value = "male";
+      matchPreference.textContent = "You will be shown profiles of men seeking marriage.";
+    } else {
+      interestedInInput.value = "";
+      matchPreference.textContent = "Choose your gender to see how matches are selected.";
+    }
+  }
+
   function applyAccount(account) {
     const profile = account.profile;
     const status = account.status;
     setField("name", profile.name);
     setField("age", profile.age);
     setField("gender", profile.gender);
-    setField("interested_in", profile.interested_in);
     setField("city", profile.city);
     setField("bio", profile.bio);
-    setField("social_handle", profile.social_handle);
     setField("marital_intent", profile.marital_intent);
     setField("deeni_level", profile.deeni_level);
     setField("sect", profile.sect);
     setField("family_values", profile.family_values);
     form.elements.guardian_consented.checked = profile.guardian_consented;
+    updateMatchPreference();
     form.elements.terms_accepted.checked = status.terms_accepted;
     hasPhoto = profile.has_photo;
     photoInput.required = !hasPhoto;
@@ -132,6 +147,7 @@
   document.querySelectorAll("[data-back]").forEach((button) => {
     button.addEventListener("click", () => showStep(Math.max(stepIndex - 1, 0)));
   });
+  genderInput.addEventListener("change", updateMatchPreference);
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();

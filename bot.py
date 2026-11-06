@@ -17,9 +17,10 @@ APP_URL = os.getenv("APP_URL", "")
 
 # Conversation states
 (
-    SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_INTERESTED_IN,
-    SETUP_CITY, SETUP_BIO, SETUP_SOCIAL, SETUP_LOOKING_FOR, SETUP_PHOTO,
-) = range(9)
+    SETUP_NAME, SETUP_AGE, SETUP_GENDER, SETUP_CITY, SETUP_BIO,
+    SETUP_MARITAL_INTENT, SETUP_DEENI_LEVEL, SETUP_SECT,
+    SETUP_FAMILY_VALUES, SETUP_GUARDIAN, SETUP_PHOTO,
+) = range(11)
 
 
 class PrivateCallbackQueryHandler(CallbackQueryHandler):
@@ -61,11 +62,13 @@ def build_bot() -> Application:
             SETUP_NAME:          [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_name)],
             SETUP_AGE:           [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_age)],
             SETUP_GENDER:        [PrivateCallbackQueryHandler(setup_gender, pattern=r"^sg:")],
-            SETUP_INTERESTED_IN: [PrivateCallbackQueryHandler(setup_interested_in, pattern=r"^si:")],
             SETUP_CITY:          [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_city)],
             SETUP_BIO:           [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_bio)],
-            SETUP_SOCIAL:        [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_social)],
-            SETUP_LOOKING_FOR:   [PrivateCallbackQueryHandler(setup_looking_for, pattern=r"^lf:")],
+            SETUP_MARITAL_INTENT: [PrivateCallbackQueryHandler(setup_marital_intent, pattern=r"^mi:")],
+            SETUP_DEENI_LEVEL:   [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_deeni_level)],
+            SETUP_SECT:          [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_sect)],
+            SETUP_FAMILY_VALUES: [MessageHandler(filters.TEXT & ~filters.COMMAND & PRIV, setup_family_values)],
+            SETUP_GUARDIAN:      [PrivateCallbackQueryHandler(setup_guardian, pattern=r"^guardian:")],
             SETUP_PHOTO:         [
                 MessageHandler(filters.PHOTO & PRIV, setup_photo),
                 # Text at the photo step must NOT fall through to chat routing
@@ -509,26 +512,13 @@ async def setup_gender(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     tg_id = str(update.effective_user.id)
     gender = query.data.split(":")[1]
+    if gender not in {"male", "female"}:
+        await query.edit_message_text("Please choose Male or Female.")
+        return SETUP_GENDER
     s = await _get_setup_data(tg_id)
     d = s["data"]
     d["gender"] = gender
-    _save_setup_data(tg_id, data=d)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Men", callback_data="si:male"),
-         InlineKeyboardButton("Women", callback_data="si:female"),
-         InlineKeyboardButton("Both", callback_data="si:both")]
-    ])
-    await query.edit_message_text("Who are you interested in?", reply_markup=keyboard)
-    return SETUP_INTERESTED_IN
-
-
-async def setup_interested_in(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    tg_id = str(update.effective_user.id)
-    s = await _get_setup_data(tg_id)
-    d = s["data"]
-    d["interested_in"] = query.data.split(":")[1]
+    d["interested_in"] = "female" if gender == "male" else "male"
     _save_setup_data(tg_id, data=d)
     await query.edit_message_text("Which city are you in?")
     return SETUP_CITY
@@ -551,7 +541,8 @@ async def setup_city(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     _save_setup_data(tg_id, data=d)
     await _edit_setup_msg(
         ctx, chat_id, tg_id,
-        "Write a short <b>bio</b> (min 10 chars):\n\n<i>Example: Love hiking, coffee addict</i>",
+        "Write a short <b>introduction</b> (min 10 chars):\n\n"
+        "<i>Example: I value faith, family and a peaceful home.</i>",
         parse_mode="HTML"
     )
     return SETUP_BIO
@@ -572,55 +563,132 @@ async def setup_bio(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     d = s["data"]
     d["bio"] = bio
     _save_setup_data(tg_id, data=d)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Serious marriage", callback_data="mi:serious_marriage")],
+        [InlineKeyboardButton("Building a family", callback_data="mi:family_building")],
+        [InlineKeyboardButton("Getting to know with marriage in mind", callback_data="mi:mutual_consideration")],
+        [InlineKeyboardButton("Open to guidance", callback_data="mi:open_to_guidance")],
+    ])
     await _edit_setup_msg(
         ctx, chat_id, tg_id,
-        "Your <b>Instagram or social handle</b>? (e.g. @username)\n\n"
-        "<i>Shared only after matching.</i>",
-        parse_mode="HTML"
+        "What is your <b>marriage intention</b>?",
+        parse_mode="HTML",
+        reply_markup=keyboard,
     )
-    return SETUP_SOCIAL
+    return SETUP_MARITAL_INTENT
 
 
-async def setup_social(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+async def setup_marital_intent(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    intent = query.data.split(":", 1)[1]
+    allowed = {
+        "serious_marriage", "family_building",
+        "mutual_consideration", "open_to_guidance",
+    }
+    if intent not in allowed:
+        await query.edit_message_text("Please choose a valid marriage intention.")
+        return SETUP_MARITAL_INTENT
     tg_id = str(update.effective_user.id)
-    chat_id = update.effective_chat.id
+    s = await _get_setup_data(tg_id)
+    d = s["data"]
+    d["marital_intent"] = intent
+    _save_setup_data(tg_id, data=d)
+    await _edit_setup_msg(
+        ctx, update.effective_chat.id, tg_id,
+        "How would you describe your <b>religious practice</b>? (Optional; send - to skip.)",
+        parse_mode="HTML",
+    )
+    return SETUP_DEENI_LEVEL
+
+
+async def setup_deeni_level(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
     try:
         await update.message.delete()
     except Exception:
         pass
-    social = update.message.text.strip()[:100]
+    value = update.message.text.strip()
     s = await _get_setup_data(tg_id)
     d = s["data"]
-    d["social_handle"] = social
-    _save_setup_data(tg_id, data=d)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💚 Dating", callback_data="lf:dating"),
-         InlineKeyboardButton("🔥 Sexting", callback_data="lf:sexting")],
-        [InlineKeyboardButton("🤝 Relationship", callback_data="lf:relationship"),
-         InlineKeyboardButton("❓ Any / Open", callback_data="lf:any")],
-    ])
-    await _edit_setup_msg(
-        ctx, chat_id, tg_id,
-        "What are you <b>looking for</b>?",
-        parse_mode="HTML",
-        reply_markup=keyboard,
-    )
-    return SETUP_LOOKING_FOR
-
-
-async def setup_looking_for(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """What kind of relationship are you looking for? (inline buttons)."""
-    query = update.callback_query
-    await query.answer()
-    tg_id = str(update.effective_user.id)
-    s = await _get_setup_data(tg_id)
-    d = s["data"]
-    d["looking_for"] = query.data.split(":")[1]
+    d["deeni_level"] = "" if value == "-" else value[:100]
     _save_setup_data(tg_id, data=d)
     await _edit_setup_msg(
         ctx, update.effective_chat.id, tg_id,
-        "Almost done! Send your best <b>profile photo</b>\n\n"
-        "<i>Make sure your face is clearly visible.</i>",
+        "Is there a <b>school of thought</b> you would like to share? (Optional; send - to skip.)",
+        parse_mode="HTML",
+    )
+    return SETUP_SECT
+
+
+async def setup_sect(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    value = update.message.text.strip()
+    s = await _get_setup_data(tg_id)
+    d = s["data"]
+    d["sect"] = "" if value == "-" else value[:100]
+    _save_setup_data(tg_id, data=d)
+    await _edit_setup_msg(
+        ctx, update.effective_chat.id, tg_id,
+        "What <b>family values</b> are important to you? (Optional; send - to skip.)",
+        parse_mode="HTML",
+    )
+    return SETUP_FAMILY_VALUES
+
+
+async def setup_family_values(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    tg_id = str(update.effective_user.id)
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+    value = update.message.text.strip()
+    s = await _get_setup_data(tg_id)
+    d = s["data"]
+    d["family_values"] = "" if value == "-" else value[:200]
+    _save_setup_data(tg_id, data=d)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Yes, they are aware", callback_data="guardian:yes")],
+        [InlineKeyboardButton("Not yet", callback_data="guardian:no")],
+    ])
+    await _edit_setup_msg(
+        ctx, update.effective_chat.id, tg_id,
+        "Is your <b>wali or family</b> aware of your intention to seek marriage?",
+        parse_mode="HTML",
+        reply_markup=keyboard,
+    )
+    return SETUP_GUARDIAN
+
+
+async def setup_guardian(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    answer = query.data.split(":", 1)[1]
+    if answer not in {"yes", "no"}:
+        await query.edit_message_text("Please choose one of the options.")
+        return SETUP_GUARDIAN
+    tg_id = str(update.effective_user.id)
+    s = await _get_setup_data(tg_id)
+    d = s["data"]
+    d["guardian_consented"] = int(answer == "yes")
+    _save_setup_data(tg_id, data=d)
+    if answer == "no":
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Yes, they are aware", callback_data="guardian:yes")],
+            [InlineKeyboardButton("Not yet", callback_data="guardian:no")],
+        ])
+        await query.edit_message_text(
+            "Please speak with your wali or family first. Once they are aware, choose Yes to continue.",
+            reply_markup=keyboard,
+        )
+        return SETUP_GUARDIAN
+    await _edit_setup_msg(
+        ctx, update.effective_chat.id, tg_id,
+        "Almost done! Send a suitable <b>profile photo</b> to finish your profile.",
         parse_mode="HTML",
     )
     return SETUP_PHOTO
@@ -669,11 +737,14 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     name = d.get("name", update.effective_user.first_name or "User")
     age = d.get("age")
     gender = d.get("gender")
-    interested_in = d.get("interested_in", "both")
+    interested_in = "female" if gender == "male" else "male"
     city = d.get("city", "")
     bio = d.get("bio", "")
-    social = d.get("social_handle", "")
-    looking_for = d.get("looking_for", "any")
+    marital_intent = d.get("marital_intent", "serious_marriage")
+    deeni_level = d.get("deeni_level", "")
+    sect = d.get("sect", "")
+    family_values = d.get("family_values", "")
+    guardian_consented = int(bool(d.get("guardian_consented", 0)))
 
     if not age or not gender:
         sent = await ctx.bot.send_message(chat_id, "Something went wrong. Please use /start to begin again.")
@@ -714,28 +785,35 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if edit_mode and not resubmit:
             db.execute(
                 """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-                   lat=?, lng=?, social_handle=?, photo=?, photo_admin=?, photos=?, looking_for=?,
-                   terms_accepted=1 WHERE id=?""",
+                   lat=?, lng=?, photo=?, photo_admin=?, photos=?,
+                   looking_for='serious_marriage', marital_intent=?, deeni_level=?, sect=?,
+                   family_values=?, guardian_consented=?, terms_accepted=1 WHERE id=?""",
                 (name, age, gender, interested_in, bio, city,
-                 lat, lng, social, file_id, admin_file_id, photos_json, looking_for, existing.id),
+                 lat, lng, file_id, admin_file_id, photos_json, marital_intent,
+                 deeni_level, sect, family_values, guardian_consented, existing.id),
             )
         else:
             db.execute(
                 """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?,
-                   lat=?, lng=?, social_handle=?, photo=?, photo_admin=?, photos=?, looking_for=?,
-                   is_approved=0, is_rejected=0, terms_accepted=1 WHERE id=?""",
+                   lat=?, lng=?, photo=?, photo_admin=?, photos=?,
+                   looking_for='serious_marriage', marital_intent=?, deeni_level=?, sect=?,
+                   family_values=?, guardian_consented=?, is_approved=0, is_rejected=0,
+                   terms_accepted=1 WHERE id=?""",
                 (name, age, gender, interested_in, bio, city,
-                 lat, lng, social, file_id, admin_file_id, photos_json, looking_for, existing.id),
+                 lat, lng, file_id, admin_file_id, photos_json, marital_intent,
+                 deeni_level, sect, family_values, guardian_consented, existing.id),
             )
         user_id = existing.id
     else:
         db.execute(
             """INSERT INTO users
                (name, age, gender, interested_in, bio, city, lat, lng,
-                social_handle, photo, photo_admin, photos, telegram_id, looking_for, is_approved, terms_accepted)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)""",
+                photo, photo_admin, photos, telegram_id, looking_for, marital_intent,
+                deeni_level, sect, family_values, guardian_consented, is_approved, terms_accepted)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'serious_marriage',?,?,?,?,?,0,1)""",
             (name, age, gender, interested_in, bio, city,
-             lat, lng, social, file_id, admin_file_id, photos_json, tg_id, looking_for),
+             lat, lng, file_id, admin_file_id, photos_json, tg_id, marital_intent,
+             deeni_level, sect, family_values, guardian_consented),
         )
         row = db.execute("SELECT id FROM users WHERE telegram_id=?", (tg_id,)).fetchone()
         user_id = row[0]
@@ -848,13 +926,10 @@ async def _send_next_profile(message, user, ctx=None):
     excluded = list(set(liked + skipped + blocked + blocked_me + [user.id]))
     placeholders = ",".join("?" * len(excluded))
 
-    interested_in = getattr(user, "interested_in", "both") or "both"
-    if interested_in == "both":
-        gender_sql = "gender IN ('male','female')"
-        gender_params = ()
-    else:
-        gender_sql = "gender=?"
-        gender_params = (interested_in,)
+    user_gender = getattr(user, "gender", "")
+    interested_in = "female" if user_gender == "male" else "male" if user_gender == "female" else ""
+    gender_sql = "gender=?" if interested_in else "1=0"
+    gender_params = (interested_in,) if interested_in else ()
 
     min_age = getattr(user, "min_age", 0) or 0
     max_age = getattr(user, "max_age", 0) or 0
@@ -939,15 +1014,27 @@ async def _send_next_profile(message, user, ctx=None):
         interests = []
 
     caption = (
-        f"<b>{esc(profile.name)}, {profile.age}</b> 📍 {esc(profile.city) or '-'}\n\n"
-        f"{esc(profile.bio or '')}\n"
+        f"<b>{esc(profile.name)}, {profile.age}</b> 📍 {esc((profile.city or '')[:60]) or '-'}\n\n"
+        f"{esc((profile.bio or '')[:220])}\n"
     )
-    lf = getattr(profile, "looking_for", "any") or "any"
-    lf_label = {"dating": "💚 Dating", "sexting": "🔥 Sexting",
-                "relationship": "🤝 Relationship", "any": "❓ Any"}.get(lf, lf)
-    caption += f"\n🎯 Looking for: {lf_label}"
+    marital_intent = getattr(profile, "marital_intent", "serious_marriage") or "serious_marriage"
+    intent_label = {
+        "serious_marriage": "Serious marriage",
+        "family_building": "Building a family",
+        "mutual_consideration": "Getting to know with marriage in mind",
+        "open_to_guidance": "Open to guidance",
+    }.get(marital_intent, "Serious marriage")
+    caption += f"\n🎯 Marriage intention: {intent_label}"
+    for label, field, max_length in (
+        ("Religious practice", "deeni_level", 60),
+        ("School of thought", "sect", 50),
+        ("Family values", "family_values", 120),
+    ):
+        value = (getattr(profile, field, "") or "").strip()[:max_length]
+        if value:
+            caption += f"\n{label}: {esc(value)}"
     if interests:
-        caption += f"\n🏷 {' · '.join(esc(i) for i in interests[:5])}"
+        caption += f"\n🏷 {' · '.join(esc(str(i)[:30]) for i in interests[:3])}"
     if profile.is_verified:
         caption += "\n✅ Verified"
     if profile.id in liked_me:
@@ -1021,7 +1108,7 @@ async def cb_like(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if target:
             mlang = getattr(user, "language", "en") or "en"
             sent = await query.message.reply_text(
-                s(mlang, "its_a_match", name=esc(target.name)) + _match_extra_text(user, target),
+                s(mlang, "its_a_match", name=esc(target.name)),
                 parse_mode="HTML"
             )
             await _track_bot_message(ctx, sent.message_id)
@@ -1220,19 +1307,6 @@ async def cb_next(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _send_next_profile(query.message, user, ctx)
 
 
-def _match_extra_text(recipient, other) -> str:
-    """Premium recipients get their match's social handle.
-
-    The setup flow promises users their handle is 'Shared only after
-    matching' and premium_info advertises 'Contact details on match' —
-    but the bot never actually sent it (only a dead HTTP endpoint did).
-    """
-    handle = (getattr(other, "social_handle", "") or "").strip()
-    if recipient.is_premium and handle:
-        return f"\n\n📞 <b>{esc(other.name)}'s social:</b> {esc(handle)}"
-    return ""
-
-
 async def _do_like(user, target_id: int, is_super: bool) -> bool:
     from database import get_conn, row_to_user, USER_COLS, DuplicateError
     db = get_conn()
@@ -1365,7 +1439,7 @@ async def _do_like(user, target_id: int, is_super: bool) -> bool:
             print(f"[LIKE] notify failed: {e}")
         return True
 
-    # One-sided like — notify the target (contact details hidden for free users).
+    # One-sided like — the notification reveals more profile details to Premium users.
     if liked_new and target and target.telegram_id and not target_blocked_liker:
         try:
             from main import bot_app
@@ -1395,13 +1469,27 @@ async def cmd_profile(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     premium = "✅" if user.is_premium else "❌"
     status = "Approved ✅" if user.is_approved else ("Rejected ❌" if user.is_rejected else "Pending ⏳")
-    looking_for = getattr(user, "looking_for", "any") or "any"
-    lf_label = {"dating": "💚 Dating", "sexting": "🔥 Sexting",
-                "relationship": "🤝 Relationship", "any": "❓ Any"}.get(looking_for, looking_for)
+    marital_intent = getattr(user, "marital_intent", "serious_marriage") or "serious_marriage"
+    intent_label = {
+        "serious_marriage": "Serious marriage",
+        "family_building": "Building a family",
+        "mutual_consideration": "Getting to know with marriage in mind",
+        "open_to_guidance": "Open to guidance",
+    }.get(marital_intent, "Serious marriage")
     text = s(lang, "your_profile", name=esc(user.name), age=user.age,
              gender=user.gender or "-", city=esc(user.city) or "-",
-             looking_for=lf_label,
+             looking_for=intent_label,
              premium=premium, status=status)
+    for label, field in (
+        ("Religious practice", "deeni_level"),
+        ("School of thought", "sect"),
+        ("Family values", "family_values"),
+    ):
+        value = (getattr(user, field, "") or "").strip()
+        if value:
+            text += f"\n{label}: {esc(value)}"
+    if getattr(user, "guardian_consented", 0):
+        text += "\nWali/family aware: Yes"
     if user.is_premium and getattr(user, "premium_until", ""):
         text += f"\n\n📅 Premium valid till: {esc(user.premium_until[:10])}"
     await _cleanup_chat(ctx, update.effective_chat.id)
@@ -2272,12 +2360,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # ── Notify helpers ────────────────────────────────────────────────────────────
 
 async def notify_like(bot, target, liker, premium: bool, is_super: bool = False):
-    """Notify a user that someone liked them.
-
-    Free users see name/bio/city but contact details (photo, social handle)
-    stay hidden. Premium users see everything. Super likes are clearly
-    marked — the whole point of a super like is that the recipient knows.
-    """
+    """Notify users about likes while honoring the Premium visibility rules."""
     if not target.telegram_id:
         return
     lang = (target.language or "en") or "en"
@@ -2331,7 +2414,7 @@ async def notify_match(bot, user, matched_with):
     if not user.telegram_id:
         return
     lang = user.language or "en"
-    text = s(lang, "match_notify", name=esc(matched_with.name)) + _match_extra_text(user, matched_with)
+    text = s(lang, "match_notify", name=esc(matched_with.name))
     try:
         await bot.send_message(
             chat_id=user.telegram_id,

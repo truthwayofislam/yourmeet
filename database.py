@@ -287,7 +287,7 @@ def init_db():
             name TEXT NOT NULL,
             age INTEGER,
             gender TEXT,
-            interested_in TEXT DEFAULT 'both',
+            interested_in TEXT DEFAULT '',
             bio TEXT DEFAULT '',
             city TEXT DEFAULT '',
             lat REAL DEFAULT 0,
@@ -513,6 +513,28 @@ def init_db():
             conn.execute(alter)
         except Exception:
             pass  # column already exists
+
+    try:
+        conn.execute(
+            """UPDATE users
+               SET interested_in=CASE WHEN gender='male' THEN 'female' ELSE 'male' END,
+                   looking_for='serious_marriage'
+               WHERE gender IN ('male','female')
+                 AND (interested_in IS NULL
+                      OR interested_in != CASE WHEN gender='male' THEN 'female' ELSE 'male' END
+                      OR looking_for IS NULL
+                      OR looking_for != 'serious_marriage')"""
+        )
+        conn.execute(
+            """UPDATE users
+               SET interested_in='', looking_for='serious_marriage'
+               WHERE (gender NOT IN ('male','female') OR gender IS NULL)
+                 AND (interested_in IS NULL OR interested_in!=''
+                      OR looking_for IS NULL OR looking_for!='serious_marriage')"""
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[DB] marriage-profile migration failed: {e}")
 
     # Backfill: old vibe answer rows had no date — stamp them from created_at
     # so same-day comparisons work after the date column is introduced.

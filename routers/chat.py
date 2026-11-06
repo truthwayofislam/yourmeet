@@ -84,9 +84,8 @@ async def chat_history(match_id: int, db=Depends(get_db), current_user=Depends(g
             return JSONResponse({"error": "match_not_found"}, status_code=404)
 
         other_id = match[1] if match[0] == current_user.id else match[0]
-        other = db.execute("SELECT name, telegram_id, social_handle FROM users WHERE id=?", (other_id,)).fetchone()
+        other = db.execute("SELECT name, telegram_id FROM users WHERE id=?", (other_id,)).fetchone()
         other_name = other[0] if other else "Unknown"
-        other_social = other[2] if other else ""
 
         # Get all sessions for this match
         sessions = db.execute(
@@ -97,7 +96,7 @@ async def chat_history(match_id: int, db=Depends(get_db), current_user=Depends(g
         ).fetchall()
 
         if not sessions:
-            return JSONResponse({"messages": [], "other_name": other_name, "other_social": other_social})
+            return JSONResponse({"messages": [], "other_name": other_name})
 
         session_ids = [s[0] for s in sessions]
         placeholders = ",".join("?" * len(session_ids))
@@ -120,7 +119,7 @@ async def chat_history(match_id: int, db=Depends(get_db), current_user=Depends(g
                 "time": (created_at or "")[:16].replace("T", " "),
             })
 
-        return JSONResponse({"messages": result, "other_name": other_name, "other_social": other_social})
+        return JSONResponse({"messages": result, "other_name": other_name})
     except Exception as e:
         print(f"[CHAT HISTORY] error: {e}")
         return JSONResponse({"messages": [], "other_name": ""})

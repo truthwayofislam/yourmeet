@@ -83,15 +83,11 @@
                   <option value="male">Male</option>
                 </select>
               </label>
-              <label class="form-field">
-                <span>Interested in</span>
-                <select name="interested_in" required>
-                  <option value="">Choose one</option>
-                  <option value="female">Women</option>
-                  <option value="male">Men</option>
-                  <option value="both">Both</option>
-                </select>
-              </label>
+              <input name="interested_in" type="hidden" value="" />
+              <div class="form-field">
+                <span>Marriage matches</span>
+                <p id="match-preference" class="form-help">Choose your gender to see how matches are selected.</p>
+              </div>
               <label class="form-field form-field-wide">
                 <span>City and country</span>
                 <input name="city" autocomplete="address-level2" minlength="2" maxlength="100" placeholder="For example, New Delhi, India" required />
@@ -129,8 +125,8 @@
                 <textarea name="family_values" rows="3" maxlength="200"></textarea>
               </label>
               <label class="form-check form-field-wide">
-                <input name="guardian_consented" type="checkbox" value="true" />
-                <span>My wali or family is aware of my intention to seek marriage.</span>
+                <input name="guardian_consented" type="checkbox" value="true" required />
+                <span>My wali or family is aware of my intention to seek marriage. Required before submission.</span>
               </label>
             </div>
             <div class="form-actions">
@@ -147,11 +143,6 @@
                 <span>About you</span>
                 <textarea name="bio" rows="5" minlength="10" maxlength="300" required></textarea>
                 <small>10–300 characters. Say a little about your values, interests, and hopes for married life.</small>
-              </label>
-              <label class="form-field form-field-wide">
-                <span>Social handle <small>(optional)</small></span>
-                <input name="social_handle" maxlength="100" />
-                <small>Only share a handle you are comfortable disclosing according to the platform's matching rules.</small>
               </label>
               <label class="form-field form-field-wide">
                 <span>Profile photo</span>

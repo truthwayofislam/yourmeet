@@ -118,17 +118,29 @@ async def _send_pending_profile(bot, chat_id: str, user):
     interests = []
     try:
         interests = json.loads(user.interests or "[]") or []
+        interests = [str(item)[:30] for item in interests[:3]]
     except (ValueError, TypeError):
         interests = []
+    intent_labels = {
+        "serious_marriage": "Serious marriage",
+        "family_building": "Building a family",
+        "mutual_consideration": "Getting to know with marriage in mind",
+        "open_to_guidance": "Open to guidance",
+    }
+    marital_intent = getattr(user, "marital_intent", "serious_marriage") or "serious_marriage"
     text = (
         f"\U0001f464 <b>Pending Profile #{user.id}</b>\n\n"
         f"Nickname: {esc(user.name)}\n"
         f"Age: {user.age}\n"
         f"Gender: {esc(user.gender)}\n"
-        f"City: {esc(user.city) or '-'}\n"
-        f"Bio: {esc(user.bio) or '-'}\n"
+        f"City: {esc((user.city or '')[:60]) or '-'}\n"
+        f"Marriage intention: {esc(intent_labels.get(marital_intent, 'Serious marriage'))}\n"
+        f"Religious practice: {esc((getattr(user, 'deeni_level', '') or '-')[:60])}\n"
+        f"School of thought: {esc((getattr(user, 'sect', '') or '-')[:60])}\n"
+        f"Family values: {esc((getattr(user, 'family_values', '') or '-')[:100])}\n"
+        f"Wali/family aware: {'Yes' if getattr(user, 'guardian_consented', 0) else 'No'}\n"
+        f"Bio: {esc((user.bio or '')[:200]) or '-'}\n"
         f"Interests: {', '.join(esc(i) for i in interests) or '-'}\n"
-        f"Social: {esc(user.social_handle) or '-'}\n"
         f"Language: {user.language or 'en'}\n"
         f"Referrals: {getattr(user, 'referral_count', 0) or 0}\n"
         f"Joined: {(user.created_at or '')[:10]}"

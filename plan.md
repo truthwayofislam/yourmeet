@@ -1,7 +1,7 @@
-# YourMeet — Complete Plan (Updated)
+# Sakinah — Complete Plan (Updated)
 
 ## Overview
-Full redesign of YourMeet dating app with multilingual support and streamlined bot flow.
+Marriage-focused Muslim matchmaking platform with multilingual support, Telegram onboarding, and a shared web profile.
 
 ---
 
@@ -173,7 +173,7 @@ CREATE TABLE users (
     name TEXT NOT NULL,
     age INTEGER,
     gender TEXT,
-    interested_in TEXT DEFAULT 'both',
+    interested_in TEXT DEFAULT '', -- Derived from gender: male/female only
     bio TEXT DEFAULT '',
     city TEXT DEFAULT '',
     lat REAL DEFAULT 0,
@@ -181,7 +181,7 @@ CREATE TABLE users (
     photo TEXT DEFAULT '',
     photos TEXT DEFAULT '[]',
     interests TEXT DEFAULT '[]',
-    social_handle TEXT DEFAULT '',
+    social_handle TEXT DEFAULT '', -- Legacy field; no longer collected or shared
     telegram_id TEXT UNIQUE,
     language TEXT DEFAULT 'en',
     is_premium INTEGER DEFAULT 0,
@@ -197,6 +197,11 @@ CREATE TABLE users (
     boosted_until TEXT DEFAULT '',
     referral_count INTEGER DEFAULT 0,
     mystery_until TEXT DEFAULT '',
+    marital_intent TEXT DEFAULT 'serious_marriage',
+    deeni_level TEXT DEFAULT '',
+    sect TEXT DEFAULT '',
+    family_values TEXT DEFAULT '',
+    guardian_consented INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
 

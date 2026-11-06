@@ -96,13 +96,10 @@ def _get_feed(db, user, limit=10):
         blocked_me = [r[0] for r in db.execute("SELECT blocker_id FROM user_blocks WHERE blocked_id=?", (user.id,)).fetchall()]
         excluded = list(set(liked + skipped + blocked + blocked_me + [user.id]))
         placeholders = ",".join("?" * len(excluded))
-        interested_in = getattr(user, "interested_in", "both") or "both"
-        if interested_in == "both":
-            gender_sql = "gender IN ('male','female')"
-            gender_params = ()
-        else:
-            gender_sql = "gender=?"
-            gender_params = (interested_in,)
+        user_gender = getattr(user, "gender", "")
+        interested_in = "female" if user_gender == "male" else "male" if user_gender == "female" else ""
+        gender_sql = "gender=?" if interested_in else "1=0"
+        gender_params = (interested_in,) if interested_in else ()
 
         # Optional user filters
         min_age = getattr(user, "min_age", 0) or 0
@@ -240,11 +237,14 @@ async def view_profile(user_id: int, request: Request, db=Depends(get_db), curre
     db.commit()
     return JSONResponse({
         "id": u.id, "name": u.name, "age": u.age, "gender": u.gender,
-        "interested_in": getattr(u, "interested_in", "both"),
+        "interested_in": "female" if u.gender == "male" else "male" if u.gender == "female" else "",
         "bio": getattr(u, "bio", ""), "city": getattr(u, "city", ""),
         "photos": json.loads(getattr(u, "photos", "[]") or "[]"),
         "interests": json.loads(getattr(u, "interests", "[]") or "[]"),
-        "social_handle": getattr(u, "social_handle", ""),
+        "marital_intent": getattr(u, "marital_intent", "serious_marriage") or "serious_marriage",
+        "deeni_level": getattr(u, "deeni_level", "") or "",
+        "sect": getattr(u, "sect", "") or "",
+        "family_values": getattr(u, "family_values", "") or "",
         "profile_views": getattr(u, "profile_views", 0),
         "is_verified": u.is_verified, "is_premium": u.is_premium,
     })
@@ -263,7 +263,6 @@ async def submit_web_profile(
     deeni_level: str = Form(""),
     sect: str = Form(""),
     family_values: str = Form(""),
-    social_handle: str = Form(""),
     guardian_consented: bool = Form(False),
     terms_accepted: bool = Form(...),
     photo: UploadFile | None = File(None),
@@ -281,7 +280,6 @@ async def submit_web_profile(
     deeni_level = deeni_level.strip()
     sect = sect.strip()
     family_values = family_values.strip()
-    social_handle = social_handle.strip()
 
     errors = {}
     if not 2 <= len(name) <= 50:
@@ -290,8 +288,9 @@ async def submit_web_profile(
         errors["age"] = "Age must be between 18 and 80."
     if gender not in {"male", "female"}:
         errors["gender"] = "Choose a valid gender."
-    if interested_in not in {"male", "female", "both"}:
-        errors["interested_in"] = "Choose who you are interested in."
+    expected_interest = "female" if gender == "male" else "male" if gender == "female" else ""
+    if expected_interest and interested_in != expected_interest:
+        errors["interested_in"] = "Marriage matches are limited to the opposite gender."
     if not 2 <= len(city) <= 100:
         errors["city"] = "Enter a city and country between 2 and 100 characters."
     if not 10 <= len(bio) <= 300:
@@ -302,8 +301,8 @@ async def submit_web_profile(
         errors["marital_intent"] = "Choose a valid marriage intention."
     if len(deeni_level) > 100 or len(sect) > 100 or len(family_values) > 200:
         errors["values"] = "Faith and family details are too long."
-    if len(social_handle) > 100:
-        errors["social_handle"] = "Social handle must be 100 characters or fewer."
+    if not guardian_consented:
+        errors["guardian_consented"] = "Your wali or family must be aware before submitting your profile."
     if not terms_accepted:
         errors["terms_accepted"] = "Accept the terms and privacy policy to continue."
     if errors:
@@ -369,12 +368,12 @@ async def submit_web_profile(
     approved = 0 if current_user.is_rejected else int(bool(current_user.is_approved))
     db.execute(
         """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?, lat=?, lng=?,
-           social_handle=?, photo=?, photo_admin=?, photos=?, looking_for=?,
+           photo=?, photo_admin=?, photos=?, looking_for='serious_marriage',
            marital_intent=?, deeni_level=?, sect=?, family_values=?, guardian_consented=?,
            terms_accepted=1, is_approved=?, is_rejected=0 WHERE id=?""",
         (
-            name, age, gender, interested_in, bio, city, lat, lng, social_handle,
-            photo_id, saved_photo_admin_id, photos_json, "serious_marriage",
+            name, age, gender, expected_interest, bio, city, lat, lng,
+            photo_id, saved_photo_admin_id, photos_json,
             marital_intent, deeni_level, sect, family_values, int(guardian_consented),
             approved, current_user.id,
         ),
