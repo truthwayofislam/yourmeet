@@ -30,6 +30,7 @@ def build_admin_bot() -> Application:
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("reports", cmd_reports))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
+    app.add_handler(CommandHandler("stopbroadcast", cmd_stop_broadcast))
     app.add_handler(CommandHandler("remind", cmd_remind))
     app.add_handler(CommandHandler("remind_blocked", cmd_remind_blocked))
     app.add_handler(CommandHandler("find", cmd_find))
@@ -308,25 +309,187 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args:
         await update.message.reply_text("Usage: /broadcast <message>")
         return
+    if not _admin_rate_limit(update, limit=1, window=300):
+        await update.message.reply_text("A broadcast was started recently. Wait five minutes before starting another.")
+        return
     msg = " ".join(ctx.args)
+    update_id = str(update.update_id)
+    admin_id = str(update.effective_user.id)
     db = _get_db()
-    tg_ids = [r[0] for r in db.execute("SELECT telegram_id FROM users WHERE telegram_id IS NOT NULL AND is_blocked=0 AND is_approved=1").fetchall()]
-    db.close()
+    try:
+        recent = db.execute(
+            """SELECT update_id FROM broadcast_runs
+               WHERE admin_id=? AND status IN ('running','completed','cancelled','failed')
+               AND created_at >= datetime('now', '-5 minutes')
+               ORDER BY created_at DESC LIMIT 1""",
+            (admin_id,),
+        ).fetchone()
+        if recent:
+            await update.message.reply_text("A broadcast was started recently. Wait five minutes before starting another.")
+            return
+        try:
+            db.execute(
+                "INSERT INTO broadcast_runs (update_id, admin_id) VALUES (?,?)",
+                (update_id, admin_id),
+            )
+        except Exception as exc:
+            from database import DuplicateError
+            if isinstance(exc, DuplicateError):
+                await update.message.reply_text("This broadcast command is already being processed.")
+                return
+            raise
+        try:
+            db.execute("INSERT INTO broadcast_active (id, update_id) VALUES (1,?)", (update_id,))
+        except Exception as exc:
+            from database import DuplicateError
+            if not isinstance(exc, DuplicateError):
+                raise
+            db.execute(
+                "UPDATE broadcast_runs SET status='blocked', completed_at=datetime('now') WHERE update_id=?",
+                (update_id,),
+            )
+            db.commit()
+            await update.message.reply_text("Another broadcast is already running. Use /stopbroadcast to stop it.")
+            return
+        db.commit()
+        tg_ids = [
+            r[0] for r in db.execute(
+                """SELECT DISTINCT telegram_id FROM users
+                   WHERE telegram_id IS NOT NULL AND telegram_id!=''
+                   AND is_blocked=0 AND is_approved=1"""
+            ).fetchall()
+        ]
+    finally:
+        db.close()
+
     if not tg_ids:
+        db = _get_db()
+        db.execute(
+            "UPDATE broadcast_runs SET status='completed', completed_at=datetime('now') WHERE update_id=?",
+            (update_id,),
+        )
+        db.execute("DELETE FROM broadcast_active WHERE update_id=?", (update_id,))
+        db.commit()
+        db.close()
         await update.message.reply_text("No approved users to broadcast to.")
         return
-    sent, failed = 0, 0
+
+    sent = failed = 0
     import asyncio
-    for tg_id in tg_ids:
-        try:
-            if await _send_remind(tg_id, msg, parse_mode=None):
+    from telegram import Bot
+    bot_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    if not bot_token:
+        await _finish_broadcast(update_id, "failed", sent, failed)
+        await update.message.reply_text("Broadcast stopped: the main bot token is not configured.")
+        return
+    bot = Bot(token=bot_token)
+    try:
+        await bot.initialize()
+        for tg_id in tg_ids:
+            db = _get_db()
+            try:
+                status = db.execute(
+                    "SELECT status FROM broadcast_runs WHERE update_id=?",
+                    (update_id,),
+                ).fetchone()
+                if not status or status[0] != "running":
+                    break
+                try:
+                    db.execute(
+                        "INSERT INTO broadcast_deliveries (update_id, telegram_id, status) VALUES (?,?,'sending')",
+                        (update_id, tg_id),
+                    )
+                except Exception as exc:
+                    from database import DuplicateError
+                    if isinstance(exc, DuplicateError):
+                        continue
+                    raise
+                db.commit()
+            finally:
+                db.close()
+
+            try:
+                await bot.send_message(chat_id=tg_id, text=msg)
                 sent += 1
-            else:
+                outcome = "sent"
+            except Exception as exc:
                 failed += 1
+                outcome = "failed"
+                print(f"[ADMIN BOT] broadcast send failed for {tg_id}: {exc}")
+
+            db = _get_db()
+            try:
+                db.execute(
+                    "UPDATE broadcast_deliveries SET status=? WHERE update_id=? AND telegram_id=?",
+                    (outcome, update_id, tg_id),
+                )
+                db.execute(
+                    "UPDATE broadcast_runs SET sent=?, failed=? WHERE update_id=?",
+                    (sent, failed, update_id),
+                )
+                db.commit()
+            finally:
+                db.close()
             await asyncio.sleep(0.05)
-        except Exception:
-            failed += 1
-    await update.message.reply_text(f"✅ Sent: {sent} | ❌ Failed: {failed}")
+    except Exception as exc:
+        print(f"[ADMIN BOT] broadcast failed: {exc}")
+        await _finish_broadcast(update_id, "failed", sent, failed)
+        await update.message.reply_text(f"Broadcast stopped after an error. Sent: {sent} | Failed: {failed}")
+        return
+    finally:
+        try:
+            await bot.shutdown()
+        except Exception as exc:
+            print(f"[ADMIN BOT] broadcast bot shutdown failed: {exc}")
+
+    db = _get_db()
+    try:
+        status = db.execute(
+            "SELECT status FROM broadcast_runs WHERE update_id=?",
+            (update_id,),
+        ).fetchone()
+        final_status = "cancelled" if status and status[0] == "cancelled" else "completed"
+    finally:
+        db.close()
+    await _finish_broadcast(update_id, final_status, sent, failed)
+    label = "Stopped" if final_status == "cancelled" else "Finished"
+    await update.message.reply_text(f"{label}. Sent: {sent} | Failed: {failed}")
+
+
+async def _finish_broadcast(update_id: str, status: str, sent: int, failed: int):
+    db = _get_db()
+    try:
+        db.execute(
+            """UPDATE broadcast_runs SET status=?, sent=?, failed=?, completed_at=datetime('now')
+               WHERE update_id=?""",
+            (status, sent, failed, update_id),
+        )
+        db.execute("DELETE FROM broadcast_active WHERE update_id=?", (update_id,))
+        db.commit()
+    finally:
+        db.close()
+
+
+async def cmd_stop_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not _is_admin(update):
+        return
+    db = _get_db()
+    try:
+        active = db.execute("SELECT update_id FROM broadcast_active WHERE id=1").fetchone()
+        if not active:
+            await update.message.reply_text("There is no active broadcast.")
+            return
+        update_id = active[0]
+        db.execute(
+            """UPDATE broadcast_runs SET status='cancelled', completed_at=datetime('now')
+               WHERE update_id=? AND status='running'""",
+            (update_id,),
+        )
+        db.execute("DELETE FROM broadcast_active WHERE id=1")
+        db.commit()
+    finally:
+        db.close()
+    await update.message.reply_text("Broadcast stop requested. A message already in progress may still be delivered.")
 
 
 async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -835,7 +998,7 @@ async def _send_remind(tg_id: str, text: str, parse_mode: str = "HTML") -> bool:
 async def send_for_review(user_id: int, name: str, age: int, gender: str, city: str, photo: str):
     """Called from setup router when new profile is submitted."""
     if not ADMIN_TG_ID or not ADMIN_BOT_TOKEN:
-        return
+        return False
     if photo and not _valid_file_id(photo):
         photo = ""
     text = (
@@ -853,12 +1016,14 @@ async def send_for_review(user_id: int, name: str, age: int, gender: str, city: 
                     caption=text, parse_mode="HTML",
                     reply_markup=keyboard,
                 )
-                return
+                return True
             except Exception as e:
                 print(f"[ADMIN BOT] send_for_review photo failed: {e}")
         await bot.send_message(
             chat_id=ADMIN_TG_ID, text=text, parse_mode="HTML",
             reply_markup=keyboard
         )
+        return True
     except Exception as e:
         print(f"[ADMIN BOT] send_for_review failed: {e}")
+        return False

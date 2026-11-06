@@ -9,4 +9,7 @@ static/img/
 *.jpg
 *.jpeg
 *.png
+!static/img/
+!static/img/sakinah-symbol.svg
+!static/img/profile-example.jpg
 .kilo/

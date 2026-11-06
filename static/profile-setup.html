@@ -3,71 +3,175 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Profile Setup</title>
-    <meta name="description" content="See how Sakinah encourages thoughtful profile creation grounded in values, intention, and respectful communication." />
+    <title>Create a Sakinah Profile</title>
+    <meta name="description" content="Create or update your Sakinah marriage-minded profile through the same account used by the Telegram bot." />
     <link rel="stylesheet" href="/static/css/site.css" />
+    <script src="/static/js/profile-setup.js" defer></script>
   </head>
   <body>
     <header class="site-header">
       <div class="container nav-shell">
         <a class="brand" href="/">
-          <span class="brand-mark">S</span>
+          <img class="brand-mark" src="/static/img/sakinah-symbol.svg" alt="" />
           <span>Sakinah</span>
         </a>
         <nav class="site-nav" aria-label="Main navigation">
           <a href="/">Home</a>
           <a href="/about">About</a>
           <a href="/how-it-works">How it works</a>
-          <a href="/profile-setup">Profile setup</a>
+          <a href="/profile-setup" aria-current="page">Profile setup</a>
           <a href="/privacy">Privacy</a>
           <a href="/terms">Terms</a>
         </nav>
-        <a class="button button-primary" href="__BOT_LINK__">Join on Telegram</a>
+        <a class="button button-primary" href="__BOT_LINK__">Open Telegram</a>
       </div>
     </header>
 
     <main class="content-page">
-      <div class="container content-shell">
-        <p class="eyebrow">Profile setup</p>
-        <h1>Profile quality matters more than a flashy first impression.</h1>
-        <p class="lede">
-          Users are encouraged to create profiles that reflect substance rather than superficiality. The goal is to help
-          people get clear, honest, and reassuring information from the very beginning.
-        </p>
+      <div class="container content-shell profile-setup-shell">
+        <section class="setup-intro">
+          <p class="eyebrow">Create your profile</p>
+          <h1>A considered introduction, in your own words.</h1>
+          <p class="lede">
+            Sign in with Telegram to use the same Sakinah account and profile as the bot. Your profile remains private
+            until it has passed the existing review process.
+          </p>
+        </section>
 
-        <div class="value-grid">
-          <article class="value-card">
-            <h3>Intent</h3>
+        <section id="login-panel" class="info-card login-panel" aria-labelledby="login-heading">
+          <div>
+            <h2 id="login-heading">Continue with Telegram</h2>
             <p>
-              Members describe whether they are looking for serious marriage, family building, or a respectful path toward
-              long-term commitment.
+              Telegram verifies your account. We do not create a separate web account, so changes here and in the bot
+              stay attached to the same profile.
             </p>
-          </article>
-          <article class="value-card">
-            <h3>Faith and values</h3>
-            <p>
-              Religious background, practice, family values, and community positioning help paint a more complete picture
-              for genuine compatibility.
-            </p>
-          </article>
-          <article class="value-card">
-            <h3>Personal clarity</h3>
-            <p>
-              A thoughtful bio, honest aspirations, and a respectful summary of personality provide much greater value than
-              generic or exaggerated profile copy.
-            </p>
-          </article>
-        </div>
+          </div>
+          <div id="telegram-widget" data-bot-username="__BOT_USERNAME__"></div>
+          <p id="telegram-unavailable" class="form-help" hidden>
+            Telegram sign-in is not configured yet. Please use the Sakinah bot while the site is being configured.
+          </p>
+          <p id="login-error" class="form-message form-message-error" role="alert" hidden></p>
+        </section>
 
-        <div class="info-card" style="margin-top: 24px;">
-          <h3>What the profile is designed to highlight</h3>
-          <ul class="info-list">
-            <li>Clear intent and realistic expectations.</li>
-            <li>Respect for family, faith, and healthy boundaries.</li>
-            <li>Honesty in lifestyle, goals, and compatibility.</li>
-            <li>An experience built for meaningful connection rather than velocity.</li>
-          </ul>
-        </div>
+        <form id="profile-form" class="info-card profile-form" hidden>
+          <div id="account-status" class="form-message" role="status" hidden></div>
+          <div class="form-progress" aria-label="Profile setup progress">
+            <div class="progress-label">
+              <span id="step-label">Step 1 of 3</span>
+              <span id="step-title">About you</span>
+            </div>
+            <div class="progress-track"><span id="progress-value"></span></div>
+          </div>
+
+          <fieldset class="form-step" data-step="0">
+            <legend>About you</legend>
+            <p class="step-description">Start with the details people need to understand who you are.</p>
+            <div class="form-grid">
+              <label class="form-field">
+                <span>Name</span>
+                <input name="name" autocomplete="name" minlength="2" maxlength="50" required />
+              </label>
+              <label class="form-field">
+                <span>Age</span>
+                <input name="age" type="number" min="18" max="80" inputmode="numeric" required />
+              </label>
+              <label class="form-field">
+                <span>Gender</span>
+                <select name="gender" required>
+                  <option value="">Choose one</option>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                </select>
+              </label>
+              <label class="form-field">
+                <span>Interested in</span>
+                <select name="interested_in" required>
+                  <option value="">Choose one</option>
+                  <option value="female">Women</option>
+                  <option value="male">Men</option>
+                  <option value="both">Both</option>
+                </select>
+              </label>
+              <label class="form-field form-field-wide">
+                <span>City and country</span>
+                <input name="city" autocomplete="address-level2" minlength="2" maxlength="100" placeholder="For example, New Delhi, India" required />
+                <small>Include the country so your location is clear to members worldwide.</small>
+              </label>
+            </div>
+            <div class="form-actions form-actions-end">
+              <button class="button button-primary" type="button" data-next>Continue</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-step" data-step="1" hidden>
+            <legend>Faith and family</legend>
+            <p class="step-description">Share the values and intentions that matter in your search.</p>
+            <div class="form-grid">
+              <label class="form-field form-field-wide">
+                <span>Marriage intention</span>
+                <select name="marital_intent" required>
+                  <option value="serious_marriage">Serious marriage</option>
+                  <option value="family_building">Building a family</option>
+                  <option value="mutual_consideration">Getting to know one another with marriage in mind</option>
+                  <option value="open_to_guidance">Open to guidance</option>
+                </select>
+              </label>
+              <label class="form-field">
+                <span>Religious practice <small>(optional)</small></span>
+                <input name="deeni_level" maxlength="100" />
+              </label>
+              <label class="form-field">
+                <span>School of thought <small>(optional)</small></span>
+                <input name="sect" maxlength="100" />
+              </label>
+              <label class="form-field form-field-wide">
+                <span>Family values <small>(optional)</small></span>
+                <textarea name="family_values" rows="3" maxlength="200"></textarea>
+              </label>
+              <label class="form-check form-field-wide">
+                <input name="guardian_consented" type="checkbox" value="true" />
+                <span>My wali or family is aware of my intention to seek marriage.</span>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button class="button button-secondary" type="button" data-back>Back</button>
+              <button class="button button-primary" type="button" data-next>Continue</button>
+            </div>
+          </fieldset>
+
+          <fieldset class="form-step" data-step="2" hidden>
+            <legend>Your introduction</legend>
+            <p class="step-description">Be sincere and specific. Keep personal contact details private.</p>
+            <div class="form-grid">
+              <label class="form-field form-field-wide">
+                <span>About you</span>
+                <textarea name="bio" rows="5" minlength="10" maxlength="300" required></textarea>
+                <small>10–300 characters. Say a little about your values, interests, and hopes for married life.</small>
+              </label>
+              <label class="form-field form-field-wide">
+                <span>Social handle <small>(optional)</small></span>
+                <input name="social_handle" maxlength="100" />
+                <small>Only share a handle you are comfortable disclosing according to the platform's matching rules.</small>
+              </label>
+              <label class="form-field form-field-wide">
+                <span>Profile photo</span>
+                <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" />
+                <small id="photo-help">JPEG, PNG, or WebP; maximum 5 MB. A photo is required before submission.</small>
+              </label>
+              <label class="form-check form-field-wide">
+                <input name="terms_accepted" type="checkbox" value="true" required />
+                <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a> and have read the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+              </label>
+            </div>
+            <p id="form-error" class="form-message form-message-error" role="alert" hidden></p>
+            <div class="form-actions">
+              <button class="button button-secondary" type="button" data-back>Back</button>
+              <button id="submit-profile" class="button button-primary" type="submit">Submit for review</button>
+            </div>
+          </fieldset>
+
+          <section id="submission-result" class="submission-result" role="status" hidden></section>
+        </form>
       </div>
     </main>
 

@@ -1,7 +1,9 @@
 import json
 import math
+import os
 from datetime import date, datetime, timedelta
-from fastapi import APIRouter, Depends, Request
+import httpx
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from database import get_db, row_to_user, USER_COLS, log_audit
 from routers.auth import get_current_user
@@ -10,6 +12,49 @@ import ratelimit
 router = APIRouter()
 
 _COLS = ", ".join(USER_COLS)
+
+
+async def _upload_profile_photo(image: bytes, content_type: str) -> tuple[str, str]:
+    main_token = os.getenv("TELEGRAM_BOTS_KEY", "").strip().strip("'\"")
+    admin_token = os.getenv("ADMIN_BOT_TOKEN", "").strip().strip("'\"")
+    storage_chat_id = os.getenv("TELEGRAM_STORAGE_CHAT_ID", "").strip().strip("'\"")
+    if not main_token or not admin_token or not storage_chat_id:
+        raise ValueError("photo storage is not configured")
+
+    async def upload(token: str) -> str:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data={"chat_id": storage_chat_id},
+                files={"photo": ("profile-photo", image, content_type)},
+            )
+        result = response.json()
+        if not response.is_success or not result.get("ok"):
+            raise RuntimeError(result.get("description", "Telegram photo upload failed"))
+        photos = result.get("result", {}).get("photo", [])
+        if not photos or not photos[-1].get("file_id"):
+            raise RuntimeError("Telegram did not return a photo file id")
+        return photos[-1]["file_id"]
+
+    return await upload(main_token), await upload(admin_token)
+
+
+async def _geocode_city(city: str) -> tuple[float, float] | None:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": city, "format": "json", "limit": 1},
+                headers={"User-Agent": "Sakinah/1.0"},
+            )
+        response.raise_for_status()
+        results = response.json()
+        if not results:
+            return None
+        return float(results[0]["lat"]), float(results[0]["lon"])
+    except Exception as exc:
+        print(f"[WEB PROFILE] Location lookup failed: {exc}")
+        return None
 
 
 def _haversine(lat1, lng1, lat2, lng2):
@@ -202,6 +247,155 @@ async def view_profile(user_id: int, request: Request, db=Depends(get_db), curre
         "social_handle": getattr(u, "social_handle", ""),
         "profile_views": getattr(u, "profile_views", 0),
         "is_verified": u.is_verified, "is_premium": u.is_premium,
+    })
+
+
+@router.post("/api/profile/setup")
+async def submit_web_profile(
+    request: Request,
+    name: str = Form(...),
+    age: int = Form(...),
+    gender: str = Form(...),
+    interested_in: str = Form(...),
+    city: str = Form(...),
+    bio: str = Form(...),
+    marital_intent: str = Form(...),
+    deeni_level: str = Form(""),
+    sect: str = Form(""),
+    family_values: str = Form(""),
+    social_handle: str = Form(""),
+    guardian_consented: bool = Form(False),
+    terms_accepted: bool = Form(...),
+    photo: UploadFile | None = File(None),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if not current_user:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if not ratelimit.allow(f"profile_setup:{current_user.id}", 5, 300):
+        return JSONResponse({"error": "rate_limited"}, status_code=429)
+
+    name = name.strip()
+    city = city.strip()
+    bio = bio.strip()
+    deeni_level = deeni_level.strip()
+    sect = sect.strip()
+    family_values = family_values.strip()
+    social_handle = social_handle.strip()
+
+    errors = {}
+    if not 2 <= len(name) <= 50:
+        errors["name"] = "Enter a name between 2 and 50 characters."
+    if not 18 <= age <= 80:
+        errors["age"] = "Age must be between 18 and 80."
+    if gender not in {"male", "female"}:
+        errors["gender"] = "Choose a valid gender."
+    if interested_in not in {"male", "female", "both"}:
+        errors["interested_in"] = "Choose who you are interested in."
+    if not 2 <= len(city) <= 100:
+        errors["city"] = "Enter a city and country between 2 and 100 characters."
+    if not 10 <= len(bio) <= 300:
+        errors["bio"] = "Bio must be between 10 and 300 characters."
+    if marital_intent not in {
+        "serious_marriage", "family_building", "mutual_consideration", "open_to_guidance"
+    }:
+        errors["marital_intent"] = "Choose a valid marriage intention."
+    if len(deeni_level) > 100 or len(sect) > 100 or len(family_values) > 200:
+        errors["values"] = "Faith and family details are too long."
+    if len(social_handle) > 100:
+        errors["social_handle"] = "Social handle must be 100 characters or fewer."
+    if not terms_accepted:
+        errors["terms_accepted"] = "Accept the terms and privacy policy to continue."
+    if errors:
+        return JSONResponse({"error": "validation_error", "fields": errors}, status_code=422)
+
+    photo_id = ""
+    photo_admin_id = ""
+    if photo and photo.filename:
+        content_type = (photo.content_type or "").lower()
+        image = await photo.read(5 * 1024 * 1024 + 1)
+        if len(image) > 5 * 1024 * 1024:
+            return JSONResponse(
+                {"error": "validation_error", "fields": {"photo": "Photo must be 5 MB or smaller."}},
+                status_code=422,
+            )
+        signatures = {
+            "image/jpeg": image.startswith(b"\xff\xd8\xff"),
+            "image/png": image.startswith(b"\x89PNG\r\n\x1a\n"),
+            "image/webp": image.startswith(b"RIFF") and image[8:12] == b"WEBP",
+        }
+        if content_type not in signatures or not signatures[content_type]:
+            return JSONResponse(
+                {"error": "validation_error", "fields": {"photo": "Upload a valid JPEG, PNG, or WebP image."}},
+                status_code=422,
+            )
+        try:
+            photo_id, photo_admin_id = await _upload_profile_photo(image, content_type)
+        except ValueError as exc:
+            print(f"[WEB PROFILE] {exc}")
+            return JSONResponse({"error": "photo_storage_unavailable"}, status_code=503)
+        except Exception as exc:
+            print(f"[WEB PROFILE] Telegram photo upload failed: {exc}")
+            return JSONResponse({"error": "photo_upload_failed"}, status_code=503)
+        finally:
+            await photo.close()
+
+    if not photo_id and not getattr(current_user, "photo", ""):
+        return JSONResponse(
+            {"error": "validation_error", "fields": {"photo": "Add a profile photo to submit your profile."}},
+            status_code=422,
+        )
+
+    if photo_id:
+        photos_json = json.dumps([photo_id])
+        saved_photo_admin_id = photo_admin_id
+    else:
+        photos_json = getattr(current_user, "photos", "[]") or "[]"
+        saved_photo_admin_id = getattr(current_user, "photo_admin", "") or ""
+        photo_id = getattr(current_user, "photo", "") or ""
+
+    lat = getattr(current_user, "lat", 0) or 0
+    lng = getattr(current_user, "lng", 0) or 0
+    location_resolved = bool(lat and lng)
+    if city != (getattr(current_user, "city", "") or "") or not location_resolved:
+        coordinates = await _geocode_city(city)
+        if coordinates:
+            lat, lng = coordinates
+            location_resolved = True
+        else:
+            lat, lng = 0, 0
+            location_resolved = False
+
+    approved = 0 if current_user.is_rejected else int(bool(current_user.is_approved))
+    db.execute(
+        """UPDATE users SET name=?, age=?, gender=?, interested_in=?, bio=?, city=?, lat=?, lng=?,
+           social_handle=?, photo=?, photo_admin=?, photos=?, looking_for=?,
+           marital_intent=?, deeni_level=?, sect=?, family_values=?, guardian_consented=?,
+           terms_accepted=1, is_approved=?, is_rejected=0 WHERE id=?""",
+        (
+            name, age, gender, interested_in, bio, city, lat, lng, social_handle,
+            photo_id, saved_photo_admin_id, photos_json, "serious_marriage",
+            marital_intent, deeni_level, sect, family_values, int(guardian_consented),
+            approved, current_user.id,
+        ),
+    )
+    db.commit()
+
+    review_notified = False
+    if not approved:
+        try:
+            from admin_bot import send_for_review
+            review_notified = await send_for_review(
+                current_user.id, name, age, gender, city, saved_photo_admin_id
+            )
+        except Exception as exc:
+            print(f"[WEB PROFILE] Admin review notification failed: {exc}")
+
+    return JSONResponse({
+        "ok": True,
+        "status": "approved" if approved else "pending_review",
+        "review_notified": review_notified,
+        "location_resolved": location_resolved,
     })
 
 

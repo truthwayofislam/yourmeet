@@ -412,6 +412,25 @@ def init_db():
             detail TEXT,
             created_at TEXT DEFAULT (datetime('now'))
         )""",
+        """CREATE TABLE IF NOT EXISTS broadcast_runs (
+            update_id TEXT PRIMARY KEY,
+            admin_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            sent INTEGER DEFAULT 0,
+            failed INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            completed_at TEXT DEFAULT ''
+        )""",
+        """CREATE TABLE IF NOT EXISTS broadcast_active (
+            id INTEGER PRIMARY KEY CHECK (id=1),
+            update_id TEXT NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS broadcast_deliveries (
+            update_id TEXT NOT NULL,
+            telegram_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'sending',
+            PRIMARY KEY (update_id, telegram_id)
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_user_blocks_blocker ON user_blocks(blocker_id)",
         "CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_id)",
         "CREATE INDEX IF NOT EXISTS idx_user_views_viewed ON user_views(viewed_id)",

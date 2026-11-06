@@ -108,6 +108,7 @@ async def lifespan(app: FastAPI):
                 BotCommand("reports", "Show recent user reports"),
                 BotCommand("post", "Generate promo post (lang)"),
                 BotCommand("broadcast", "Send to all users"),
+                BotCommand("stopbroadcast", "Stop the active broadcast"),
                 BotCommand("remind", "Remind incomplete users"),
                 BotCommand("remind_blocked", "Notify rejected users"),
                 BotCommand("find", "Search user by name"),
@@ -730,18 +731,21 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
 
 
 _FAVICON = (
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
-    '<circle cx="50" cy="50" r="46" fill="#111821"/> '
-    '<text y="68" x="50" font-size="52" text-anchor="middle" fill="#f2d6ad">S</text>'
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    '<rect x="1" y="1" width="62" height="62" rx="18" fill="#141b22"/>'
+    '<path d="M17 48V29a15 15 0 0 1 30 0v19" fill="none" stroke="#d4ae7f" stroke-linecap="round" stroke-width="3"/>'
+    '<path d="M23 48V30a9 9 0 0 1 18 0v18" fill="none" stroke="#f1dfc7" stroke-linecap="round" stroke-width="2.5"/>'
+    '<path d="M28 48V32a4 4 0 0 1 8 0v16" fill="none" stroke="#d4ae7f" stroke-linecap="round" stroke-width="2.5"/>'
     '</svg>'
 )
 
 
-def _render_page(path: str, bot_link: str = "") -> HTMLResponse:
+def _render_page(path: str, bot_link: str = "", bot_username: str = "") -> HTMLResponse:
     with open(path, encoding="utf-8") as f:
         html = f.read()
     if bot_link:
         html = html.replace("__BOT_LINK__", bot_link)
+    html = html.replace("__BOT_USERNAME__", bot_username)
     return HTMLResponse(html)
 
 
@@ -769,8 +773,10 @@ async def how_it_works_page():
 @app.get("/profile-setup")
 async def profile_setup_page():
     bot_username = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", bot_username):
+        bot_username = ""
     bot_link = f"https://t.me/{bot_username}?start=ref_profile_setup" if bot_username else "https://t.me"
-    return _render_page("static/profile-setup.html", bot_link)
+    return _render_page("static/profile-setup.html", bot_link, bot_username)
 
 
 @app.get("/favicon.ico")
