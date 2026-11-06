@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse, Response, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -196,7 +197,7 @@ async def _expire_premium():
                             "chat_id": tg_id,
                             "text": "⏰ <b>Your Premium has expired.</b>\n\n"
                                     "You're back on the free plan (30 swipes/day).\n"
-                                    "Renew anytime with /premium — unlimited swipes & chat are waiting! 👑",
+                                    "Renew anytime with /premium — unlimited swipes & chat are waiting!",
                             "parse_mode": "HTML",
                         },
                     )
@@ -216,6 +217,8 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.middleware("http")
@@ -394,7 +397,7 @@ _PROFILE_PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__NAME__ — Sakinah</title>
-<meta property="og:title" content="__NAME__ on Sakinah 🌙">
+<meta property="og:title" content="__NAME__ on Sakinah">
 <meta name="theme-color" content="#1b6d5a">
 <link rel="icon" href="/favicon.ico">
 <style>
@@ -613,7 +616,7 @@ __BIO__
 __TAGS__
 __BUTTON__
 </div>
-<div class="ft">🌙 Sakinah — halal matchmaking for serious intentions</div>
+<div class="ft">Sakinah — serious Muslim matchmaking</div>
 </div></body></html>"""
 
 
@@ -644,9 +647,9 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
     except ValueError:
         pass
 
-    photo_html = '<div class="nophoto">🙈</div>'
+    photo_html = '<div class="nophoto">Photo unavailable</div>'
     if mystery:
-        photo_html = '<div class="nophoto">🤫</div>'
+        photo_html = '<div class="nophoto">Hidden profile</div>'
     elif getattr(u, "photo", ""):
         b64 = await _photo_b64(u.photo)
         if b64:
@@ -654,22 +657,22 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
 
     badges = []
     if u.is_verified:
-        badges.append('<span class="badge">✅ Verified</span>')
+        badges.append('<span class="badge">Verified</span>')
     if u.is_premium:
-        badges.append('<span class="badge">👑 Premium</span>')
+        badges.append('<span class="badge">Premium</span>')
     try:
         bu = getattr(u, "boosted_until", "") or ""
         if bu and _dt.strptime(bu, "%Y-%m-%d %H:%M:%S") > _dt.utcnow():
-            badges.append('<span class="badge">🚀 Boosted</span>')
+            badges.append('<span class="badge">Boosted</span>')
     except ValueError:
         pass
 
     marital_intent = getattr(u, "marital_intent", "serious_marriage") or "serious_marriage"
     intent_map = {
-        "serious_marriage": "💍 Serious marriage",
-        "family_building": "👨‍👩‍👧‍👦 Family building",
-        "mutual_consideration": "🤝 Mutual consideration",
-        "open_to_guidance": "🌙 Open to guidance",
+        "serious_marriage": "Serious marriage",
+        "family_building": "Family building",
+        "mutual_consideration": "Mutual consideration",
+        "open_to_guidance": "Open to guidance",
     }
     deeni_level = getattr(u, "deeni_level", "") or ""
     sect = getattr(u, "sect", "") or ""
@@ -677,17 +680,22 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
 
     meta_parts = []
     if getattr(u, "city", ""):
-        meta_parts.append(f"📍 {esc(u.city)}")
+        meta_parts.append(f"City: {esc(u.city)}")
     if u.gender:
-        meta_parts.append("👤 " + ("👨" if u.gender == "male" else "👩" if u.gender == "female" else esc(u.gender)))
+        gender_label = (
+            "Male" if u.gender == "male"
+            else "Female" if u.gender == "female"
+            else esc(u.gender)
+        )
+        meta_parts.append(f"Gender: {gender_label}")
     if marital_intent:
-        meta_parts.append(intent_map.get(marital_intent, "💍 Serious marriage"))
+        meta_parts.append(intent_map.get(marital_intent, "Serious marriage"))
     if deeni_level:
-        meta_parts.append(f"🕌 {esc(deeni_level)}")
+        meta_parts.append(f"Deen: {esc(deeni_level)}")
     if sect:
-        meta_parts.append(f"📖 {esc(sect)}")
+        meta_parts.append(f"Sect: {esc(sect)}")
     if family_values:
-        meta_parts.append(f"🏡 {esc(family_values)}")
+        meta_parts.append(f"Family values: {esc(family_values)}")
 
     try:
         interests = json.loads(getattr(u, "interests", "[]") or "[]")[:8]
@@ -723,19 +731,46 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
 
 _FAVICON = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
-    '<circle cx="50" cy="50" r="46" fill="#173f39"/> '
-    '<text y="68" x="50" font-size="52" text-anchor="middle" fill="#dff7ee">☾</text>'
+    '<circle cx="50" cy="50" r="46" fill="#111821"/> '
+    '<text y="68" x="50" font-size="52" text-anchor="middle" fill="#f2d6ad">S</text>'
     '</svg>'
 )
+
+
+def _render_page(path: str, bot_link: str = "") -> HTMLResponse:
+    with open(path, encoding="utf-8") as f:
+        html = f.read()
+    if bot_link:
+        html = html.replace("__BOT_LINK__", bot_link)
+    return HTMLResponse(html)
 
 
 @app.get("/")
 async def home():
     bot_username = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
     bot_link = f"https://t.me/{bot_username}?start=ref_home" if bot_username else "https://t.me"
-    with open("static/home.html", encoding="utf-8") as f:
-        html = f.read().replace("__BOT_LINK__", bot_link)
-    return HTMLResponse(html)
+    return _render_page("static/home.html", bot_link)
+
+
+@app.get("/about")
+async def about_page():
+    bot_username = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+    bot_link = f"https://t.me/{bot_username}?start=ref_about" if bot_username else "https://t.me"
+    return _render_page("static/about.html", bot_link)
+
+
+@app.get("/how-it-works")
+async def how_it_works_page():
+    bot_username = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+    bot_link = f"https://t.me/{bot_username}?start=ref_how" if bot_username else "https://t.me"
+    return _render_page("static/how-it-works.html", bot_link)
+
+
+@app.get("/profile-setup")
+async def profile_setup_page():
+    bot_username = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+    bot_link = f"https://t.me/{bot_username}?start=ref_profile_setup" if bot_username else "https://t.me"
+    return _render_page("static/profile-setup.html", bot_link)
 
 
 @app.get("/favicon.ico")
