@@ -210,7 +210,7 @@ async def _expire_premium():
 # hands outsiders a complete map of every endpoint (mini app era is over, no
 # one needs the schema).
 app = FastAPI(
-    title="YourMeet",
+    title="Sakinah",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -393,9 +393,9 @@ _PROFILE_PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__NAME__ 💕 YourMeet</title>
-<meta property="og:title" content="__NAME__ on YourMeet 💕">
-<meta name="theme-color" content="#ff4d6d">
+<title>__NAME__ — Sakinah</title>
+<meta property="og:title" content="__NAME__ on Sakinah 🌙">
+<meta name="theme-color" content="#1b6d5a">
 <link rel="icon" href="/favicon.ico">
 <style>
 /* Reset + base */
@@ -613,7 +613,7 @@ __BIO__
 __TAGS__
 __BUTTON__
 </div>
-<div class="ft">💕 YourMeet — find your match on Telegram</div>
+<div class="ft">🌙 Sakinah — halal matchmaking for serious intentions</div>
 </div></body></html>"""
 
 
@@ -664,16 +664,30 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
     except ValueError:
         pass
 
-    lf = {"dating": "💚 Dating", "sexting": "🔥 Fun", "relationship": "🤝 Relationship", "any": "❓ Open"}.get(
-        getattr(u, "looking_for", "") or "", ""
-    )
+    marital_intent = getattr(u, "marital_intent", "serious_marriage") or "serious_marriage"
+    intent_map = {
+        "serious_marriage": "💍 Serious marriage",
+        "family_building": "👨‍👩‍👧‍👦 Family building",
+        "mutual_consideration": "🤝 Mutual consideration",
+        "open_to_guidance": "🌙 Open to guidance",
+    }
+    deeni_level = getattr(u, "deeni_level", "") or ""
+    sect = getattr(u, "sect", "") or ""
+    family_values = getattr(u, "family_values", "") or ""
+
     meta_parts = []
     if getattr(u, "city", ""):
         meta_parts.append(f"📍 {esc(u.city)}")
     if u.gender:
         meta_parts.append("👤 " + ("👨" if u.gender == "male" else "👩" if u.gender == "female" else esc(u.gender)))
-    if lf:
-        meta_parts.append(esc(lf) if not lf.startswith(("💚", "🔥", "🤝", "❓")) else lf)
+    if marital_intent:
+        meta_parts.append(intent_map.get(marital_intent, "💍 Serious marriage"))
+    if deeni_level:
+        meta_parts.append(f"🕌 {esc(deeni_level)}")
+    if sect:
+        meta_parts.append(f"📖 {esc(sect)}")
+    if family_values:
+        meta_parts.append(f"🏡 {esc(family_values)}")
 
     try:
         interests = json.loads(getattr(u, "interests", "[]") or "[]")[:8]
@@ -687,8 +701,6 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
     bio_html = f'<div class="bio">{esc(bio)}</div>' if bio else ""
 
     name = esc(u.name or "Someone")
-    # Edit-profile deep link — bot username from env, never hardcoded (it
-    # changes if the bot is ever renamed/migrated).
     _bu = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
     edit_href = f"https://t.me/{_bu}?start=editprofile" if _bu else ""
     button_html = (
@@ -711,8 +723,19 @@ async def profile_page(target_id: int, v: int = 0, e: int = 0, t: str = ""):
 
 _FAVICON = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
-    '<text y="82" x="50" font-size="82" text-anchor="middle">💕</text></svg>'
+    '<circle cx="50" cy="50" r="46" fill="#173f39"/> '
+    '<text y="68" x="50" font-size="52" text-anchor="middle" fill="#dff7ee">☾</text>'
+    '</svg>'
 )
+
+
+@app.get("/")
+async def home():
+    bot_username = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+    bot_link = f"https://t.me/{bot_username}?start=ref_home" if bot_username else "https://t.me"
+    with open("static/home.html", encoding="utf-8") as f:
+        html = f.read().replace("__BOT_LINK__", bot_link)
+    return HTMLResponse(html)
 
 
 @app.get("/favicon.ico")

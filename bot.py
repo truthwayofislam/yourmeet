@@ -268,11 +268,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Terms not accepted
     if not user or not getattr(user, "terms_accepted", 0):
         text = (
-            "👋 Welcome to <b>YourMeet</b>! 💕\n\n"
+            "👋 Welcome to <b>Sakinah</b>! 🌙\n\n"
             "<b>Before you start:</b>\n"
             f"• <a href='{APP_URL}/terms'>Terms of Service</a>\n"
             f"• <a href='{APP_URL}/privacy'>Privacy Policy</a>\n\n"
-            "✅ Tap <b>I Agree</b> to confirm you are <b>18+</b>"
+            "✅ Tap <b>I Agree</b> to confirm you are <b>18+</b> and seeking a halal, marriage-minded connection."
         )
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("✅ I Agree — Let's Go!", callback_data="terms:accept"),
@@ -344,7 +344,7 @@ async def cb_terms_accept(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # Edit same message — set last_bot_msg so setup chain continues on this message
     await query.edit_message_text(
-        "✅ <b>Terms accepted!</b>\n\nLet's set up your profile! 🎉\n\nWhat's your <b>name</b>?",
+        "✅ <b>Terms accepted!</b>\n\nLet's set up your profile for <b>Sakinah</b> — a halal, marriage-minded community. 🌙\n\nWhat's your <b>name</b>?",
         parse_mode="HTML"
     )
     _save_setup_data(tg_id, msg_id=query.message.message_id)
@@ -356,7 +356,7 @@ async def cb_setup_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     tg_id = str(update.effective_user.id)
     await query.edit_message_text(
-        "Let's set up your profile! 🎉\n\nWhat's your <b>name</b>?",
+        "Let's set up your halal profile on <b>Sakinah</b>! 🌙\n\nWhat's your <b>name</b>?",
         parse_mode="HTML"
     )
     _save_setup_data(tg_id, msg_id=query.message.message_id)
@@ -373,16 +373,15 @@ async def cmd_cancel(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_about(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await _cleanup_chat(ctx, update.effective_chat.id)
     await _reply(ctx, update.effective_chat.id,
-        "ℹ️ <b>About YourMeet</b>\n\n"
-        "YourMeet is a dating app where you swipe, match, and chat — all through Telegram.\n\n"
+        "ℹ️ <b>About Sakinah</b>\n\n"
+        "Sakinah is a halal matchmaking platform for Muslims seeking a serious, marriage-minded connection through Telegram and web.\n\n"
         "Features:\n"
-        "• Swipe & match with people nearby\n"
-        "• 1-on-1 chat via bot forwarding\n"
-        "• Vibe Check questions on every match\n"
-        "• Mystery Mode (Premium) — hide your photo\n"
-        "• Boost your profile for more visibility (Premium)\n"
-        "• See who liked you (Premium)\n\n"
-        "Use /premium to unlock Premium features. 👑"
+        "• Verified Muslim profiles\n"
+        "• Family and values aligned matching\n"
+        "• Safe, respectful communication\n"
+        "• Premium support for better visibility\n"
+        "• Marriage-focused community guidance\n\n"
+        "Use /premium to unlock Premium support. 👑"
     )
 
 
@@ -775,8 +774,8 @@ async def setup_photo(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         sent = await ctx.bot.send_message(
             chat_id,
             "<b>Profile submitted!</b>\n\n"
-            "Our team will review your profile within a few hours.\n"
-            "You will get a notification once approved!\n\n"
+            "Our team will review your halal profile within a few hours.\n"
+            "You will be notified once approved for the Sakinah community.\n\n"
             "Use /help to see all commands.",
             parse_mode="HTML",
             reply_markup=_main_keyboard(),
@@ -1560,9 +1559,10 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         pass
     await _cleanup_chat(ctx, update.effective_chat.id)
     sent = await update.message.reply_text(
-        "📖 <b>YourMeet Commands</b>\n\n"
-        "/likes — See who liked you (Premium) ⭐\n"
-        "/mystery — Hide your photo 24h (Premium) 🙈\n\n"
+        "📖 <b>Sakinah Commands</b>\n\n"
+        "/profile — View your profile\n"
+        "/matches — Your meaningful connections\n"
+        "/premium — Community support and visibility\n\n"
         "Tap a button below, or type any command.",
         parse_mode="HTML",
         reply_markup=_main_keyboard(),

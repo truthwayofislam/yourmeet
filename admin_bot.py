@@ -156,7 +156,7 @@ async def _send_pending_profile(bot, chat_id: str, user):
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not _is_admin(update):
         return
-    await update.message.reply_text("👋 <b>YourMeet Admin Bot</b>\n\nUse /pending to review profiles.", parse_mode="HTML")
+    await update.message.reply_text("👋 <b>Sakinah Admin Bot</b>\n\nUse /pending to review halal profiles.", parse_mode="HTML")
 
 
 async def cmd_pending(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -620,20 +620,20 @@ async def cmd_revoke_premium(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 # Ready-made promo posts — /post <lang>. Text me link NAHI hota (anti-spam
 # bots links flag karte hain); poora link inline button ke andar chhupa hota hai.
 _PROMO_POSTS = {
-    "en": ("🔥 Looking for your kind of person? 💕\n\nSwipe, match & chat — 100% FREE, right inside Telegram.\nReal verified profiles. No app install needed! 👇", "💕 Open YourMeet — It's FREE"),
-    "hi": ("🔥 Apne jaisa saathi dhoondh rahe ho? 💕\n\nSwipe karo, match karo, baat karo — 100% FREE, sab kuch Telegram ke andar.\nReal verified profiles. Koi app install nahi chahiye! 👇", "💕 YourMeet kholo — FREE hai"),
-    "es": ("🔥 ¿Buscas a tu persona ideal? 💕\n\nDesliza, matchea y chatea — 100% GRATIS, dentro de Telegram.\nPerfiles reales verificados. ¡Sin instalar apps! 👇", "💕 Abrir YourMeet — Es GRATIS"),
-    "ru": ("🔥 Ищете свою половинку? 💕\n\nСвайпы, мэтчи и чат — 100% БЕСПЛАТНО прямо в Telegram.\nНастоящие проверенные анкеты. Без установки приложений! 👇", "💕 Открыть YourMeet — Бесплатно"),
-    "pt": ("🔥 Procurando sua pessoa ideal? 💕\n\nDeslize, dê match e converse — 100% GRÁTIS, dentro do Telegram.\nPerfis reais verificados. Sem instalar app! 👇", "💕 Abrir YourMeet — É GRÁTIS"),
-    "fr": ("🔥 Tu cherches l'âme sœur ? 💕\n\nSwipe, match et tchat — 100% GRATUIT, directement dans Telegram.\nVrais profils vérifiés. Aucune app à installer ! 👇", "💕 Ouvrir YourMeet — C'est GRATUIT"),
-    "de": ("🔥 Auf der Suche nach deinem Match? 💕\n\nSwipen, matchen, chatten — 100% KOSTENLOS, direkt in Telegram.\nEchte verifizierte Profile. Kein App-Download! 👇", "💕 YourMeet öffnen — Gratis"),
-    "tr": ("🔥 Hayatının aşkını mı arıyorsun? 💕\n\nKaydır, eşleş, sohbet et — %100 ÜCRETSİZ, Telegram'ın içinde.\nGerçek doğrulanmış profiller. Uygulama kurmaya gerek yok! 👇", "💕 YourMeet'i Aç — Ücretsiz"),
-    "id": ("🔥 Mencari pasanganmu? 💕\n\nSwipe, match & chat — 100% GRATIS, langsung di dalam Telegram.\nProfil asli terverifikasi. Tanpa install aplikasi! 👇", "💕 Buka YourMeet — Gratis"),
-    "ar": ("🔥 تبحث عن شريكك المثالي؟ 💕\n\nتطابق وتحدث — مجاني 100% داخل تيليجرام مباشرة.\nملفات شخصية حقيقية وموثقة. لا حاجة لتثبيت أي تطبيق! 👇", "💕 افتح YourMeet — مجانًا"),
-    "ko": ("🔥 이상형을 찾고 계신가요? 💕\n\n스와이프, 매치, 채팅 — 100% 무료, 텔레그램 안에서 바로!\n실명 인증 프로필. 앱 설치 불필요! 👇", "💕 YourMeet 열기 — 무료"),
-    "ja": ("🔥 理想の相手を探していませんか？ 💕\n\nスワイプ・マッチ・チャット — 全て無料、Telegram内で完結！\n本人確認済みのプロフィール。アプリインストール不要！ 👇", "💕 YourMeetを開く — 無料"),
-    "zh": ("🔥 在寻找心仪的对象吗？ 💕\n\n滑动、配对、聊天 — 100% 免费，直接在 Telegram 里完成。\n真实认证资料，无需安装App！ 👇", "💕 打开 YourMeet — 免费"),
-    "it": ("🔥 Cerchi la tua anima gemella? 💕\n\nScorri, fai match e chatta — 100% GRATIS, direttamente su Telegram.\nProfili reali verificati. Nessuna app da installare! 👇", "💕 Apri YourMeet — È GRATIS"),
+    "en": ("🌙 Looking for a halal, marriage-minded connection?\n\nSakinah helps Muslim families and individuals find respectful, serious, values-based matches — all inside Telegram.\nVerified profiles. No app install needed. 👇", "🌙 Open Sakinah — halal matchmaking"),
+    "hi": ("🌙 Kya aap halal aur serious rishta chahte hain?\n\nSakinah Muslim families aur individuals ko respectful, values-based matches ke liye milata hai — sab Telegram ke andar.\nVerified profiles. App install nahi chahiye. 👇", "🌙 Sakinah kholo — halal matchmaking"),
+    "es": ("🌙 ¿Buscas una conexión halal y seria?\n\nSakinah ayuda a familias e individuos musulmanes a encontrar coincidencias respetuosas y con valores — todo dentro de Telegram.\nPerfiles verificados. No hace falta instalar la app. 👇", "🌙 Abrir Sakinah — matchmaking halal"),
+    "ru": ("🌙 Ищете серьёзные, halal отношения?\n\nSakinah помогает мусульманским семьям и людям находить уважительные и ценностные совпадения — всё внутри Telegram.\nПроверенные профили. Установка приложения не требуется. 👇", "🌙 Открыть Sakinah — halal matchmaking"),
+    "pt": ("🌙 Procurando uma conexão halal e séria?\n\nSakinah conecta famílias e indivíduos muçulmanos com perfis respeitosos e com valores em comum — tudo dentro do Telegram.\nPerfis verificados. Sem instalar app. 👇", "🌙 Abrir Sakinah — matchmaking halal"),
+    "fr": ("🌙 Vous cherchez une connexion halal, sérieuse et respectueuse ?\n\nSakinah aide les familles et individus musulmans à trouver des profils compatibles et sérieux — tout directement dans Telegram.\nProfils vérifiés. Aucune app à installer. 👇", "🌙 Ouvrir Sakinah — matchmaking halal"),
+    "de": ("🌙 Auf der Suche nach einer halal, ernsthaften Verbindung?\n\nSakinah hilft muslimischen Familien und Einzelpersonen, respektvolle und werteorientierte Matches zu finden — alles direkt in Telegram.\nVerifizierte Profile. Keine App nötig. 👇", "🌙 Sakinah öffnen — halal matchmaking"),
+    "tr": ("🌙 Helal ve ciddi bir birlik mi arıyorsunuz?\n\nSakinah, Müslüman ailelere ve bireylere saygılı, değer odaklı eşleşmeler bulmada yardımcı olur — hepsi Telegram içinde.\nDoğrulanmış profiller. Uygulama kurmaya gerek yok. 👇", "🌙 Sakinah'ı Aç — helal eşleşme"),
+    "id": ("🌙 Mencari hubungan halal yang serius?\n\nSakinah membantu keluarga dan individu Muslim menemukan profil yang saling menghormati dan sesuai nilai — semua dalam Telegram.\nProfil terverifikasi. Tanpa install aplikasi. 👇", "🌙 Buka Sakinah — halal matchmaking"),
+    "ar": ("🌙 تبحثون عن علاقة halal جادة ومحترمة؟\n\nيساعدك Sakinah في العثور على ملفات شخصية متوافقة وقيمية داخل تيليجرام فقط.\nملفات شخصية موثقة. لا حاجة لتثبيت التطبيق. 👇", "🌙 افتح Sakinah — halal matchmaking"),
+    "ko": ("🌙 신중하고 할랄한 연결을 찾고 계신가요?\n\nSakinah은 무슬림 가정과 개인이 존중받고 가치관이 맞는 인연을 찾도록 도와줍니다 — 전부 텔레그램 안에서.\n인증된 프로필. 앱 설치 불필요. 👇", "🌙 Sakinah 열기 — halal matchmaking"),
+    "ja": ("🌙 真剣でハラルな出会いをお探しですか？\n\nSakinahは、敬意と価値観を大切にしながらイスラム教徒同士のマッチングを支援します — Telegram内で完結。\n本人確認済みプロフィール。アプリ不要。 👇", "🌙 Sakinahを開く — halal matchmaking"),
+    "zh": ("🌙 你在寻找严肃、符合伊斯兰规范的缘分吗？\n\nSakinah 帮助穆斯林家庭和个人在 Telegram 内找到尊重彼此、价值观一致的匹配。\n已验证资料。无需安装App。 👇", "🌙 打开 Sakinah — halal matchmaking"),
+    "it": ("🌙 Cerchi un legame halal serio e rispettoso?\n\nSakinah aiuta famiglie e individui musulmani a trovare profili compatibili e con valori condivisi — tutto dentro Telegram.\nProfili verificati. Nessuna app da installare. 👇", "🌙 Apri Sakinah — halal matchmaking"),
 }
 
 

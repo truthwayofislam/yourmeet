@@ -313,6 +313,11 @@ def init_db():
             mystery_until TEXT DEFAULT '',
             terms_accepted INTEGER DEFAULT 0,
             looking_for TEXT DEFAULT '',
+            marital_intent TEXT DEFAULT 'serious_marriage',
+            deeni_level TEXT DEFAULT '',
+            sect TEXT DEFAULT '',
+            family_values TEXT DEFAULT '',
+            guardian_consented INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now'))
         )""",
         """CREATE TABLE IF NOT EXISTS likes (
@@ -471,6 +476,11 @@ def init_db():
         "ALTER TABLE users ADD COLUMN max_distance INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN profile_views INTEGER DEFAULT 0",
         "ALTER TABLE users ADD COLUMN looking_for TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN marital_intent TEXT DEFAULT 'serious_marriage'",
+        "ALTER TABLE users ADD COLUMN deeni_level TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN sect TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN family_values TEXT DEFAULT ''",
+        "ALTER TABLE users ADD COLUMN guardian_consented INTEGER DEFAULT 0",
         "ALTER TABLE chat_sessions ADD COLUMN missed_notified INTEGER DEFAULT 0",
         "ALTER TABLE vibe_answers ADD COLUMN date TEXT DEFAULT ''",
         # Premium-offer memory: how many days the admin gifted this user —
@@ -507,9 +517,9 @@ USER_COLS = [
     "super_likes_left", "boosted_until", "referral_count", "created_at",
     "mystery_until", "terms_accepted", "setup_msg_id", "setup_data",
     "min_age", "max_age", "max_distance", "profile_views", "looking_for",
+    "marital_intent", "deeni_level", "sect", "family_values", "guardian_consented",
     "photo_admin",
     ]
-
 USER_SELECT = ", ".join(USER_COLS)
 
 
